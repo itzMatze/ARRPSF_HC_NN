@@ -46,11 +46,12 @@ if [ -z "${PM_PACKAGES_ROOT:-}" ]; then
 	if [ `uname` == 'Darwin' ]; then
 		export PM_PACKAGES_ROOT="${HOME}/Library/Application Support/packman-cache"
 	else
-		if [ -z "${XDG_CACHE_HOME:-}" ]; then
-			export PM_PACKAGES_ROOT="${HOME}/.cache/packman"
-		else
-			export PM_PACKAGES_ROOT="${XDG_CACHE_HOME}/packman"
-		fi
+		# if [ -z "${XDG_CACHE_HOME:-}" ]; then
+		# 	export PM_PACKAGES_ROOT="${HOME}/.cache/packman"
+		# else
+		# 	export PM_PACKAGES_ROOT="${XDG_CACHE_HOME}/packman"
+		# fi
+		export PM_PACKAGES_ROOT="/mnt/X/KIT/.cache/packman"
 	fi
 fi
 
