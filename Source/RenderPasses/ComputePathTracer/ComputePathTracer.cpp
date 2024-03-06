@@ -2,7 +2,6 @@
 #include "RenderGraph/RenderPassHelpers.h"
 #include "RenderGraph/RenderPassStandardFlags.h"
 
-
 namespace
 {
 const std::string kShaderFile("RenderPasses/ComputePathTracer/ComputePathTracer.slang");
@@ -35,6 +34,7 @@ extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registr
 
 ComputePathTracer::ComputePathTracer(ref<Device> pDevice, const Properties& props) : RenderPass(pDevice)
 {
+    mpSampleGenerator = SampleGenerator::create(mpDevice, SAMPLE_GENERATOR_UNIFORM);
     for (const auto& [key, value] : props)
     {
         if (key == kMaxBounces)
@@ -91,8 +91,7 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         for (auto it : kOutputChannels)
         {
             Texture* pDst = renderData.getTexture(it.name).get();
-            if (pDst)
-                pRenderContext->clearTexture(pDst);
+            if (pDst) pRenderContext->clearTexture(pDst);
         }
         return;
     }
@@ -119,6 +118,7 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
     DefineList defineList = getValidResourceDefines(kInputChannels, renderData);
     defineList.add(getValidResourceDefines(kOutputChannels, renderData));
     defineList.add(mpScene->getSceneDefines());
+    defineList.add(mpSampleGenerator->getDefines());
     defineList["MAX_BOUNCES"] = std::to_string(mMaxBounces);
     defineList["COMPUTE_DIRECT"] = mComputeDirect ? "1" : "0";
     defineList["USE_IMPORTANCE_SAMPLING"] = mUseImportanceSampling ? "1" : "0";
@@ -146,7 +146,10 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
     }
 
     auto var = mpVars->getRootVar();
-    var["CB"]["frameDim"] = frameDim;
+    var["CB"]["gFrameDim"] = frameDim;
+    var["CB"]["gFrameCount"] = mFrameCount;
+    mpScene->bindShaderData(var["gScene"]);
+    mpSampleGenerator->bindShaderData(var);
 
     // Bind I/O buffers. These needs to be done per-frame as the buffers may change anytime.
     auto bind = [&](const ChannelDesc& desc)
@@ -156,10 +159,8 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
             var[desc.texname] = renderData.getTexture(desc.name);
         }
     };
-    for (auto channel : kInputChannels)
-        bind(channel);
-    for (auto channel : kOutputChannels)
-        bind(channel);
+    for (auto channel : kInputChannels) bind(channel);
+    for (auto channel : kOutputChannels) bind(channel);
 
     mpPass->setVars(mpVars);
     // Get dimensions of ray dispatch.

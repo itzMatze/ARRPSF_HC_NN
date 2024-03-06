@@ -37,6 +37,7 @@ import Rendering.Lights.LightHelpers;
  */
 import Scene.Shading;
 import Scene.HitInfo;
+import Utils.Sampling.SampleGenerator;
 import Scene.Material.ShadingUtils;
 import Utils.Math.MathHelpers;
 import Scene.Scene;
@@ -46,7 +47,8 @@ import Utils.Debug.PixelDebug;
 
 cbuffer CB
 {
-    uint2 frameDim;
+    uint gFrameCount;
+    uint2 gFrameDim;
 }
 
 // Inputs
@@ -93,36 +95,54 @@ ShadingData loadShadingData(const HitInfo hit, const float3 rayOrigin, const flo
     return sd;
 }
 
-
 [numthreads(16, 16, 1)]
 void main(uint3 dispatchThreadId: SV_DispatchThreadID)
 {
     uint2 pixel = dispatchThreadId.xy;
-    if (any(pixel >= frameDim)) return;
+    if (any(pixel >= gFrameDim)) return;
 
     float3 color = float3(0.0f);
+    float3 emission = float3(0.0f);
     let lod = ExplicitLodTextureSampler(0.f); // TODO: Implement texture level-of-detail.
-    const HitInfo hit = HitInfo(gVBuffer[pixel]);
-    if (hit.isValid() && hit.getType() == HitType::Triangle)
+    const HitInfo primary_hit = HitInfo(gVBuffer[pixel]);
+    if (primary_hit.isValid() && primary_hit.getType() == HitType::Triangle)
     {
-        const TriangleHit triangleHit = hit.getTriangleHit();
-        ShadingData sd = loadShadingData(hit, gScene.camera.getPosition(), -gViewW[pixel].xyz, lod);
-        // gScene.getMaterialID(triangleHit.instanceID)
+        const TriangleHit triangleHit = primary_hit.getTriangleHit();
+        ShadingData sd = loadShadingData(primary_hit, gScene.camera.getPosition(), -gViewW[pixel].xyz, lod);
         if (kTest)
         {
-            // Create material instance and query its properties.
-            // let mi = gScene.materials.getMaterialInstance(sd, lod);
-            // color = float3(mi.getProperties(sd).emission);
-            color = float3(gScene.camera.getPosition());
+            IMaterialInstance mi = gScene.materials.getMaterialInstance(sd, lod);
+            SampleGenerator sg = SampleGenerator(pixel, gFrameCount);
+            color = mi.getProperties(sd).diffuseReflectionAlbedo;
+            emission = mi.getProperties(sd).emission;
+            for (uint i = 0; i < 10; ++i)
+            {
+                float3 dir = normalize(sampleNext3D(sg) - 0.5);
+                SceneRayQuery<1> rayQuery;
+                const Ray ray = Ray(sd.computeRayOrigin(), dir, 0.0f, 1000.0f);
+                HitInfo hit;
+                float t = 0.0f;
+                if (rayQuery.traceRay(ray, hit, t, RAY_FLAG_NONE, 0xff))
+                {
+                    sd = loadShadingData(hit, ray.origin, ray.dir, lod);
+                    mi = gScene.materials.getMaterialInstance(sd, lod);
+                    emission += color * mi.getProperties(sd).emission;
+                    color *= mi.getProperties(sd).diffuseReflectionAlbedo;
+                }
+                else
+                {
+                    break;
+                }
+            }
         }
         else
         {
-            color = float3(triangleHit.getBarycentricWeights());
+            emission = float3(triangleHit.getBarycentricWeights());
         }
     }
     else
     {
-        color = float3(1.0f, 0.0f, 0.0f);
+        emission = float3(0.0f, 0.0f, 0.05f);
     }
-    gOutputColor[pixel] = float4(color, 1.0f);
+    gOutputColor[pixel] = float4(emission, 1.0f);
 }
