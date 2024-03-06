@@ -1,4 +1,6 @@
 #include "ComputePathTracer.h"
+#include <chrono>
+#include <thread>
 #include "RenderGraph/RenderPassHelpers.h"
 #include "RenderGraph/RenderPassStandardFlags.h"
 
@@ -84,6 +86,8 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         dict[Falcor::kRenderPassRefreshFlags] = flags | Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
         mOptionsChanged = false;
     }
+
+    if (power_saving) std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
     // If we have no scene, just clear the outputs and return.
     if (!mpScene)
