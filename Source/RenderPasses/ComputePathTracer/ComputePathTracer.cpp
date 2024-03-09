@@ -37,14 +37,10 @@ ComputePathTracer::ComputePathTracer(ref<Device> pDevice, const Properties& prop
     mpSampleGenerator = SampleGenerator::create(mpDevice, SAMPLE_GENERATOR_UNIFORM);
     for (const auto& [key, value] : props)
     {
-        if (key == kMaxBounces)
-            mMaxBounces = value;
-        else if (key == kComputeDirect)
-            mComputeDirect = value;
-        else if (key == kUseImportanceSampling)
-            mUseImportanceSampling = value;
-        else
-            logWarning("Unknown property '{}' in ComputePathTracer properties.", key);
+        if (key == kMaxBounces) mMaxBounces = value;
+        else if (key == kComputeDirect) mComputeDirect = value;
+        else if (key == kUseImportanceSampling) mUseImportanceSampling = value;
+        else logWarning("Unknown property '{}' in ComputePathTracer properties.", key);
     }
 }
 
@@ -85,7 +81,6 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         mOptionsChanged = false;
     }
 
-
     // If we have no scene, just clear the outputs and return.
     if (!mpScene)
     {
@@ -97,24 +92,17 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         return;
     }
 
-    // if (is_set(mpScene->getUpdates(), Scene::UpdateFlags::RecompileNeeded) ||
-    //     is_set(mpScene->getUpdates(), Scene::UpdateFlags::GeometryChanged))
-    // {
-    //     FALCOR_THROW("This render pass does not support scene changes that require shader recompilation.");
-    // }
+    if (is_set(mpScene->getUpdates(), Scene::UpdateFlags::RecompileNeeded) ||
+        is_set(mpScene->getUpdates(), Scene::UpdateFlags::GeometryChanged))
+    {
+        FALCOR_THROW("This render pass does not support scene changes that require shader recompilation.");
+    }
 
-    // // Request the light collection if emissive lights are enabled.
-    // if (mpScene->getRenderSettings().useEmissiveLights)
-    // {
-    //     mpScene->getLightCollection(pRenderContext);
-    // }
-
-    // // Configure depth-of-field.
-    // const bool useDOF = mpScene->getCamera()->getApertureRadius() > 0.f;
-    // if (useDOF && renderData[kInputViewDir] == nullptr)
-    // {
-    //     logWarning("Depth-of-field requires the '{}' input. Expect incorrect shading.", kInputViewDir);
-    // }
+    // Request the light collection if emissive lights are enabled.
+    if (mpScene->getRenderSettings().useEmissiveLights)
+    {
+        mpScene->getLightCollection(pRenderContext);
+    }
 
     DefineList defineList = getValidResourceDefines(kInputChannels, renderData);
     defineList.add(getValidResourceDefines(kOutputChannels, renderData));
@@ -124,10 +112,10 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
     defineList["COMPUTE_DIRECT"] = mComputeDirect ? "1" : "0";
     defineList["USE_IMPORTANCE_SAMPLING"] = mUseImportanceSampling ? "1" : "0";
     defineList["TEST"] = mTest ? "1" : "0";
-    defineList["USE_ANALYTIC_LIGHTS"] = "1"; // mpScene->useAnalyticLights() ? "1" : "0");
-    defineList["USE_EMISSIVE_LIGHTS"] = "1"; // mpScene->useEmissiveLights() ? "1" : "0");
-    defineList["USE_ENV_LIGHT"] = "1"; // mpScene->useEnvLight() ? "1" : "0");
-    defineList["USE_ENV_BACKGROUND"] = "1"; // mpScene->useEnvBackground() ? "1" : "0");
+    defineList["USE_ANALYTIC_LIGHTS"] = mpScene->useAnalyticLights() ? "1" : "0";
+    defineList["USE_EMISSIVE_LIGHTS"] = mpScene->useEmissiveLights() ? "1" : "0";
+    defineList["USE_ENV_LIGHT"] = mpScene->useEnvLight() ? "1" : "0";
+    defineList["USE_ENV_BACKGROUND"] = mpScene->useEnvBackground() ? "1" : "0";
 
     if (!mpPass)
     {
@@ -142,7 +130,7 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
 
     if (mpPass->getProgram()->addDefines(defineList))
     {
-    // Set constants.
+        // Set constants.
         mpVars = ProgramVars::create(mpDevice, mpPass->getProgram()->getReflector());
     }
 
