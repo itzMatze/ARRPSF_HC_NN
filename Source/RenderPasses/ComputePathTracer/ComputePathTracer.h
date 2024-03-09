@@ -76,7 +76,6 @@ private:
     /// Use importance sampling for materials.
     bool mUseImportanceSampling = true;
     bool mTest = true;
-    bool power_saving = true;
 
     // Runtime data
 

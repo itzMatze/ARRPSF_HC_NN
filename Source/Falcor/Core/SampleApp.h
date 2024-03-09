@@ -167,6 +167,11 @@ public:
     virtual void onDroppedFile(const std::filesystem::path& path) {}
 
     /**
+     * Called when the window loses or gains focus.
+     */
+    virtual void onFocusEvent(int focused) { mPowerSaving = !focused && mPowerSavingEnabled; }
+
+    /**
      * Get the Settings object for Options and Attributes.
      */
     const Settings& getSettings() const;
@@ -300,6 +305,7 @@ private:
     void handleGamepadEvent(const GamepadEvent& gamepadEvent) override;
     void handleGamepadState(const GamepadState& gamepadState) override;
     void handleDroppedFile(const std::filesystem::path& path) override;
+    void handleFocusEvent(int focused) override;
 
     // Private functions
     void resizeTargetFBO(uint32_t width, uint32_t height);
@@ -332,6 +338,10 @@ private:
     FrameRate mFrameRate;
     Clock mClock;
 
+    // current power saving mode
+    bool mPowerSaving = false;
+    // is power saving enabled in general
+    bool mPowerSavingEnabled = true;
     bool mShouldTerminate = false; ///< True if application should terminate.
     bool mRendererPaused = false;  ///< True if rendering is paused.
     bool mVsyncOn = false;

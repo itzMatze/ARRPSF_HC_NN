@@ -213,6 +213,9 @@ void SampleApp::handleKeyboardEvent(const KeyboardEvent& keyEvent)
         {
             switch (keyEvent.key)
             {
+            case Input::Key::J:
+                mPowerSavingEnabled = !mPowerSavingEnabled;
+                break;
             case Input::Key::F12:
                 mCaptureScreen = true;
                 break;
@@ -276,6 +279,11 @@ void SampleApp::handleGamepadState(const GamepadState& gamepadState)
 void SampleApp::handleDroppedFile(const std::filesystem::path& path)
 {
     onDroppedFile(path);
+}
+
+void SampleApp::handleFocusEvent(int focused)
+{
+    onFocusEvent(focused);
 }
 
 void SampleApp::runInternal()
@@ -353,6 +361,7 @@ std::string SampleApp::getKeyboardShortcutsStr()
         "F3 - Capture current camera location\n"
         "F5 - Reload shaders\n"
         "F12 - Capture screenshot\n"
+        "J - Toggle power saving mode\n"
         "V - Toggle VSync\n"
         "Pause|Space - Pause/resume the global timer\n"
         "Ctrl+Pause|Space - Pause/resume the renderer\n"
@@ -470,6 +479,12 @@ void SampleApp::renderFrame()
     // Check clock exit condition.
     if (mClock.shouldExit())
         shutdown();
+
+    if (mPowerSaving)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100u));
+        return;
+    }
 
     // Handle clock.
     mClock.tick();

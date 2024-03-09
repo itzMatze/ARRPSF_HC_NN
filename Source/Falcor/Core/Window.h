@@ -85,6 +85,7 @@ public:
         virtual void handleGamepadEvent(const GamepadEvent& gamepadEvent) = 0;
         virtual void handleGamepadState(const GamepadState& gamepadState) = 0;
         virtual void handleDroppedFile(const std::filesystem::path& path) = 0;
+        virtual void handleFocusEvent(int focused) {}
     };
 
     /**

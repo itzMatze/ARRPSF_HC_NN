@@ -169,6 +169,15 @@ public:
         }
     }
 
+    static void windowFocusCallback(GLFWwindow* pGlfwWindow, int focused)
+    {
+        Window* pWindow = (Window*)glfwGetWindowUserPointer(pGlfwWindow);
+        if (pWindow)
+        {
+            pWindow->mpCallbacks->handleFocusEvent(focused);
+        }
+    }
+
 private:
     static inline Input::Key glfwToFalcorKey(int glfwKey)
     {
@@ -442,6 +451,7 @@ Window::Window(const Desc& desc, ICallbacks* pCallbacks)
     glfwSetScrollCallback(mpGLFWWindow, ApiCallbacks::mouseWheelCallback);
     glfwSetCharCallback(mpGLFWWindow, ApiCallbacks::charInputCallback);
     glfwSetDropCallback(mpGLFWWindow, ApiCallbacks::droppedFileCallback);
+    glfwSetWindowFocusCallback(mpGLFWWindow, ApiCallbacks::windowFocusCallback);
 
     if (desc.mode == WindowMode::Minimized)
     {
