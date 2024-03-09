@@ -214,7 +214,10 @@ void SampleApp::handleKeyboardEvent(const KeyboardEvent& keyEvent)
             switch (keyEvent.key)
             {
             case Input::Key::J:
-                mPowerSavingEnabled = !mPowerSavingEnabled;
+                mBackgroundPowerSavingEnabled = !mBackgroundPowerSavingEnabled;
+                break;
+            case Input::Key::K:
+                mPowerSaving = !mPowerSaving;
                 break;
             case Input::Key::F12:
                 mCaptureScreen = true;
@@ -361,7 +364,8 @@ std::string SampleApp::getKeyboardShortcutsStr()
         "F3 - Capture current camera location\n"
         "F5 - Reload shaders\n"
         "F12 - Capture screenshot\n"
-        "J - Toggle power saving mode\n"
+        "J - Toggle background power saving mode\n"
+        "K - Toggle power saving mode\n"
         "V - Toggle VSync\n"
         "Pause|Space - Pause/resume the global timer\n"
         "Ctrl+Pause|Space - Pause/resume the renderer\n"
@@ -480,11 +484,12 @@ void SampleApp::renderFrame()
     if (mClock.shouldExit())
         shutdown();
 
-    if (mPowerSaving)
+    if (mBackgroundPowerSaving)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(100u));
         return;
     }
+    if (mPowerSaving) std::this_thread::sleep_for(std::chrono::milliseconds(10u));
 
     // Handle clock.
     mClock.tick();

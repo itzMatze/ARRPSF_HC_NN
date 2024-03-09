@@ -169,7 +169,7 @@ public:
     /**
      * Called when the window loses or gains focus.
      */
-    virtual void onFocusEvent(int focused) { mPowerSaving = !focused && mPowerSavingEnabled; }
+    virtual void onFocusEvent(int focused) { mBackgroundPowerSaving = !focused && mBackgroundPowerSavingEnabled; }
 
     /**
      * Get the Settings object for Options and Attributes.
@@ -338,10 +338,12 @@ private:
     FrameRate mFrameRate;
     Clock mClock;
 
-    // current power saving mode
-    bool mPowerSaving = false;
-    // is power saving enabled in general
-    bool mPowerSavingEnabled = true;
+    // current background power saving mode
+    bool mBackgroundPowerSaving = false;
+    // is background power saving enabled in general
+    bool mBackgroundPowerSavingEnabled = true;
+    // current power saving mode (slow down framerate)
+    bool mPowerSaving = true;
     bool mShouldTerminate = false; ///< True if application should terminate.
     bool mRendererPaused = false;  ///< True if rendering is paused.
     bool mVsyncOn = false;
