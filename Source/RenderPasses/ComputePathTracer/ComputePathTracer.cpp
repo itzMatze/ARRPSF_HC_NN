@@ -80,7 +80,6 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
     {
         auto flags = dict.getValue(kRenderPassRefreshFlags, RenderPassRefreshFlags::None);
         dict[Falcor::kRenderPassRefreshFlags] = flags | Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
-        mOptionsChanged = false;
     }
 
     // If we have no scene, just clear the outputs and return.
@@ -131,10 +130,12 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         mpVars = ProgramVars::create(mpDevice, mpPass->getProgram()->getReflector());
     }
 
-    if (mpPass->getProgram()->addDefines(defineList))
+    if (mOptionsChanged)
     {
+        mpPass->getProgram()->addDefines(defineList);
         // Set constants.
         mpVars = ProgramVars::create(mpDevice, mpPass->getProgram()->getReflector());
+        mOptionsChanged = false;
     }
 
     auto var = mpVars->getRootVar();
@@ -168,30 +169,23 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
 
 void ComputePathTracer::renderUI(Gui::Widgets& widget)
 {
-    bool dirty = false;
-
-    dirty |= widget.var("Max bounces", mMaxBounces, 0u, 1u << 16);
+    widget.var("Max bounces", mMaxBounces, 0u, 1u << 16);
     widget.tooltip("Maximum path length for indirect illumination.\n0 = direct only\n1 = one indirect bounce etc.", true);
 
-    dirty |= widget.checkbox("Evaluate direct illumination", mComputeDirect);
+    widget.checkbox("Evaluate direct illumination", mComputeDirect);
     widget.tooltip("Compute direct illumination.\nIf disabled only indirect is computed (when max bounces > 0).", true);
 
-    dirty |= widget.checkbox("Use importance sampling", mUseImportanceSampling);
+    widget.checkbox("Use importance sampling", mUseImportanceSampling);
     widget.tooltip("Use importance sampling for materials", true);
 
-    dirty |= widget.checkbox("Just some test checkbox", mTest);
-    widget.tooltip("Does something", true);
-    dirty |= widget.var("RR start value", mRRProbStartValue, 1.0f, 4.0f);
+    widget.var("RR start value", mRRProbStartValue, 1.0f, 4.0f);
     widget.tooltip("Starting value of the survival probability", true);
-    dirty |= widget.var("RR reduction factor", mRRProbReductionFactor, 0.1f, 0.99f);
+    widget.var("RR reduction factor", mRRProbReductionFactor, 0.1f, 0.99f);
     widget.tooltip("Gets multiplied to the initial survival probability at each interaction", true);
 
-    // If rendering options that modify the output have changed, set flag to indicate that.
+    // If new rendering options that modify the output are applied, set flag to indicate that.
     // In execute() we will pass the flag to other passes for reset of temporal data etc.
-    if (dirty)
-    {
-        mOptionsChanged = true;
-    }
+    mOptionsChanged |= widget.button("Apply");
 }
 
 void ComputePathTracer::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)

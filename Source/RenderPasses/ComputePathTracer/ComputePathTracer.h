@@ -84,7 +84,7 @@ private:
 
     /// Frame count since scene was loaded.
     uint mFrameCount = 0;
-    bool mOptionsChanged = false;
+    bool mOptionsChanged = true;
 
     ref<ComputePass> mpPass;
     ref<ProgramVars> mpVars;
