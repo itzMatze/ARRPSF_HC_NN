@@ -70,12 +70,15 @@ private:
     // Configuration
 
     /// Max number of indirect bounces (0 = none).
-    uint mMaxBounces = 3;
+    uint mMaxBounces = 30;
     /// Compute direct illumination (otherwise indirect only).
     bool mComputeDirect = true;
     /// Use importance sampling for materials.
     bool mUseImportanceSampling = true;
-    bool mTest = true;
+    // starting value for the survival probability of russian roulette
+    float mRRProbStartValue = 1.2f;
+    // factor by which the survival probability gets reduced
+    float mRRProbReductionFactor = 0.9f;
 
     // Runtime data
 

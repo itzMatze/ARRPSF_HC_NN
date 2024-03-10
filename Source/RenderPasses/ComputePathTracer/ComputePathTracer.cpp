@@ -24,7 +24,8 @@ const ChannelList kOutputChannels = {
 const char kMaxBounces[] = "maxBounces";
 const char kComputeDirect[] = "computeDirect";
 const char kUseImportanceSampling[] = "useImportanceSampling";
-const char kTest[] = "test";
+const char kRRProbStartValue[] = "RRProbStartValue";
+const char kRRProbReductionFactor[] = "RRProbReductionFactor";
 } // namespace
 
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
@@ -50,7 +51,8 @@ Properties ComputePathTracer::getProperties() const
     props[kMaxBounces] = mMaxBounces;
     props[kComputeDirect] = mComputeDirect;
     props[kUseImportanceSampling] = mUseImportanceSampling;
-    props[kTest] = mTest;
+    props[kRRProbStartValue] = mRRProbStartValue;
+    props[kRRProbReductionFactor] = mRRProbReductionFactor;
     return props;
 }
 
@@ -109,9 +111,10 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
     defineList.add(mpScene->getSceneDefines());
     defineList.add(mpSampleGenerator->getDefines());
     defineList["MAX_BOUNCES"] = std::to_string(mMaxBounces);
+    defineList["RR_PROB_START_VALUE"] = fmt::format("{:.4f}", mRRProbStartValue);
+    defineList["RR_PROB_REDUCTION_FACTOR"] = fmt::format("{:.4f}", mRRProbReductionFactor);
     defineList["COMPUTE_DIRECT"] = mComputeDirect ? "1" : "0";
     defineList["USE_IMPORTANCE_SAMPLING"] = mUseImportanceSampling ? "1" : "0";
-    defineList["TEST"] = mTest ? "1" : "0";
     defineList["USE_ANALYTIC_LIGHTS"] = mpScene->useAnalyticLights() ? "1" : "0";
     defineList["USE_EMISSIVE_LIGHTS"] = mpScene->useEmissiveLights() ? "1" : "0";
     defineList["USE_ENV_LIGHT"] = mpScene->useEnvLight() ? "1" : "0";
@@ -178,6 +181,10 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
 
     dirty |= widget.checkbox("Just some test checkbox", mTest);
     widget.tooltip("Does something", true);
+    dirty |= widget.var("RR start value", mRRProbStartValue, 1.0f, 4.0f);
+    widget.tooltip("Starting value of the survival probability", true);
+    dirty |= widget.var("RR reduction factor", mRRProbReductionFactor, 0.1f, 0.99f);
+    widget.tooltip("Gets multiplied to the initial survival probability at each interaction", true);
 
     // If rendering options that modify the output have changed, set flag to indicate that.
     // In execute() we will pass the flag to other passes for reset of temporal data etc.

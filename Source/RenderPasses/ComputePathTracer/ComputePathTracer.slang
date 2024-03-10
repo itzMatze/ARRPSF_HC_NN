@@ -29,9 +29,10 @@ RWTexture2D<float4> gOutputColor;
 // Static configuration based on defines set from the host.
 #define is_valid(name) (is_valid_##name != 0)
 static const uint kMaxBounces = MAX_BOUNCES;
+static const float kRRProbStartValue = RR_PROB_START_VALUE;
+static const float kRRProbReductionFactor = RR_PROB_REDUCTION_FACTOR;
 static const bool kComputeDirect = COMPUTE_DIRECT;
 static const bool kUseImportanceSampling = USE_IMPORTANCE_SAMPLING;
-static const bool kTest = TEST;
 static const bool kUseAnalyticLights = USE_ANALYTIC_LIGHTS;
 static const bool kUseEmissiveLights = USE_EMISSIVE_LIGHTS;
 static const bool kUseEnvLight = USE_ENV_LIGHT;
@@ -161,7 +162,13 @@ bool generateScatterRay(const ShadingData sd, const IMaterialInstance mi, float3
         }
         rayData.direction = bsdfSample.wo;
         rayData.thp *= bsdfSample.weight;
-        return any(rayData.thp > 0.f);
+        float survival_prob = (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.pathLength));
+        if (sampleNext1D(rayData.sg) < survival_prob)
+        {
+            // rr survived
+            rayData.thp /= min(survival_prob, 1.0);
+            return any(rayData.thp > 0.f);
+        }
     }
     return false;
 }
