@@ -30,12 +30,12 @@
 
 namespace Falcor
 {
-std::string FrameRate::getMsg(bool vsyncOn) const
+std::string FrameRate::getMsg(bool vsyncOn, bool powerSavingOn) const
 {
     double frameTime = getAverageFrameTime();
     std::string msg = fmt::format("{:.1f} FPS ({:.1f} ms/frame)", 1.f / frameTime, frameTime * 1000.0);
-    if (vsyncOn)
-        msg += std::string(", VSync");
+    if (vsyncOn) msg += std::string(", VSync");
+    if (powerSavingOn) msg += std::string(", PowerSaving");
     return msg;
 }
 } // namespace Falcor

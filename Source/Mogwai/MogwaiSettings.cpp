@@ -59,7 +59,7 @@ namespace Mogwai
         void showFps(Gui* pGui, Renderer* pRenderer)
         {
             Gui::Window w(pGui, "##FPS", { 0, 0 }, { 10, 25 }, Gui::WindowFlags::AllowMove | Gui::WindowFlags::AutoResize | Gui::WindowFlags::SetFocus);
-            std::string msg = pRenderer->getFrameRate().getMsg(pRenderer->isVsyncEnabled());
+            std::string msg = pRenderer->getFrameRate().getMsg(pRenderer->isVsyncEnabled(), pRenderer->isPowerSavingEnabled());
             w.text(msg);
         }
 

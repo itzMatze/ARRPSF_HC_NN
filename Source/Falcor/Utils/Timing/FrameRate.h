@@ -93,7 +93,7 @@ public:
     /**
      * Get a message with the FPS.
      */
-    std::string getMsg(bool vsyncOn = false) const;
+    std::string getMsg(bool vsyncOn = false, bool powerSavingOn = false) const;
 
 private:
     Clock mClock;

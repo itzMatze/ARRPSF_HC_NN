@@ -291,6 +291,11 @@ public:
     bool isVsyncEnabled() { return mVsyncOn; }
 
     /**
+     * Get the PowerSaving state.
+     */
+    bool isPowerSavingEnabled() { return mPowerSaving; }
+
+    /**
      * Get the global shortcuts message.
      */
     static std::string getKeyboardShortcutsStr();
