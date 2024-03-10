@@ -120,12 +120,11 @@ float3 evalDirectAnalytic(const ShadingData sd, const IMaterialInstance mi, inou
 /**
  * Setup ShadingData based on loaded vertex/material attributes for a hit point.
  * @param[in] hit Hit information.
- * @param[in] rayOrigin Ray origin.
  * @param[in] rayDir Normalized ray direction.
  * @param[in] lod Method for computing texture level-of-detail.
  * @return ShadingData struct.
  */
-ShadingData loadShadingData(const HitInfo hit, const float3 rayOrigin, const float3 rayDir, const ITextureSampler lod)
+ShadingData loadShadingData(const HitInfo hit, const float3 rayDir, const ITextureSampler lod)
 {
     VertexData v = {};
     uint materialID = {};
@@ -202,7 +201,7 @@ bool traceScatterRay(inout ScatterRayData rayData)
     if (rayQuery.traceRay(ray, hit, t, RAY_FLAG_NONE, 0xff))
     {
         let lod = ExplicitLodTextureSampler(0.f);
-        ShadingData sd = loadShadingData(hit, ray.origin, ray.dir, lod);
+        ShadingData sd = loadShadingData(hit, ray.dir, lod);
         IMaterialInstance mi = gScene.materials.getMaterialInstance(sd, lod);
         handleHit(sd, mi, rayData);
         // Generate scatter ray for the next path segment.
@@ -242,7 +241,7 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim)
     if (hit.isValid())
     {
         let lod = ExplicitLodTextureSampler(0.f);
-        ShadingData sd = loadShadingData(hit, gScene.camera.getPosition(), -gViewW[pixel].xyz, lod);
+        ShadingData sd = loadShadingData(hit, -gViewW[pixel].xyz, lod);
         IMaterialInstance mi = gScene.materials.getMaterialInstance(sd, lod);
         SampleGenerator sg = SampleGenerator(pixel, gFrameCount);
         float3 rayOrigin = sd.computeRayOrigin();
