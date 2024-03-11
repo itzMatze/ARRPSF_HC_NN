@@ -10,6 +10,7 @@ import Utils.Sampling.SampleGenerator;
 import Utils.Math.MathHelpers;
 import Utils.Geometry.GeometryHelpers;
 import Utils.Color.ColorHelpers;
+import Utils.Color.ColorMap;
 import Utils.Debug.PixelDebug;
 import Rendering.Lights.LightHelpers;
 
@@ -31,6 +32,8 @@ RWTexture2D<float4> gOutputColor;
 static const uint kMaxBounces = MAX_BOUNCES;
 static const float kRRProbStartValue = RR_PROB_START_VALUE;
 static const float kRRProbReductionFactor = RR_PROB_REDUCTION_FACTOR;
+static const bool kDebugPathLength = DEBUG_PATH_LENGTH;
+static const uint kPathLengthUpperLimit = PATH_LENGTH_UPPER_LIMIT;
 static const bool kComputeDirect = COMPUTE_DIRECT;
 static const bool kUseImportanceSampling = USE_IMPORTANCE_SAMPLING;
 static const bool kUseAnalyticLights = USE_ANALYTIC_LIGHTS;
@@ -269,6 +272,7 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim)
         }
         // Store contribution from scatter ray.
         outColor += rayData.radiance;
+        if (kDebugPathLength) return colormapViridis(float(rayData.pathLength) / float(kPathLengthUpperLimit));
     }
     else
     {

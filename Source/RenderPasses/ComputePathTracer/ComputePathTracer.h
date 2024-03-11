@@ -79,6 +79,8 @@ private:
     float mRRProbStartValue = 1.2f;
     // factor by which the survival probability gets reduced
     float mRRProbReductionFactor = 0.9f;
+    bool mShowPathLength = false;
+    uint mPathLengthUpperLimit = 10;
 
     // Runtime data
 

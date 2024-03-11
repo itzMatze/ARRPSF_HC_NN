@@ -112,6 +112,8 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
     defineList["MAX_BOUNCES"] = std::to_string(mMaxBounces);
     defineList["RR_PROB_START_VALUE"] = fmt::format("{:.4f}", mRRProbStartValue);
     defineList["RR_PROB_REDUCTION_FACTOR"] = fmt::format("{:.4f}", mRRProbReductionFactor);
+    defineList["DEBUG_PATH_LENGTH"] = mShowPathLength ? "1" : "0";
+    defineList["PATH_LENGTH_UPPER_LIMIT"] = std::to_string(mPathLengthUpperLimit);
     defineList["COMPUTE_DIRECT"] = mComputeDirect ? "1" : "0";
     defineList["USE_IMPORTANCE_SAMPLING"] = mUseImportanceSampling ? "1" : "0";
     defineList["USE_ANALYTIC_LIGHTS"] = mpScene->useAnalyticLights() ? "1" : "0";
@@ -182,6 +184,9 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     widget.tooltip("Starting value of the survival probability", true);
     widget.var("RR reduction factor", mRRProbReductionFactor, 0.1f, 0.99f);
     widget.tooltip("Gets multiplied to the initial survival probability at each interaction", true);
+    Gui::Group debug_group = widget.group("Debug");
+    debug_group.checkbox("Path length", mShowPathLength);
+    debug_group.var("Upper limit", mPathLengthUpperLimit, 1u, 1000u, 1, true);
 
     // If new rendering options that modify the output are applied, set flag to indicate that.
     // In execute() we will pass the flag to other passes for reset of temporal data etc.
