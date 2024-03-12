@@ -74,10 +74,10 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
     const auto& pOutput = renderData.getTexture("color");
     uint2 frameDim = {pOutput->getWidth(), pOutput->getHeight()};
 
-    // Update refresh flag if options that affect the output have changed.
-    auto& dict = renderData.getDictionary();
     if (mOptionsChanged)
     {
+        // Update refresh flag if options that affect the output have changed.
+        auto& dict = renderData.getDictionary();
         auto flags = dict.getValue(kRenderPassRefreshFlags, RenderPassRefreshFlags::None);
         dict[Falcor::kRenderPassRefreshFlags] = flags | Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
     }
@@ -196,5 +196,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
 void ComputePathTracer::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)
 {
     mpScene = pScene;
+    mFrameCount = 0;
+    mpPass = nullptr;
 }
 
