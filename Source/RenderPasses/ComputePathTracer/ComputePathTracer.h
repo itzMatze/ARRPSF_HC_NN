@@ -74,10 +74,13 @@ private:
     ref<Scene> mpScene;
     ref<SampleGenerator> mpSampleGenerator;
 
-    // Max number of surface bounces (0 = none).
-    uint mMaxBounces = 30;
-    // Compute direct illumination (otherwise indirect only).
-    bool mComputeDirect = true;
+    // show contribution of specific bounce range, upper bound will terminate path
+    uint mLowerBounceCount = 0;
+    uint mUpperBounceCount = 20;
+    bool mUseNEE = true;
+    bool mUseMIS = true;
+    bool mMISUsePowerHeuristic = true;
+    bool mUseRR = true;
     // Use importance sampling for materials.
     bool mUseImportanceSampling = true;
     // starting value for the survival probability of russian roulette
@@ -85,7 +88,6 @@ private:
     // factor by which the survival probability gets reduced
     float mRRProbReductionFactor = 0.9f;
     bool mShowPathLength = false;
-    uint mPathLengthUpperLimit = 10;
     mutable LightBVHSampler::Options mLightBVHOptions;
 
     std::unique_ptr<EnvMapSampler> mpEnvMapSampler;

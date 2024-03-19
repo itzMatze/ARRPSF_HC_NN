@@ -21,9 +21,13 @@ const ChannelList kOutputChannels = {
     // clang-format on
 };
 
-const std::string kMaxBounces = "maxBounces";
-const std::string kComputeDirect = "computeDirect";
+const std::string kLowerBounceCount = "lowerBounceCount ";
+const std::string kUpperBounceCount = "upperBounceCount ";
 const std::string kUseImportanceSampling = "useImportanceSampling";
+const std::string kUseNEE = "useNEE";
+const std::string kUseMIS = "useMIS";
+const std::string kMISUsePowerHeuristic = "MISUsePowerHeuristic";
+const std::string kUseRR = "useRR";
 const std::string kRRProbStartValue = "RRProbStartValue";
 const std::string kRRProbReductionFactor = "RRProbReductionFactor";
 const std::string kLightBVHOptions = "lightBVHOptions";
@@ -38,9 +42,13 @@ void ComputePathTracer::parseProperties(const Properties& props)
 {
     for (const auto& [key, value] : props)
     {
-        if (key == kMaxBounces) mMaxBounces = value;
-        else if (key == kComputeDirect) mComputeDirect = value;
+        if (key == kLowerBounceCount) mLowerBounceCount = value;
+        else if (key == kUpperBounceCount) mUpperBounceCount = value;
         else if (key == kUseImportanceSampling) mUseImportanceSampling = value;
+        else if (key == kUseNEE) mUseNEE = value;
+        else if (key == kUseMIS) mUseMIS = value;
+        else if (key == kMISUsePowerHeuristic) mMISUsePowerHeuristic = value;
+        else if (key == kUseRR) mUseRR = value;
         else if (key == kLightBVHOptions) mLightBVHOptions = value;
         else logWarning("Unknown property '{}' in ComputePathTracer properties.", key);
     }
@@ -78,9 +86,13 @@ void ComputePathTracer::setProperties(const Properties& props)
 Properties ComputePathTracer::getProperties() const
 {
     Properties props;
-    props[kMaxBounces] = mMaxBounces;
-    props[kComputeDirect] = mComputeDirect;
+    props[kLowerBounceCount] = mLowerBounceCount;
+    props[kUpperBounceCount] = mUpperBounceCount;
     props[kUseImportanceSampling] = mUseImportanceSampling;
+    props[kUseNEE] = mUseNEE;
+    props[kUseMIS] = mUseMIS;
+    props[kMISUsePowerHeuristic] = mMISUsePowerHeuristic;
+    props[kUseRR] = mUseRR;
     props[kRRProbStartValue] = mRRProbStartValue;
     props[kRRProbReductionFactor] = mRRProbReductionFactor;
     return props;
@@ -153,13 +165,16 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
     defineList.add(getValidResourceDefines(kOutputChannels, renderData));
     defineList.add(mpScene->getSceneDefines());
     defineList.add(mpSampleGenerator->getDefines());
-    defineList.add(mpEmissiveSampler->getDefines());
-    defineList["MAX_BOUNCES"] = std::to_string(mMaxBounces);
+    if (mpEmissiveSampler) defineList.add(mpEmissiveSampler->getDefines());
+    defineList["LOWER_BOUNCE_COUNT"] = std::to_string(mLowerBounceCount);
+    defineList["UPPER_BOUNCE_COUNT"] = std::to_string(mUpperBounceCount);
+    defineList["USE_NEE"] = mUseNEE ? "1" : "0";
+    defineList["USE_MIS"] = mUseMIS ? "1" : "0";
+    defineList["MIS_USE_POWER_HEURISTIC"] = mMISUsePowerHeuristic ? "1" : "0";
+    defineList["USE_RR"] = mUseRR ? "1" : "0";
     defineList["RR_PROB_START_VALUE"] = fmt::format("{:.4f}", mRRProbStartValue);
     defineList["RR_PROB_REDUCTION_FACTOR"] = fmt::format("{:.4f}", mRRProbReductionFactor);
     defineList["DEBUG_PATH_LENGTH"] = mShowPathLength ? "1" : "0";
-    defineList["PATH_LENGTH_UPPER_LIMIT"] = std::to_string(mPathLengthUpperLimit);
-    defineList["COMPUTE_DIRECT"] = mComputeDirect ? "1" : "0";
     defineList["USE_IMPORTANCE_SAMPLING"] = mUseImportanceSampling ? "1" : "0";
     defineList["USE_ANALYTIC_LIGHTS"] = mpScene->useAnalyticLights() ? "1" : "0";
     defineList["USE_EMISSIVE_LIGHTS"] = mpScene->useEmissiveLights() ? "1" : "0";
@@ -220,15 +235,17 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
 
 void ComputePathTracer::renderUI(Gui::Widgets& widget)
 {
-    widget.var("Max bounces", mMaxBounces, 0u, 1u << 16);
-    widget.tooltip("Maximum path length for indirect illumination.\n0 = direct only\n1 = one indirect bounce etc.", true);
-
-    widget.checkbox("Evaluate direct illumination", mComputeDirect);
-    widget.tooltip("Compute direct illumination.\nIf disabled only indirect is computed (when max bounces > 0).", true);
+    widget.var("LowerBounceCount", mLowerBounceCount, 0u, 1u << 16);
+    widget.var("UpperBounceCount", mUpperBounceCount, 0u, 1u << 16);
+    widget.tooltip("Inclusive range of bounces that contribute to final image color", true);
 
     widget.checkbox("Use importance sampling", mUseImportanceSampling);
     widget.tooltip("Use importance sampling for materials", true);
 
+    widget.checkbox("Use NEE", mUseNEE);
+    widget.checkbox("Use MIS", mUseMIS);
+    widget.checkbox("MIS use power heuristic", mMISUsePowerHeuristic);
+    widget.checkbox("Use RR", mUseRR);
     widget.var("RR start value", mRRProbStartValue, 1.0f, 4.0f);
     widget.tooltip("Starting value of the survival probability", true);
     widget.var("RR reduction factor", mRRProbReductionFactor, 0.1f, 0.99f);
@@ -240,13 +257,12 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     if (Gui::Group debug_group = widget.group("Debug"))
     {
         debug_group.checkbox("Path length", mShowPathLength);
-        debug_group.var("Upper limit", mPathLengthUpperLimit, 1u, 1000u, 1, true);
         mpPixelDebug->renderUI(debug_group);
     }
 
-    // If new rendering options that modify the output are applied, set flag to indicate that.
+    // reload shader and set options change flag (explicitly apply changes)
     // In execute() we will pass the flag to other passes for reset of temporal data etc.
-    if (widget.button("Apply"))
+    if (widget.button("Reload shader"))
     {
         mOptionsChanged = true;
         reset();

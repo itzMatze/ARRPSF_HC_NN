@@ -31,14 +31,15 @@ RWTexture2D<float4> gOutputColor;
 
 // Static configuration based on defines set from the host.
 #define is_valid(name) (is_valid_##name != 0)
-static const uint kMaxBounces = MAX_BOUNCES;
+static const uint kLowerBounceCount = LOWER_BOUNCE_COUNT;
+static const uint kUpperBounceCount = UPPER_BOUNCE_COUNT;
 static const float kRRProbStartValue = RR_PROB_START_VALUE;
 static const float kRRProbReductionFactor = RR_PROB_REDUCTION_FACTOR;
-static const bool kUseNEE = true;
-static const bool kUseMIS = true;
+static const bool kUseNEE = USE_NEE;
+static const bool kUseMIS = USE_MIS;
+static const bool kMISUsePowerHeuristic = MIS_USE_POWER_HEURISTIC;
+static const bool kUseRR = USE_RR;
 static const bool kDebugPathLength = DEBUG_PATH_LENGTH;
-static const uint kPathLengthUpperLimit = PATH_LENGTH_UPPER_LIMIT;
-static const bool kComputeDirect = COMPUTE_DIRECT;
 static const bool kUseImportanceSampling = USE_IMPORTANCE_SAMPLING;
 static const bool kUseEnvBackground = USE_ENV_BACKGROUND;
 static const float3 kDefaultBackgroundColor = float3(0.0, 0.0, 0.05);
@@ -97,38 +98,20 @@ struct ScatterRayData
 */
 float evalMIS(float n0, float p0, float n1, float p1)
 {
-    // Balance heuristic
-    float q0 = n0 * p0;
-    float q1 = n1 * p1;
-    return q0 / (q0 + q1);
-/*
-    switch (MISHeuristic(kMISHeuristic))
-    {
-    case MISHeuristic::Balance:
-    {
-        // Balance heuristic
-        float q0 = n0 * p0;
-        float q1 = n1 * p1;
-        return q0 / (q0 + q1);
-    }
-    case MISHeuristic::PowerTwo:
+    if (kMISUsePowerHeuristic)
     {
         // Power two heuristic
         float q0 = (n0 * p0) * (n0 * p0);
         float q1 = (n1 * p1) * (n1 * p1);
         return q0 / (q0 + q1);
     }
-    case MISHeuristic::PowerExp:
+    else
     {
-        // Power exp heuristic
-        float q0 = pow(n0 * p0, kMISPowerExponent);
-        float q1 = pow(n1 * p1, kMISPowerExponent);
+        // Balance heuristic
+        float q0 = n0 * p0;
+        float q1 = n1 * p1;
         return q0 / (q0 + q1);
     }
-    default:
-        return 0.f;
-    }
-*/
 }
 
 /**
@@ -198,13 +181,17 @@ bool generateScatterRay(const ShadingData sd, const IMaterialInstance mi, inout 
         rayData.pdf = bsdfSample.pdf;
         rayData.normal = sd.getOrientedFaceNormal();
         rayData.thp *= bsdfSample.weight;
-        float survival_prob = (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces));
-        if (sampleNext1D(rayData.sg) < survival_prob)
+        if (kUseRR)
         {
-            // rr survived
+            float survival_prob = (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces));
+            if (sampleNext1D(rayData.sg) > survival_prob)
+            {
+                // rr not survived
+                return false;
+            }
             rayData.thp /= min(survival_prob, 1.0);
-            return any(rayData.thp > 0.f);
         }
+        return any(rayData.thp > 0.f);
     }
     return false;
 }
@@ -220,7 +207,7 @@ bool handleHit(const HitInfo hit, const Ray ray, inout ScatterRayData rayData)
     // # light hit by chance
     // always show directly visible lights
     // incorporate emission when: NEE is not active or could not sample this light at the last vertex, MIS is used
-    bool computeEmissive = rayData.numBounces == 0 || kUseEmissiveLights && (!kUseNEE || kUseMIS || !rayData.isLightSampled() || rayData.isDeltaLobe());
+    bool computeEmissive = rayData.numBounces >= kLowerBounceCount && kUseEmissiveLights && (!kUseNEE || kUseMIS || !rayData.isLightSampled() || rayData.isDeltaLobe());
     if (computeEmissive && any(bsdfProperties.emission > 0.f))
     {
         float misWeight = 1.0;
@@ -245,8 +232,8 @@ bool handleHit(const HitInfo hit, const Ray ray, inout ScatterRayData rayData)
     LightSample ls;
     PathVertex vertex = PathVertex(sd.posW, sd.faceN, sd.frontFacing);
     const uint lobeTypes = mi.getLobeTypes(sd);
-    // NEE not applicable to DeltaLobes, only apply if there is still a light bounce to incorporate
-    const bool applyNEE = kUseNEE && ((lobeTypes & uint(LobeType::NonDelta)) != 0) && ((rayData.numBounces + 1) <= kMaxBounces);
+    // NEE not applicable to DeltaLobes, only apply if bounce falls in requested bounce range
+    const bool applyNEE = kUseNEE && ((lobeTypes & uint(LobeType::NonDelta)) != 0) && ((rayData.numBounces + 1) >= kLowerBounceCount && (rayData.numBounces + 1) <= kUpperBounceCount);
     rayData.setLightSampled(false, false);
     if (applyNEE)
     {
@@ -298,7 +285,7 @@ bool traceScatterRay(inout ScatterRayData rayData)
     {
         // add contribution from environment map
         bool computeEnv = kUseEnvLight && (!kUseNEE || kUseMIS || !rayData.isLightSampled() || rayData.isDeltaLobe());
-        if (computeEnv)
+        if (computeEnv && rayData.numBounces >= kLowerBounceCount && rayData.numBounces <= kUpperBounceCount)
         {
             float misWeight = 1.f;
             if (kUseNEE && kUseMIS && rayData.isLightSampled() && !rayData.isDeltaLobe())
@@ -344,20 +331,17 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim)
     {
         SampleGenerator sg = SampleGenerator(pixel, gFrameCount);
         ScatterRayData rayData = ScatterRayData(sg);
-        if (kComputeDirect)
-        {
-            if (!handleHit(hit, Ray(gScene.camera.getPosition(), -gViewW[pixel].xyz), rayData)) return rayData.radiance;
-        }
+        if (!handleHit(hit, Ray(gScene.camera.getPosition(), -gViewW[pixel].xyz), rayData)) return rayData.radiance;
         rayData.numBounces++;
         // Follow path into the scene and compute its total contribution.
-        while (rayData.numBounces <= kMaxBounces)
+        while (rayData.numBounces <= kUpperBounceCount)
         {
             if (!traceScatterRay(rayData)) break;
             rayData.numBounces++;
         }
         // Store contribution from scatter ray.
         outColor += rayData.radiance;
-        if (kDebugPathLength) return colormapViridis(float(rayData.numBounces) / float(kPathLengthUpperLimit));
+        if (kDebugPathLength) return colormapViridis(float(rayData.numBounces) / float(kUpperBounceCount));
     }
     else
     {
