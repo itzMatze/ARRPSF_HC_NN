@@ -1,9 +1,11 @@
 #include "ComputePathTracer.h"
 #include "RenderGraph/RenderPassHelpers.h"
 #include "RenderGraph/RenderPassStandardFlags.h"
+#include "imgui.h"
 
 namespace
 {
+constexpr bool kUseImGui = true;
 const std::string kShaderFile("RenderPasses/ComputePathTracer/ComputePathTracer.slang");
 
 const char kInputViewDir[] = "viewW";
@@ -235,8 +237,21 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
 
 void ComputePathTracer::renderUI(Gui::Widgets& widget)
 {
-    widget.var("LowerBounceCount", mLowerBounceCount, 0u, 1u << 16);
-    widget.var("UpperBounceCount", mUpperBounceCount, 0u, 1u << 16);
+    if (kUseImGui)
+    {
+        ImGui::PushItemWidth(40);
+        ImGui::Text("Bounce limits");
+        ImGui::SameLine();
+        ImGui::InputScalar("min", ImGuiDataType_U32, &mLowerBounceCount);
+        ImGui::SameLine();
+        ImGui::InputScalar("max", ImGuiDataType_U32, &mUpperBounceCount);
+        ImGui::PopItemWidth();
+    }
+    else
+    {
+        widget.var("LowerBounceCount", mLowerBounceCount, 0u, 1u << 16);
+        widget.var("UpperBounceCount", mUpperBounceCount, 0u, 1u << 16);
+    }
     widget.tooltip("Inclusive range of bounces that contribute to final image color", true);
 
     widget.checkbox("Use importance sampling", mUseImportanceSampling);
@@ -246,9 +261,27 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     widget.checkbox("Use MIS", mUseMIS);
     widget.checkbox("MIS use power heuristic", mMISUsePowerHeuristic);
     widget.checkbox("Use RR", mUseRR);
-    widget.var("RR start value", mRRProbStartValue, 1.0f, 4.0f);
+    if (kUseImGui)
+    {
+        ImGui::PushItemWidth(80);
+        ImGui::InputFloat("RR start value", &mRRProbStartValue);
+        ImGui::PopItemWidth();
+    }
+    else
+    {
+        widget.var("RR start value", mRRProbStartValue, 1.0f, 4.0f);
+    }
     widget.tooltip("Starting value of the survival probability", true);
-    widget.var("RR reduction factor", mRRProbReductionFactor, 0.1f, 0.99f);
+    if (kUseImGui)
+    {
+        ImGui::PushItemWidth(80);
+        ImGui::InputFloat("RR reduction factor", &mRRProbReductionFactor);
+        ImGui::PopItemWidth();
+    }
+    else
+    {
+        widget.var("RR reduction factor", mRRProbReductionFactor, 0.1f, 0.99f);
+    }
     widget.tooltip("Gets multiplied to the initial survival probability at each interaction", true);
     if (Gui::Group emissive_sampler_group = widget.group("EmissiveSampler"))
     {
