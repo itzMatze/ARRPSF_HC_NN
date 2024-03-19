@@ -4,6 +4,7 @@ target_sources(ComputePathTracer PRIVATE
     ComputePathTracer.cpp
     ComputePathTracer.h
     ComputePathTracer.slang
+    LightSampling.slang
 )
 
 target_copy_shaders(ComputePathTracer RenderPasses/ComputePathTracer)

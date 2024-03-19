@@ -62,7 +62,7 @@ void ComputePathTracer::reset()
     }
     mpEmissiveSampler = nullptr;
     mpEnvMapSampler = nullptr;
-    mpPathTracerBlock = nullptr;
+    mpSamplerBlock = nullptr;
     mFrameCount = 0;
     mpPass = nullptr;
     mpVars = nullptr;
@@ -101,7 +101,6 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
 {
     const auto& pOutput = renderData.getTexture("color");
     uint2 frameDim = {pOutput->getWidth(), pOutput->getHeight()};
-    mpPixelDebug->beginFrame(pRenderContext, frameDim);
 
     // If we have no scene, just clear the outputs and return.
     if (!mpScene)
@@ -113,6 +112,7 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         }
         return;
     }
+    mpPixelDebug->beginFrame(pRenderContext, frameDim);
 
     if (is_set(mpScene->getUpdates(), Scene::UpdateFlags::RecompileNeeded) ||
         is_set(mpScene->getUpdates(), Scene::UpdateFlags::GeometryChanged))
@@ -175,9 +175,9 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
 
         mpPass = ComputePass::create(mpDevice, desc, defineList, true);
     }
-    if (!mpPathTracerBlock)
+    if (!mpSamplerBlock)
     {
-        mpPathTracerBlock = ParameterBlock::create(mpDevice, mpPass->getProgram()->getReflector()->getParameterBlock("gPathTracer"));
+        mpSamplerBlock = ParameterBlock::create(mpDevice, mpPass->getProgram()->getReflector()->getParameterBlock("gSampler"));
     }
     if (!mpVars)
     {
@@ -190,10 +190,10 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
     var["CB"]["gFrameCount"] = mFrameCount;
     mpScene->bindShaderData(var["gScene"]);
     mpSampleGenerator->bindShaderData(var);
-    auto ptVar = mpPathTracerBlock->getRootVar();
+    auto ptVar = mpSamplerBlock->getRootVar();
     if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(ptVar["envMapSampler"]);
     if (mpEmissiveSampler) mpEmissiveSampler->bindShaderData(ptVar["emissiveSampler"]);
-    var["gPathTracer"] = mpPathTracerBlock;
+    var["gSampler"] = mpSamplerBlock;
 
     // bind I/O buffers. These needs to be done per-frame as the buffers may change anytime.
     auto bind = [&](const ChannelDesc& desc)

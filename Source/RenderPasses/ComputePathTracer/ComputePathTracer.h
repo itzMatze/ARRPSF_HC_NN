@@ -90,7 +90,7 @@ private:
 
     std::unique_ptr<EnvMapSampler> mpEnvMapSampler;
     std::unique_ptr<EmissiveLightSampler> mpEmissiveSampler;
-    ref<ParameterBlock> mpPathTracerBlock;
+    ref<ParameterBlock> mpSamplerBlock;
     std::unique_ptr<PixelDebug> mpPixelDebug;
 
     uint mFrameCount = 0;
