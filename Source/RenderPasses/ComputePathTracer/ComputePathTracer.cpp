@@ -21,11 +21,12 @@ const ChannelList kOutputChannels = {
     // clang-format on
 };
 
-const char kMaxBounces[] = "maxBounces";
-const char kComputeDirect[] = "computeDirect";
-const char kUseImportanceSampling[] = "useImportanceSampling";
-const char kRRProbStartValue[] = "RRProbStartValue";
-const char kRRProbReductionFactor[] = "RRProbReductionFactor";
+const std::string kMaxBounces = "maxBounces";
+const std::string kComputeDirect = "computeDirect";
+const std::string kUseImportanceSampling = "useImportanceSampling";
+const std::string kRRProbStartValue = "RRProbStartValue";
+const std::string kRRProbReductionFactor = "RRProbReductionFactor";
+const std::string kLightBVHOptions = "lightBVHOptions";
 } // namespace
 
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
@@ -33,16 +34,30 @@ extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registr
     registry.registerClass<RenderPass, ComputePathTracer>();
 }
 
-ComputePathTracer::ComputePathTracer(ref<Device> pDevice, const Properties& props) : RenderPass(pDevice)
+void ComputePathTracer::parseProperties(const Properties& props)
 {
-    mpSampleGenerator = SampleGenerator::create(mpDevice, SAMPLE_GENERATOR_UNIFORM);
     for (const auto& [key, value] : props)
     {
         if (key == kMaxBounces) mMaxBounces = value;
         else if (key == kComputeDirect) mComputeDirect = value;
         else if (key == kUseImportanceSampling) mUseImportanceSampling = value;
+        else if (key == kLightBVHOptions) mLightBVHOptions = value;
         else logWarning("Unknown property '{}' in ComputePathTracer properties.", key);
     }
+}
+
+ComputePathTracer::ComputePathTracer(ref<Device> pDevice, const Properties& props) : RenderPass(pDevice)
+{
+    mpSampleGenerator = SampleGenerator::create(mpDevice, SAMPLE_GENERATOR_UNIFORM);
+    mpPixelDebug = std::make_unique<PixelDebug>(mpDevice);
+    parseProperties(props);
+}
+
+void ComputePathTracer::setProperties(const Properties& props)
+{
+    parseProperties(props);
+    if (auto lightBVHSampler = dynamic_cast<LightBVHSampler*>(mpEmissiveSampler.get())) lightBVHSampler->setOptions(mLightBVHOptions);
+    mOptionsChanged = true;
 }
 
 Properties ComputePathTracer::getProperties() const
@@ -73,14 +88,7 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
 {
     const auto& pOutput = renderData.getTexture("color");
     uint2 frameDim = {pOutput->getWidth(), pOutput->getHeight()};
-
-    if (mOptionsChanged)
-    {
-        // Update refresh flag if options that affect the output have changed.
-        auto& dict = renderData.getDictionary();
-        auto flags = dict.getValue(kRenderPassRefreshFlags, RenderPassRefreshFlags::None);
-        dict[Falcor::kRenderPassRefreshFlags] = flags | Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
-    }
+    mpPixelDebug->beginFrame(pRenderContext, frameDim);
 
     // If we have no scene, just clear the outputs and return.
     if (!mpScene)
@@ -99,16 +107,41 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         FALCOR_THROW("This render pass does not support scene changes that require shader recompilation.");
     }
 
-    // Request the light collection if emissive lights are enabled.
-    if (mpScene->getRenderSettings().useEmissiveLights)
+    if (mpScene->useEnvLight())
     {
-        mpScene->getLightCollection(pRenderContext);
+        if (!mpEnvMapSampler)
+        {
+            mpEnvMapSampler = std::make_unique<EnvMapSampler>(mpDevice, mpScene->getEnvMap());
+        }
+    }
+    if (!mpEmissiveSampler && mpScene->getRenderSettings().useEmissiveLights)
+    {
+        const auto& pLights = mpScene->getLightCollection(pRenderContext);
+        FALCOR_ASSERT(pLights && pLights->getActiveLightCount(pRenderContext) > 0);
+        FALCOR_ASSERT(!mpEmissiveSampler);
+        mpEmissiveSampler = std::make_unique<LightBVHSampler>(pRenderContext, mpScene, mLightBVHOptions);
+    }
+    bool lightingChanged = false;
+    if (mpEmissiveSampler)
+    {
+        lightingChanged = mpEmissiveSampler->update(pRenderContext);
+    }
+
+    if (mOptionsChanged || lightingChanged)
+    {
+        // Update refresh flag if options that affect the output have changed.
+        auto& dict = renderData.getDictionary();
+        auto flags = dict.getValue(kRenderPassRefreshFlags, RenderPassRefreshFlags::None);
+        if (mOptionsChanged) flags |= Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
+        if (lightingChanged) flags |= Falcor::RenderPassRefreshFlags::LightingChanged;
+        dict[Falcor::kRenderPassRefreshFlags] = flags;
     }
 
     DefineList defineList = getValidResourceDefines(kInputChannels, renderData);
     defineList.add(getValidResourceDefines(kOutputChannels, renderData));
     defineList.add(mpScene->getSceneDefines());
     defineList.add(mpSampleGenerator->getDefines());
+    defineList.add(mpEmissiveSampler->getDefines());
     defineList["MAX_BOUNCES"] = std::to_string(mMaxBounces);
     defineList["RR_PROB_START_VALUE"] = fmt::format("{:.4f}", mRRProbStartValue);
     defineList["RR_PROB_REDUCTION_FACTOR"] = fmt::format("{:.4f}", mRRProbReductionFactor);
@@ -134,10 +167,15 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
 
     if (mOptionsChanged)
     {
-        mpPass->getProgram()->addDefines(defineList);
+        mpPass->getProgram()->setDefines(defineList);
         // Set constants.
         mpVars = ProgramVars::create(mpDevice, mpPass->getProgram()->getReflector());
         mOptionsChanged = false;
+    }
+
+    if (!mpPathTracerBlock || mOptionsChanged)
+    {
+        mpPathTracerBlock = ParameterBlock::create(mpDevice, mpPass->getProgram()->getReflector()->getParameterBlock("gPathTracer"));
     }
 
     auto var = mpVars->getRootVar();
@@ -145,6 +183,10 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
     var["CB"]["gFrameCount"] = mFrameCount;
     mpScene->bindShaderData(var["gScene"]);
     mpSampleGenerator->bindShaderData(var);
+    auto ptVar = mpPathTracerBlock->getRootVar();
+    if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(ptVar["envMapSampler"]);
+    if (mpEmissiveSampler) mpEmissiveSampler->bindShaderData(ptVar["emissiveSampler"]);
+    var["gPathTracer"] = mpPathTracerBlock;
 
     // Bind I/O buffers. These needs to be done per-frame as the buffers may change anytime.
     auto bind = [&](const ChannelDesc& desc)
@@ -158,6 +200,7 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
     for (auto channel : kOutputChannels) bind(channel);
 
     mpPass->setVars(mpVars);
+    mpPixelDebug->prepareProgram(mpPass->getProgram(), var);
     // Get dimensions of ray dispatch.
     const uint2 targetDim = renderData.getDefaultTextureDims();
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
@@ -165,6 +208,7 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
     ref<ComputeState> cs = ComputeState::create(mpDevice);
     // Spawn the rays.
     mpPass->execute(pRenderContext, frameDim.x, frameDim.y);
+    mpPixelDebug->endFrame(pRenderContext);
 
     mFrameCount++;
 }
@@ -184,9 +228,11 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     widget.tooltip("Starting value of the survival probability", true);
     widget.var("RR reduction factor", mRRProbReductionFactor, 0.1f, 0.99f);
     widget.tooltip("Gets multiplied to the initial survival probability at each interaction", true);
+    if (mpEmissiveSampler) mpEmissiveSampler->renderUI(widget);
     Gui::Group debug_group = widget.group("Debug");
     debug_group.checkbox("Path length", mShowPathLength);
     debug_group.var("Upper limit", mPathLengthUpperLimit, 1u, 1000u, 1, true);
+    mpPixelDebug->renderUI(debug_group);
 
     // If new rendering options that modify the output are applied, set flag to indicate that.
     // In execute() we will pass the flag to other passes for reset of temporal data etc.
@@ -196,6 +242,13 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
 void ComputePathTracer::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)
 {
     mpScene = pScene;
+    // Retain the options for the emissive sampler.
+    if (auto lightBVHSampler = dynamic_cast<LightBVHSampler*>(mpEmissiveSampler.get()))
+    {
+        mLightBVHOptions = lightBVHSampler->getOptions();
+    }
+    mpEmissiveSampler = nullptr;
+    mpEnvMapSampler = nullptr;
     mFrameCount = 0;
     mpPass = nullptr;
 }
