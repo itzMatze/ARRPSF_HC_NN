@@ -55,6 +55,7 @@ public:
     }
 
     ComputePathTracer(ref<Device> pDevice, const Properties& props);
+    void reset();
 
     virtual void setProperties(const Properties& props) override;
     virtual Properties getProperties() const override;
@@ -73,8 +74,7 @@ private:
     ref<Scene> mpScene;
     ref<SampleGenerator> mpSampleGenerator;
 
-    // Configuration
-    // Max number of indirect bounces (0 = none).
+    // Max number of surface bounces (0 = none).
     uint mMaxBounces = 30;
     // Compute direct illumination (otherwise indirect only).
     bool mComputeDirect = true;
@@ -86,14 +86,13 @@ private:
     float mRRProbReductionFactor = 0.9f;
     bool mShowPathLength = false;
     uint mPathLengthUpperLimit = 10;
-    mutable LightBVHSampler::Options mLightBVHOptions;          ///< Current options for the light BVH sampler.
+    mutable LightBVHSampler::Options mLightBVHOptions;
 
-    std::unique_ptr<EnvMapSampler>  mpEnvMapSampler;            ///< Environment map sampler or nullptr if not used.
-    std::unique_ptr<EmissiveLightSampler> mpEmissiveSampler;    ///< Emissive light sampler or nullptr if not used.
-    ref<ParameterBlock> mpPathTracerBlock;          ///< Parameter block for the path tracer.
-    std::unique_ptr<PixelDebug>     mpPixelDebug;               ///< Utility class for pixel debugging (print in shaders).
+    std::unique_ptr<EnvMapSampler> mpEnvMapSampler;
+    std::unique_ptr<EmissiveLightSampler> mpEmissiveSampler;
+    ref<ParameterBlock> mpPathTracerBlock;
+    std::unique_ptr<PixelDebug> mpPixelDebug;
 
-    /// Frame count since scene was loaded.
     uint mFrameCount = 0;
     bool mOptionsChanged = true;
 

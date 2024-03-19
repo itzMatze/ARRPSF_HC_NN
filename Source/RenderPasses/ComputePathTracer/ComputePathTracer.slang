@@ -43,6 +43,8 @@ ParameterBlock<PathTracer> gPathTracer;
 static const uint kMaxBounces = MAX_BOUNCES;
 static const float kRRProbStartValue = RR_PROB_START_VALUE;
 static const float kRRProbReductionFactor = RR_PROB_REDUCTION_FACTOR;
+static const bool kUseNEE = true;
+static const bool kUseMIS = true;
 static const bool kDebugPathLength = DEBUG_PATH_LENGTH;
 static const uint kPathLengthUpperLimit = PATH_LENGTH_UPPER_LIMIT;
 static const bool kComputeDirect = COMPUTE_DIRECT;
@@ -214,20 +216,16 @@ float evalMIS(float n0, float p0, float n1, float p1)
 bool generateEnvMapSample(const PathVertex vertex, inout SampleGenerator sg, out LightSample ls)
 {
     ls = {}; // Default initialization to avoid divergence at returns.
-
     if (!kUseEnvLight) return false;
-
     // Sample environment map.
     EnvMapSample lightSample;
     if (!gPathTracer.envMapSampler.sample(sampleNext2D(sg), lightSample)) return false;
-
     // Setup returned sample.
     ls.Li = lightSample.pdf > 0.f ? lightSample.Le / lightSample.pdf : float3(0);
     ls.pdf = lightSample.pdf;
     ls.origin = vertex.getRayOrigin(lightSample.dir);
     ls.distance = kRayTMax;
     ls.dir = lightSample.dir;
-
     return any(ls.Li > 0.f);
 }
 
@@ -242,13 +240,11 @@ bool generateEmissiveSample(const PathVertex vertex, const bool upperHemisphere,
 {
     ls = {}; // Default initialization to avoid divergence at returns.
     if (!kUseEmissiveLights) return false;
-
     TriangleLightSample tls;
     if (!gPathTracer.emissiveSampler.sampleLight(vertex.pos, vertex.getOrientedFaceNormal(), upperHemisphere, sg, tls))
     {
         return false;
     }
-
     // Setup returned sample.
     ls.Li = tls.pdf > 0.f ? tls.Le / tls.pdf : float3(0);
     ls.pdf = tls.pdf;
@@ -258,7 +254,6 @@ bool generateEmissiveSample(const PathVertex vertex, const bool upperHemisphere,
     float3 toLight = lightPos - ls.origin;
     ls.distance = length(toLight);
     ls.dir = normalize(toLight);
-
     return any(ls.Li > 0.f);
 }
 
@@ -271,17 +266,13 @@ bool generateEmissiveSample(const PathVertex vertex, const bool upperHemisphere,
 bool generateAnalyticLightSample(const PathVertex vertex, inout SampleGenerator sg, out LightSample ls)
 {
     ls = {}; // Default initialization to avoid divergence at returns.
-
     uint lightCount = gScene.getLightCount();
     if (!kUseAnalyticLights || lightCount == 0) return false;
-
     // Sample analytic light source selected uniformly from the light list.
     uint lightIndex = min(uint(sampleNext1D(sg) * lightCount), lightCount - 1);
-
     // Sample local light source.
     AnalyticLightSample lightSample;
     if (!sampleLight(vertex.pos, gScene.getLight(lightIndex), sg, lightSample)) return false;
-
     // Setup returned sample.
     ls.pdf = lightSample.pdf / lightCount;
     ls.Li = lightSample.Li * lightCount;
@@ -291,7 +282,6 @@ bool generateAnalyticLightSample(const PathVertex vertex, inout SampleGenerator 
     // Do not worry about adjusting the ray length to avoid self-intersections at the light.
     ls.distance = lightSample.distance;
     ls.dir = lightSample.dir;
-
     return any(ls.Li > 0.f);
 }
 
@@ -304,11 +294,9 @@ void getLightTypeSelectionProbabilities(out float p[3])
     p[uint(LightSampleType::EnvMap)] = kUseEnvLight ? 1.f : 0.f;
     p[uint(LightSampleType::Emissive)] = kUseEmissiveLights ? 1.f : 0.f;
     p[uint(LightSampleType::Analytic)] = kUseAnalyticLights ? 1.f : 0.f;
-
     // Normalize probabilities. Early out if zero.
     float sum = p[0] + p[1] + p[2];
     if (sum == 0.f) return;
-
     float invSum = 1.f / sum;
     p[0] *= invSum;
     p[1] *= invSum;
@@ -329,9 +317,7 @@ bool selectLightType(out uint lightType, out float pdf, inout SampleGenerator sg
 {
     float p[3];
     getLightTypeSelectionProbabilities(p);
-
     float u = sampleNext1D(sg);
-
     [unroll]
     for (lightType = 0; lightType < 3; ++lightType)
     {
@@ -342,10 +328,8 @@ bool selectLightType(out uint lightType, out float pdf, inout SampleGenerator sg
         }
         u -= p[lightType];
     }
-
     lightType = {};
     pdf = {};
-
     return false;
 }
 
@@ -362,11 +346,9 @@ bool selectLightType(out uint lightType, out float pdf, inout SampleGenerator sg
 bool generateLightSample(const PathVertex vertex, const bool sampleUpperHemisphere, const bool sampleLowerHemisphere, inout SampleGenerator sg, out LightSample ls)
 {
     ls = {};
-
     uint lightType;
     float selectionPdf;
     if (!selectLightType(lightType, selectionPdf, sg)) return false;
-
     bool valid = false;
     if (kUseEnvLight && lightType == uint(LightSampleType::EnvMap)) valid = generateEnvMapSample(vertex, sg, ls);
     if (kUseEmissiveLights && lightType == uint(LightSampleType::Emissive))
@@ -380,25 +362,19 @@ bool generateLightSample(const PathVertex vertex, const bool sampleUpperHemisphe
         valid = generateAnalyticLightSample(vertex, sg, ls);
     }
     if (!valid) return false;
-
     // Reject samples in non-requested hemispheres.
     float NdotL = dot(vertex.getOrientedFaceNormal(), ls.dir);
-    if ((!sampleUpperHemisphere && NdotL >= -kMinCosTheta) || (!sampleLowerHemisphere && NdotL <= kMinCosTheta))
-        return false;
-
+    if ((!sampleUpperHemisphere && NdotL >= -kMinCosTheta) || (!sampleLowerHemisphere && NdotL <= kMinCosTheta)) return false;
     // Account for light type selection.
     ls.lightType = lightType;
     ls.pdf *= selectionPdf;
     ls.Li /= selectionPdf;
-
     return true;
 }
 
 /**
  * Traces a shadow ray towards a light source.
- * @param[in] origin Ray origin for the shadow ray.
- * @param[in] dir Direction from shading point towards the light source (normalized).
- * @param[in] distance Distance to the light source.
+ * @param[in] ray Shadow ray to trace
  * @return True if light is visible, false otherwise.
  */
 bool traceShadowRay(const Ray ray)
@@ -451,15 +427,14 @@ bool generateScatterRay(const ShadingData sd, const IMaterialInstance mi, inout 
     BSDFSample bsdfSample;
     if (mi.sample(sd, rayData.sg, bsdfSample, kUseImportanceSampling))
     {
-        // Handle delta events.
+        // delta lobes require some caution, store that one is used
         if (bsdfSample.isLobe(LobeType::Delta)) rayData.setDeltaLobe(true);
         else rayData.setDeltaLobe(false);
 
-        rayData.origin = sd.computeRayOrigin(true);
-        if (bsdfSample.isLobe(LobeType::Transmission))
-        {
-            rayData.origin = sd.computeRayOrigin(false);
-        }
+        // prevent self-intersection
+        if (bsdfSample.isLobe(LobeType::Transmission)) rayData.origin = sd.computeRayOrigin(false);
+        else rayData.origin = sd.computeRayOrigin(true);
+        // update rayData
         rayData.direction = bsdfSample.wo;
         rayData.pdf = bsdfSample.pdf;
         rayData.normal = sd.getOrientedFaceNormal();
@@ -477,20 +452,20 @@ bool generateScatterRay(const ShadingData sd, const IMaterialInstance mi, inout 
 
 bool handleHit(const HitInfo hit, const Ray ray, inout ScatterRayData rayData)
 {
-    bool kUseNEE = true;
-    bool kUseMIS = true;
     if (hit.getType() != HitType::Triangle) return false;
     let triangleHit = hit.getTriangleHit();
     let lod = ExplicitLodTextureSampler(0.f);
     ShadingData sd = loadShadingData(triangleHit, ray.dir, lod);
     IMaterialInstance mi = gScene.materials.getMaterialInstance(sd, lod);
     BSDFProperties bsdfProperties = mi.getProperties(sd);
-#if 1
-    // light hit by chance
+    // # light hit by chance
+    // always show directly visible lights
+    // incorporate emission when: NEE is not active or could not sample this light at the last vertex, MIS is used
     bool computeEmissive = rayData.numBounces == 0 || kUseEmissiveLights && (!kUseNEE || kUseMIS || !rayData.isLightSampled() || rayData.isDeltaLobe());
     if (computeEmissive && any(bsdfProperties.emission > 0.f))
     {
         float misWeight = 1.0;
+        // only apply MIS when NEE is used and was able to sample the light at the last vertex
         if (kUseEmissiveLights && kUseNEE && kUseMIS && rayData.numBounces > 0 && rayData.isLightSampled() && !rayData.isDeltaLobe())
         {
             TriangleLightHit lightHit;
@@ -505,36 +480,32 @@ bool handleHit(const HitInfo hit, const Ray ray, inout ScatterRayData rayData)
             // Note we can assume path.pdf > 0.f since we shouldn't have got here otherwise.
             misWeight = evalMIS(1, rayData.pdf, 1, lightPdf);
         }
-        // Accumulate emitted radiance weighted by path throughput and MIS weight.
         rayData.radiance += rayData.thp * misWeight * bsdfProperties.emission;
     }
-    // nee
+    // # NEE
     LightSample ls;
-    // Setup path vertex.
     PathVertex vertex = PathVertex(sd.posW, sd.faceN, sd.frontFacing);
     const uint lobeTypes = mi.getLobeTypes(sd);
-    const bool hasNonDeltaLobes = (lobeTypes & uint(LobeType::NonDelta)) != 0;
-
-    // Check if we should apply NEE.
-    const bool applyNEE = kUseNEE && hasNonDeltaLobes;
-
+    // NEE not applicable to DeltaLobes, only apply if there is still a light bounce to incorporate
+    const bool applyNEE = kUseNEE && ((lobeTypes & uint(LobeType::NonDelta)) != 0) && ((rayData.numBounces + 1) <= kMaxBounces);
     rayData.setLightSampled(false, false);
-    if (applyNEE && ((rayData.numBounces + 1) <= kMaxBounces))
+    if (applyNEE)
     {
+        // sample a light and store in which hemispheres a light was searched for
         bool sampleUpperHemisphere = ((lobeTypes & uint(LobeType::NonDeltaReflection)) != 0);
         bool sampleLowerHemisphere = ((lobeTypes & uint(LobeType::NonDeltaTransmission)) != 0);
-        // Sample a light.
         bool validSample = generateLightSample(vertex, sampleUpperHemisphere, sampleLowerHemisphere, rayData.sg, ls);
         rayData.setLightSampled(sampleUpperHemisphere, sampleLowerHemisphere);
         if (validSample)
         {
-            // Apply MIS weight.
+            // apply MIS only to non-analytic lights
             if (ls.lightType != uint(LightSampleType::Analytic))
             {
                 float scatterPdf = mi.evalPdf(sd, ls.dir, kUseImportanceSampling);
                 ls.Li *= evalMIS(1, ls.pdf, 1, scatterPdf);
             }
 
+            // apply BSDF
             float3 weight = mi.eval(sd, ls.dir, rayData.sg);
             float3 Lr = weight * ls.Li;
             if (any(Lr > 0.f))
@@ -545,14 +516,7 @@ bool handleHit(const HitInfo hit, const Ray ray, inout ScatterRayData rayData)
             }
         }
     }
-#else
-    // probably obsolete TODO
-    if (kUseEmissiveLights && (kComputeDirect || rayData.numBounces > 0))
-    {
-        rayData.radiance += rayData.thp * bsdfProperties.emission;
-    }
-#endif
-    // Generate scatter ray for the next path segment.
+    // generate scatter ray for the next path segment.
     return (generateScatterRay(sd, mi, rayData));
 }
 
@@ -574,11 +538,11 @@ bool traceScatterRay(inout ScatterRayData rayData)
     else
     {
         // add contribution from environment map
-        bool computeEnv = kUseEnvLight && (/*!kUseNEE || kUseMIS || */true || !rayData.isLightSampled() || rayData.isDeltaLobe());
+        bool computeEnv = kUseEnvLight && (!kUseNEE || kUseMIS || !rayData.isLightSampled() || rayData.isDeltaLobe());
         if (computeEnv)
         {
             float misWeight = 1.f;
-            if (/*kUseNEE && kUseMIS && */rayData.isLightSampled() && !rayData.isDeltaLobe())
+            if (kUseNEE && kUseMIS && rayData.isLightSampled() && !rayData.isDeltaLobe())
             {
                 // If NEE and MIS are enabled, and we've already sampled the env map,
                 // then we need to evaluate the MIS weight here to account for the remaining contribution.
