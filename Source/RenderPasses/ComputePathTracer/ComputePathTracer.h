@@ -87,7 +87,7 @@ private:
     float mRRProbStartValue = 1.2f;
     // factor by which the survival probability gets reduced
     float mRRProbReductionFactor = 0.9f;
-    bool mShowPathLength = false;
+    bool mDebugPathLength = false;
     mutable LightBVHSampler::Options mLightBVHOptions;
 
     std::unique_ptr<EnvMapSampler> mpEnvMapSampler;

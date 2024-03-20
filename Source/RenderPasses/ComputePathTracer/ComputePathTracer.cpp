@@ -176,7 +176,7 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
     defineList["USE_RR"] = mUseRR ? "1" : "0";
     defineList["RR_PROB_START_VALUE"] = fmt::format("{:.4f}", mRRProbStartValue);
     defineList["RR_PROB_REDUCTION_FACTOR"] = fmt::format("{:.4f}", mRRProbReductionFactor);
-    defineList["DEBUG_PATH_LENGTH"] = mShowPathLength ? "1" : "0";
+    defineList["DEBUG_PATH_LENGTH"] = mDebugPathLength ? "1" : "0";
     defineList["USE_IMPORTANCE_SAMPLING"] = mUseImportanceSampling ? "1" : "0";
     defineList["USE_ANALYTIC_LIGHTS"] = mpScene->useAnalyticLights() ? "1" : "0";
     defineList["USE_EMISSIVE_LIGHTS"] = mpScene->useEmissiveLights() ? "1" : "0";
@@ -254,13 +254,14 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     }
     widget.tooltip("Inclusive range of bounces that contribute to final image color", true);
 
-    widget.checkbox("Use importance sampling", mUseImportanceSampling);
+    widget.checkbox("BSDF importance sampling", mUseImportanceSampling);
     widget.tooltip("Use importance sampling for materials", true);
 
-    widget.checkbox("Use NEE", mUseNEE);
-    widget.checkbox("Use MIS", mUseMIS);
-    widget.checkbox("MIS use power heuristic", mMISUsePowerHeuristic);
-    widget.checkbox("Use RR", mUseRR);
+    widget.checkbox("NEE", mUseNEE);
+    widget.checkbox("MIS", mUseMIS);
+    widget.checkbox("power heuristic", mMISUsePowerHeuristic, true);
+    widget.tooltip("Active: power heuristic; Inactive: balance heuristic", true);
+    widget.checkbox("RR", mUseRR);
     if (kUseImGui)
     {
         ImGui::PushItemWidth(80);
@@ -289,7 +290,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     }
     if (Gui::Group debug_group = widget.group("Debug"))
     {
-        debug_group.checkbox("Path length", mShowPathLength);
+        debug_group.checkbox("Path length", mDebugPathLength);
         mpPixelDebug->renderUI(debug_group);
     }
 
