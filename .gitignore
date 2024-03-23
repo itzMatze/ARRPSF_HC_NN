@@ -3,6 +3,7 @@
 
 # Test output folder.
 /tests/data/
+/evaluation
 
 # Media folders.
 /media
