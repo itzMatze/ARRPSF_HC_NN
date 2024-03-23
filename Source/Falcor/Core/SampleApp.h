@@ -346,9 +346,9 @@ private:
     // current background power saving mode
     bool mBackgroundPowerSaving = false;
     // is background power saving enabled in general
-    bool mBackgroundPowerSavingEnabled = true;
+    bool mBackgroundPowerSavingEnabled = false;
     // current power saving mode (slow down framerate)
-    bool mPowerSaving = true;
+    bool mPowerSaving = false;
     bool mShouldTerminate = false; ///< True if application should terminate.
     bool mRendererPaused = false;  ///< True if rendering is paused.
     bool mVsyncOn = false;
