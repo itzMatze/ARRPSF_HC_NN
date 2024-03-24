@@ -23,8 +23,8 @@ const ChannelList kOutputChannels = {
     // clang-format on
 };
 
-const std::string kLowerBounceCount = "lowerBounceCount ";
-const std::string kUpperBounceCount = "upperBounceCount ";
+const std::string kLowerBounceCount = "lowerBounceCount";
+const std::string kUpperBounceCount = "upperBounceCount";
 const std::string kUseImportanceSampling = "useImportanceSampling";
 const std::string kUseNEE = "useNEE";
 const std::string kUseMIS = "useMIS";
