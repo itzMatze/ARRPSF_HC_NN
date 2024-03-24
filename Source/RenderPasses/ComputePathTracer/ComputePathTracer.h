@@ -36,13 +36,6 @@ using namespace Falcor;
 
 /**
  * Compute path tracer.
- *
- * This pass implements a minimal brute-force path tracer. It does purposely
- * not use any importance sampling or other variance reduction techniques.
- * The output is unbiased/consistent ground truth images, against which other
- * renderers can be validated.
- *
- * Note that transmission and nested dielectrics are not yet supported.
  */
 class ComputePathTracer : public RenderPass
 {

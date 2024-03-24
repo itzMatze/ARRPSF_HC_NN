@@ -13,7 +13,7 @@ const char kInputViewDir[] = "viewW";
 const ChannelList kInputChannels = {
     // clang-format off
     { "vbuffer",        "gVBuffer",     "Visibility buffer in packed format" },
-    { kInputViewDir,    "gViewW",       "World-space view direction (xyz float format)", true /* optional */ },
+    { kInputViewDir,    "gViewW",       "World-space view direction (xyz float format)" },
     // clang-format on
 };
 
