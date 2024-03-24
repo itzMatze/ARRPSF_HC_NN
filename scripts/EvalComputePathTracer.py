@@ -17,7 +17,13 @@ def print_statistics_to_file(capture, dir, filename_base):
     with open(f'{dir}{filename_base}.log', 'w') as file:
         file.write(f'{meanFrameTime}')
 
+def reset():
+    m.clock.stop()
+    m.clock.play()
+    m.frameCapture.reset()
+
 def eval_settings(options, dir, filename_base):
+    reset()
     # load render graph
     compute_path_tracer, passes = render_graph_ComputePathTracer(options)
     try: m.addGraph(compute_path_tracer)
@@ -31,9 +37,7 @@ def eval_settings(options, dir, filename_base):
     for _ in range(max(FRAME_LIST)):
         m.renderFrame()
     # reset for profiling
-    m.clock.stop()
-    m.clock.play()
-    m.frameCapture.reset()
+    reset()
     passes['AccumulatePass'].reset()
     # start profiling
     m.profiler.enabled = True
