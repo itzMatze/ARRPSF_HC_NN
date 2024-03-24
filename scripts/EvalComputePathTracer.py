@@ -12,10 +12,18 @@ test_scenes = [
     'cornell_box'
 ]
 
-def print_statistics_to_file(capture, dir, filename_base):
-    meanFrameTime = capture['events']['/onFrameRender/gpu_time']['stats']['mean']
-    with open(f'{dir}{filename_base}.log', 'w') as file:
-        file.write(f'{meanFrameTime}')
+def print_info_file(capture, options, dir, filename_base):
+    with open(f'{dir}{filename_base}_info.md', 'w') as file:
+        file.write('# Options\n')
+        for key, value in options.items():
+            file.write(f'{key}: {value}\n')
+        file.write('# Metrics:\n')
+        event = '/onFrameRender/gpu_time'
+        file.write(f'## {event}\n')
+        file.write('mean: {}\n'.format(capture['events'][event]['stats']['mean']))
+        file.write('std_dev: {}\n'.format(capture['events'][event]['stats']['std_dev']))
+        file.write('min: {}\n'.format(capture['events'][event]['stats']['min']))
+        file.write('max: {}\n'.format(capture['events'][event]['stats']['max']))
 
 def reset():
     m.clock.stop()
@@ -48,7 +56,7 @@ def eval_settings(options, dir, filename_base):
     # end capture and store results
     capture = m.profiler.end_capture()
     m.profiler.enabled = False
-    print_statistics_to_file(capture, dir, filename_base)
+    print_info_file(capture, options, dir, filename_base)
     m.removeGraph(compute_path_tracer)
 
 def main():
