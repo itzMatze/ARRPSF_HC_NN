@@ -6,7 +6,7 @@
 namespace
 {
 constexpr bool kUseImGui = true;
-const std::string kShaderFile("RenderPasses/ComputePathTracer/ComputePathTracer.slang");
+const std::string kPTShaderFile("RenderPasses/ComputePathTracer/ComputePathTracer.slang");
 
 const char kInputViewDir[] = "viewW";
 
@@ -74,8 +74,7 @@ void ComputePathTracer::reset()
     mpEnvMapSampler = nullptr;
     mpSamplerBlock = nullptr;
     mFrameCount = 0;
-    mpPass = nullptr;
-    mpVars = nullptr;
+    mpFillCachePass = nullptr;
 }
 
 void ComputePathTracer::setProperties(const Properties& props)
@@ -111,6 +110,76 @@ RenderPassReflection ComputePathTracer::reflect(const CompileData& compileData)
 
 void ComputePathTracer::compile(RenderContext* pRenderContext, const CompileData& compileData) {}
 
+void ComputePathTracer::createPasses(const RenderData& renderData)
+{
+    DefineList defineList = getValidResourceDefines(kInputChannels, renderData);
+    defineList.add(getValidResourceDefines(kOutputChannels, renderData));
+    defineList.add(mpScene->getSceneDefines());
+    defineList.add(mpSampleGenerator->getDefines());
+    if (mpEmissiveSampler) defineList.add(mpEmissiveSampler->getDefines());
+    defineList["LOWER_BOUNCE_COUNT"] = std::to_string(mLowerBounceCount);
+    defineList["UPPER_BOUNCE_COUNT"] = std::to_string(mUpperBounceCount);
+    defineList["USE_NEE"] = mUseNEE ? "1" : "0";
+    defineList["USE_MIS"] = mUseMIS ? "1" : "0";
+    defineList["MIS_USE_POWER_HEURISTIC"] = mMISUsePowerHeuristic ? "1" : "0";
+    defineList["USE_RR"] = mUseRR ? "1" : "0";
+    defineList["RR_PROB_START_VALUE"] = fmt::format("{:.4f}", mRRProbStartValue);
+    defineList["RR_PROB_REDUCTION_FACTOR"] = fmt::format("{:.4f}", mRRProbReductionFactor);
+    defineList["DEBUG_PATH_LENGTH"] = mDebugPathLength ? "1" : "0";
+    defineList["USE_IMPORTANCE_SAMPLING"] = mUseImportanceSampling ? "1" : "0";
+    defineList["USE_ANALYTIC_LIGHTS"] = mpScene->useAnalyticLights() ? "1" : "0";
+    defineList["USE_EMISSIVE_LIGHTS"] = mpScene->useEmissiveLights() ? "1" : "0";
+    defineList["USE_ENV_LIGHT"] = mpScene->useEnvLight() ? "1" : "0";
+    defineList["USE_ENV_BACKGROUND"] = mpScene->useEnvBackground() ? "1" : "0";
+
+    if (!mpFillCachePass)
+    {
+        ProgramDesc desc;
+        desc.addShaderModules(mpScene->getShaderModules());
+        desc.addShaderLibrary(kPTShaderFile).csEntry("main");
+        desc.addTypeConformances(mpScene->getTypeConformances());
+        mpFillCachePass = ComputePass::create(mpDevice, desc, defineList, true);
+    }
+
+void ComputePathTracer::setupData(RenderContext* pRenderContext)
+{
+    if (mpScene->useEnvLight())
+    {
+        if (!mpEnvMapSampler)
+        {
+            mpEnvMapSampler = std::make_unique<EnvMapSampler>(mpDevice, mpScene->getEnvMap());
+        }
+    }
+    if (!mpEmissiveSampler && mpScene->getRenderSettings().useEmissiveLights)
+    {
+        const auto& pLights = mpScene->getLightCollection(pRenderContext);
+        mpEmissiveSampler = std::make_unique<LightBVHSampler>(pRenderContext, mpScene, mLightBVHOptions);
+    }
+}
+
+void ComputePathTracer::setupBuffers()
+{
+    if (!mpSamplerBlock)
+    {
+        mpSamplerBlock = ParameterBlock::create(mpDevice, mpPathTracingPass->getProgram()->getReflector()->getParameterBlock("gSampler"));
+    }
+}
+
+void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
+{
+    auto var = mpFillCachePass->getRootVar();
+    var["CB"]["gFrameDim"] = frameDim;
+    var["CB"]["gFrameCount"] = mFrameCount;
+    mpScene->bindShaderData(var["gScene"]);
+    mpSampleGenerator->bindShaderData(var);
+    if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
+    if (mpEmissiveSampler) mpEmissiveSampler->bindShaderData(mpSamplerBlock->getRootVar()["emissiveSampler"]);
+    var["gSampler"] = mpSamplerBlock;
+    for (auto channel : kInputChannels) var[channel.texname] = renderData.getTexture(channel.name);
+    for (auto channel : kOutputChannels) var[channel.texname] = renderData.getTexture(channel.name);
+    mpPixelDebug->prepareProgram(mpFillCachePass->getProgram(), var);
+}
+
 void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData& renderData)
 {
     const auto& pOutput = renderData.getTexture("color");
@@ -134,103 +203,29 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         FALCOR_THROW("This render pass does not support scene changes that require shader recompilation.");
     }
 
-    if (mpScene->useEnvLight())
-    {
-        if (!mpEnvMapSampler)
-        {
-            mpEnvMapSampler = std::make_unique<EnvMapSampler>(mpDevice, mpScene->getEnvMap());
-        }
-    }
-    if (!mpEmissiveSampler && mpScene->getRenderSettings().useEmissiveLights)
-    {
-        const auto& pLights = mpScene->getLightCollection(pRenderContext);
-        mpEmissiveSampler = std::make_unique<LightBVHSampler>(pRenderContext, mpScene, mLightBVHOptions);
-    }
-    bool lightingChanged = false;
     if (mpEmissiveSampler)
     {
-        lightingChanged = mpEmissiveSampler->update(pRenderContext);
+        if (mpEmissiveSampler->update(pRenderContext))
+        {
+            renderData.getDictionary()[Falcor::kRenderPassRefreshFlags] = Falcor::RenderPassRefreshFlags::LightingChanged;
+        }
     }
 
-    if (mOptionsChanged || lightingChanged)
+    if (mOptionsChanged)
     {
-        // Update refresh flag if options that affect the output have changed.
-        auto& dict = renderData.getDictionary();
-        auto flags = dict.getValue(kRenderPassRefreshFlags, RenderPassRefreshFlags::None);
-        if (mOptionsChanged) flags |= Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
-        if (lightingChanged) flags |= Falcor::RenderPassRefreshFlags::LightingChanged;
-        dict[Falcor::kRenderPassRefreshFlags] = flags;
+        reset();
+        renderData.getDictionary()[Falcor::kRenderPassRefreshFlags] = Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
+        setupData(pRenderContext);
+        createPasses(renderData);
+        setupBuffers();
         mOptionsChanged = false;
     }
+    bindData(renderData, frameDim);
 
-    DefineList defineList = getValidResourceDefines(kInputChannels, renderData);
-    defineList.add(getValidResourceDefines(kOutputChannels, renderData));
-    defineList.add(mpScene->getSceneDefines());
-    defineList.add(mpSampleGenerator->getDefines());
-    if (mpEmissiveSampler) defineList.add(mpEmissiveSampler->getDefines());
-    defineList["LOWER_BOUNCE_COUNT"] = std::to_string(mLowerBounceCount);
-    defineList["UPPER_BOUNCE_COUNT"] = std::to_string(mUpperBounceCount);
-    defineList["USE_NEE"] = mUseNEE ? "1" : "0";
-    defineList["USE_MIS"] = mUseMIS ? "1" : "0";
-    defineList["MIS_USE_POWER_HEURISTIC"] = mMISUsePowerHeuristic ? "1" : "0";
-    defineList["USE_RR"] = mUseRR ? "1" : "0";
-    defineList["RR_PROB_START_VALUE"] = fmt::format("{:.4f}", mRRProbStartValue);
-    defineList["RR_PROB_REDUCTION_FACTOR"] = fmt::format("{:.4f}", mRRProbReductionFactor);
-    defineList["DEBUG_PATH_LENGTH"] = mDebugPathLength ? "1" : "0";
-    defineList["USE_IMPORTANCE_SAMPLING"] = mUseImportanceSampling ? "1" : "0";
-    defineList["USE_ANALYTIC_LIGHTS"] = mpScene->useAnalyticLights() ? "1" : "0";
-    defineList["USE_EMISSIVE_LIGHTS"] = mpScene->useEmissiveLights() ? "1" : "0";
-    defineList["USE_ENV_LIGHT"] = mpScene->useEnvLight() ? "1" : "0";
-    defineList["USE_ENV_BACKGROUND"] = mpScene->useEnvBackground() ? "1" : "0";
-
-    if (!mpPass)
-    {
-        ProgramDesc desc;
-        desc.addShaderModules(mpScene->getShaderModules());
-        desc.addShaderLibrary(kShaderFile).csEntry("main");
-        desc.addTypeConformances(mpScene->getTypeConformances());
-
-        mpPass = ComputePass::create(mpDevice, desc, defineList, true);
-    }
-    if (!mpSamplerBlock)
-    {
-        mpSamplerBlock = ParameterBlock::create(mpDevice, mpPass->getProgram()->getReflector()->getParameterBlock("gSampler"));
-    }
-    if (!mpVars)
-    {
-        mpPass->getProgram()->setDefines(defineList);
-        mpVars = ProgramVars::create(mpDevice, mpPass->getProgram()->getReflector());
-    }
-
-    auto var = mpVars->getRootVar();
-    var["CB"]["gFrameDim"] = frameDim;
-    var["CB"]["gFrameCount"] = mFrameCount;
-    mpScene->bindShaderData(var["gScene"]);
-    mpSampleGenerator->bindShaderData(var);
-    auto ptVar = mpSamplerBlock->getRootVar();
-    if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(ptVar["envMapSampler"]);
-    if (mpEmissiveSampler) mpEmissiveSampler->bindShaderData(ptVar["emissiveSampler"]);
-    var["gSampler"] = mpSamplerBlock;
-
-    // bind I/O buffers. These needs to be done per-frame as the buffers may change anytime.
-    auto bind = [&](const ChannelDesc& desc)
-    {
-        if (!desc.texname.empty())
-        {
-            var[desc.texname] = renderData.getTexture(desc.name);
-        }
-    };
-    for (auto channel : kInputChannels) bind(channel);
-    for (auto channel : kOutputChannels) bind(channel);
-
-    mpPass->setVars(mpVars);
-    mpPixelDebug->prepareProgram(mpPass->getProgram(), var);
     // get dimensions of ray dispatch.
     const uint2 targetDim = renderData.getDefaultTextureDims();
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
-
-    ref<ComputeState> cs = ComputeState::create(mpDevice);
-    mpPass->execute(pRenderContext, frameDim.x, frameDim.y);
+    mpFillCachePass->execute(pRenderContext, frameDim.x, frameDim.y);
     mpPixelDebug->endFrame(pRenderContext);
     mFrameCount++;
 }

@@ -62,6 +62,10 @@ public:
 
 private:
     void parseProperties(const Properties& props);
+    void createPasses(const RenderData& renderData);
+    void setupData(RenderContext* pRenderContext);
+    void setupBuffers();
+    void bindData(const RenderData& renderData, uint2 frameDim);
 
     // Current scene.
     ref<Scene> mpScene;
@@ -91,7 +95,6 @@ private:
     uint mFrameCount = 0;
     bool mOptionsChanged = true;
 
-    ref<ComputePass> mpPass;
-    ref<ProgramVars> mpVars;
+    ref<ComputePass> mpFillCachePass;
 };
 
