@@ -68,6 +68,7 @@ private:
     void bindData(const RenderData& renderData, uint2 frameDim);
 
     // Current scene.
+    float3 mCamPos;
     ref<Scene> mpScene;
     ref<SampleGenerator> mpSampleGenerator;
 
@@ -92,9 +93,20 @@ private:
     ref<ParameterBlock> mpSamplerBlock;
     std::unique_ptr<PixelDebug> mpPixelDebug;
 
+    uint32_t mHashCacheHashMapSizeExp = 22;
+    uint32_t mHashCacheHashMapSize = std::pow(2u, mHashCacheHashMapSizeExp);
+    ref<Buffer> mpHashEntriesBuffer;
+    ref<Buffer> mpHashCacheVoxelDataBuffer0;
+    ref<Buffer> mpHashCacheVoxelDataBuffer1;
+    bool mHashCacheDebugVoxels = false;
+    bool mHashCacheDebugColor = false;
+    bool mHashCacheDebugLevels = false;
+
     uint mFrameCount = 0;
     bool mOptionsChanged = true;
 
     ref<ComputePass> mpFillCachePass;
+    ref<ComputePass> mpResolvePass;
+    ref<ComputePass> mpPathTracingPass;
 };
 

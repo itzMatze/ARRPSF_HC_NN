@@ -7,6 +7,7 @@ namespace
 {
 constexpr bool kUseImGui = true;
 const std::string kPTShaderFile("RenderPasses/ComputePathTracer/ComputePathTracer.slang");
+const std::string khashCacheResolveShaderFile("RenderPasses/ComputePathTracer/HashCacheResolve.slang");
 
 const char kInputViewDir[] = "viewW";
 
@@ -33,6 +34,7 @@ const std::string kUseRR = "useRR";
 const std::string kRRProbStartValue = "RRProbStartValue";
 const std::string kRRProbReductionFactor = "RRProbReductionFactor";
 const std::string kLightBVHOptions = "lightBVHOptions";
+const std::string kHashCacheHashMapSizeExponent = "hashCacheHashMapSizeExponent";
 } // namespace
 
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
@@ -52,6 +54,11 @@ void ComputePathTracer::parseProperties(const Properties& props)
         else if (key == kMISUsePowerHeuristic) mMISUsePowerHeuristic = value;
         else if (key == kUseRR) mUseRR = value;
         else if (key == kLightBVHOptions) mLightBVHOptions = value;
+        else if (key == kHashCacheHashMapSizeExponent)
+        {
+            mHashCacheHashMapSizeExp = uint32_t(value);
+            mHashCacheHashMapSize = std::pow(2u, mHashCacheHashMapSizeExp);
+        }
         else logWarning("Unknown property '{}' in ComputePathTracer properties.", key);
     }
 }
@@ -73,8 +80,13 @@ void ComputePathTracer::reset()
     mpEmissiveSampler = nullptr;
     mpEnvMapSampler = nullptr;
     mpSamplerBlock = nullptr;
+    mpHashEntriesBuffer = nullptr;
+    mpHashCacheVoxelDataBuffer0 = nullptr;
+    mpHashCacheVoxelDataBuffer1 = nullptr;
     mFrameCount = 0;
     mpFillCachePass = nullptr;
+    mpResolvePass = nullptr;
+    mpPathTracingPass = nullptr;
 }
 
 void ComputePathTracer::setProperties(const Properties& props)
@@ -96,6 +108,7 @@ Properties ComputePathTracer::getProperties() const
     props[kUseRR] = mUseRR;
     props[kRRProbStartValue] = mRRProbStartValue;
     props[kRRProbReductionFactor] = mRRProbReductionFactor;
+    props[kHashCacheHashMapSizeExponent] = mHashCacheHashMapSizeExp;
     return props;
 }
 
@@ -126,6 +139,10 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["RR_PROB_START_VALUE"] = fmt::format("{:.4f}", mRRProbStartValue);
     defineList["RR_PROB_REDUCTION_FACTOR"] = fmt::format("{:.4f}", mRRProbReductionFactor);
     defineList["DEBUG_PATH_LENGTH"] = mDebugPathLength ? "1" : "0";
+    defineList["HASH_CACHE_DEBUG_VOXELS"] = mHashCacheDebugVoxels ? "1" : "0";
+    defineList["HASH_CACHE_DEBUG_COLOR"] = mHashCacheDebugColor ? "1" : "0";
+    defineList["HASH_CACHE_DEBUG_LEVELS"] = mHashCacheDebugLevels ? "1" : "0";
+    defineList["HASH_CACHE_HASHMAP_SIZE"] = std::to_string(mHashCacheHashMapSize);
     defineList["USE_IMPORTANCE_SAMPLING"] = mUseImportanceSampling ? "1" : "0";
     defineList["USE_ANALYTIC_LIGHTS"] = mpScene->useAnalyticLights() ? "1" : "0";
     defineList["USE_EMISSIVE_LIGHTS"] = mpScene->useEmissiveLights() ? "1" : "0";
@@ -134,12 +151,31 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
 
     if (!mpFillCachePass)
     {
+        defineList["HASH_CACHE_UPDATE"] = "1";
+        defineList["HASH_CACHE_QUERY"] = "0";
         ProgramDesc desc;
         desc.addShaderModules(mpScene->getShaderModules());
         desc.addShaderLibrary(kPTShaderFile).csEntry("main");
         desc.addTypeConformances(mpScene->getTypeConformances());
         mpFillCachePass = ComputePass::create(mpDevice, desc, defineList, true);
     }
+    if (!mpPathTracingPass)
+    {
+        defineList["HASH_CACHE_UPDATE"] = "0";
+        defineList["HASH_CACHE_QUERY"] = "1";
+        ProgramDesc desc;
+        desc.addShaderModules(mpScene->getShaderModules());
+        desc.addShaderLibrary(kPTShaderFile).csEntry("main");
+        desc.addTypeConformances(mpScene->getTypeConformances());
+        mpPathTracingPass = ComputePass::create(mpDevice, desc, defineList, true);
+    }
+    if (!mpResolvePass)
+    {
+        ProgramDesc desc;
+        desc.addShaderLibrary(khashCacheResolveShaderFile).csEntry("hashCacheResolve");
+        mpResolvePass = ComputePass::create(mpDevice, desc, defineList, true);
+    }
+}
 
 void ComputePathTracer::setupData(RenderContext* pRenderContext)
 {
@@ -155,6 +191,10 @@ void ComputePathTracer::setupData(RenderContext* pRenderContext)
         const auto& pLights = mpScene->getLightCollection(pRenderContext);
         mpEmissiveSampler = std::make_unique<LightBVHSampler>(pRenderContext, mpScene, mLightBVHOptions);
     }
+    if (!mpHashEntriesBuffer) mpHashEntriesBuffer = mpDevice->createStructuredBuffer(sizeof(uint32_t), mHashCacheHashMapSize);
+    // 128 bits per entry
+    if (!mpHashCacheVoxelDataBuffer0) mpHashCacheVoxelDataBuffer0 = mpDevice->createBuffer((128 / 8) * mHashCacheHashMapSize);
+    if (!mpHashCacheVoxelDataBuffer1) mpHashCacheVoxelDataBuffer1 = mpDevice->createBuffer((128 / 8) * mHashCacheHashMapSize);
 }
 
 void ComputePathTracer::setupBuffers()
@@ -167,17 +207,52 @@ void ComputePathTracer::setupBuffers()
 
 void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
 {
-    auto var = mpFillCachePass->getRootVar();
-    var["CB"]["gFrameDim"] = frameDim;
-    var["CB"]["gFrameCount"] = mFrameCount;
-    mpScene->bindShaderData(var["gScene"]);
-    mpSampleGenerator->bindShaderData(var);
-    if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
-    if (mpEmissiveSampler) mpEmissiveSampler->bindShaderData(mpSamplerBlock->getRootVar()["emissiveSampler"]);
-    var["gSampler"] = mpSamplerBlock;
-    for (auto channel : kInputChannels) var[channel.texname] = renderData.getTexture(channel.name);
-    for (auto channel : kOutputChannels) var[channel.texname] = renderData.getTexture(channel.name);
-    mpPixelDebug->prepareProgram(mpFillCachePass->getProgram(), var);
+    mCamPos = mpScene->getCamera()->getPosition();
+    {
+        // fill cache pass
+        auto var = mpFillCachePass->getRootVar();
+        var["CB"]["gFrameDim"] = frameDim;
+        var["CB"]["gFrameCount"] = mFrameCount;
+        var["CB"]["gCamPos"] = mCamPos;
+        mpScene->bindShaderData(var["gScene"]);
+        mpSampleGenerator->bindShaderData(var);
+        if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
+        if (mpEmissiveSampler) mpEmissiveSampler->bindShaderData(mpSamplerBlock->getRootVar()["emissiveSampler"]);
+        var["gSampler"] = mpSamplerBlock;
+        var["gHashEntriesBuffer"] = mpHashEntriesBuffer;
+        var["gHashCacheVoxelDataBuffer"] = mFrameCount % 2 == 0 ? mpHashCacheVoxelDataBuffer0 : mpHashCacheVoxelDataBuffer1;
+        var["gHashCacheVoxelDataBufferPrev"] = mFrameCount % 2 == 1 ? mpHashCacheVoxelDataBuffer0 : mpHashCacheVoxelDataBuffer1;
+        for (auto channel : kInputChannels) var[channel.texname] = renderData.getTexture(channel.name);
+        for (auto channel : kOutputChannels) var[channel.texname] = renderData.getTexture(channel.name);
+        mpPixelDebug->prepareProgram(mpFillCachePass->getProgram(), var);
+    }
+    {
+        // path tracing pass
+        auto var = mpPathTracingPass->getRootVar();
+        var["CB"]["gFrameDim"] = frameDim;
+        var["CB"]["gFrameCount"] = mFrameCount;
+        var["CB"]["gCamPos"] = mCamPos;
+        mpScene->bindShaderData(var["gScene"]);
+        mpSampleGenerator->bindShaderData(var);
+        if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
+        if (mpEmissiveSampler) mpEmissiveSampler->bindShaderData(mpSamplerBlock->getRootVar()["emissiveSampler"]);
+        var["gSampler"] = mpSamplerBlock;
+        var["gHashEntriesBuffer"] = mpHashEntriesBuffer;
+        var["gHashCacheVoxelDataBuffer"] = mFrameCount % 2 == 0 ? mpHashCacheVoxelDataBuffer0 : mpHashCacheVoxelDataBuffer1;
+        var["gHashCacheVoxelDataBufferPrev"] = mFrameCount % 2 == 1 ? mpHashCacheVoxelDataBuffer0 : mpHashCacheVoxelDataBuffer1;
+        for (auto channel : kInputChannels) var[channel.texname] = renderData.getTexture(channel.name);
+        for (auto channel : kOutputChannels) var[channel.texname] = renderData.getTexture(channel.name);
+        mpPixelDebug->prepareProgram(mpPathTracingPass->getProgram(), var);
+    }
+    {
+        // resolve pass
+        auto var = mpResolvePass->getRootVar();
+        var["CB"]["gCamPos"] = mCamPos;
+        var["gHashEntriesBuffer"] = mpHashEntriesBuffer;
+        var["gHashCacheVoxelDataBuffer"] = mFrameCount % 2 == 0 ? mpHashCacheVoxelDataBuffer0 : mpHashCacheVoxelDataBuffer1;
+        var["gHashCacheVoxelDataBufferPrev"] = mFrameCount % 2 == 1 ? mpHashCacheVoxelDataBuffer0 : mpHashCacheVoxelDataBuffer1;
+        mpPixelDebug->prepareProgram(mpResolvePass->getProgram(), var);
+    }
 }
 
 void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData& renderData)
@@ -222,10 +297,11 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
     }
     bindData(renderData, frameDim);
 
-    // get dimensions of ray dispatch.
     const uint2 targetDim = renderData.getDefaultTextureDims();
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
-    mpFillCachePass->execute(pRenderContext, frameDim.x, frameDim.y);
+    mpFillCachePass->execute(pRenderContext, frameDim.x / 5, frameDim.y / 5);
+    mpResolvePass->execute(pRenderContext, mHashCacheHashMapSize, 1);
+    mpPathTracingPass->execute(pRenderContext, frameDim.x, frameDim.y);
     mpPixelDebug->endFrame(pRenderContext);
     mFrameCount++;
 }
@@ -283,6 +359,18 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     {
         if (mpEmissiveSampler) mpEmissiveSampler->renderUI(emissive_sampler_group);
     }
+    if (Gui::Group hash_cache_group = widget.group("Hash Cache"))
+    {
+        if (kUseImGui)
+        {
+            ImGui::PushItemWidth(40);
+            ImGui::InputScalar("hashMapSizeExponent", ImGuiDataType_U32, &mHashCacheHashMapSizeExp);
+            ImGui::PopItemWidth();
+        }
+        hash_cache_group.checkbox("Debug voxels", mHashCacheDebugVoxels);
+        hash_cache_group.checkbox("Debug color", mHashCacheDebugColor);
+        hash_cache_group.checkbox("Debug levels", mHashCacheDebugLevels);
+    }
     if (Gui::Group debug_group = widget.group("Debug"))
     {
         debug_group.checkbox("Path length", mDebugPathLength);
@@ -293,6 +381,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     // In execute() we will pass the flag to other passes for reset of temporal data etc.
     if (widget.button("Reload shader"))
     {
+        mHashCacheHashMapSize = std::pow(2, mHashCacheHashMapSizeExp);
         mOptionsChanged = true;
         reset();
     }
@@ -301,6 +390,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
 void ComputePathTracer::setScene(RenderContext* pRenderContext, const ref<Scene>& pScene)
 {
     mpScene = pScene;
+    mCamPos = mpScene->getCamera()->getPosition();
     reset();
 }
 

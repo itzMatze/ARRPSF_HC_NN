@@ -14,12 +14,15 @@ import Utils.Color.ColorHelpers;
 import Utils.Color.ColorMap;
 import Utils.Debug.PixelDebug;
 
+import HashGridCommon;
+import HashCacheCommon;
 import LightSampling;
 
 cbuffer CB
 {
     uint gFrameCount;
     uint2 gFrameDim;
+    float3 gCamPos;
 }
 
 // Inputs
@@ -43,9 +46,14 @@ static const bool kDebugPathLength = DEBUG_PATH_LENGTH;
 static const bool kUseImportanceSampling = USE_IMPORTANCE_SAMPLING;
 static const bool kUseEnvBackground = USE_ENV_BACKGROUND;
 static const float3 kDefaultBackgroundColor = float3(0.0, 0.0, 0.05);
+static const uint kHashCacheHashMapSize = HASH_CACHE_HASHMAP_SIZE;
+static const uint kHashCacheDebugVoxels = HASH_CACHE_DEBUG_VOXELS;
+static const uint kHashCacheDebugColor = HASH_CACHE_DEBUG_COLOR;
+static const uint kHashCacheDebugLevels = HASH_CACHE_DEBUG_LEVELS;
 
 struct ScatterRayData
 {
+    HashCacheState hashCacheState;
     float3 radiance;  ///< Accumulated outgoing radiance from path.
     float3 thp;       ///< Current path throughput. This is updated at each path vertex.
     uint numBounces;  ///< Path length in number of path segments (0 at origin, 1 at first secondary hit, etc.). Max 2^31.
@@ -53,6 +61,7 @@ struct ScatterRayData
     float3 direction; ///< Next path segment direction.
     float3 normal;
     float pdf;
+    float t;
     bool lightSampledUpper;
     bool lightSampledLower;
     bool deltaLobe;
@@ -70,6 +79,7 @@ struct ScatterRayData
         this.origin = float3(0, 0, 0);
         this.direction = float3(0, 0, 0);
         this.pdf = 1.0;
+        this.t = 0.0;
         lightSampledUpper = false;
         lightSampledLower = false;
         // first ray starts at camera which has a "deltaLobe"
@@ -186,11 +196,14 @@ bool generateScatterRay(const ShadingData sd, const IMaterialInstance mi, inout 
             float survival_prob = (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces));
             if (sampleNext1D(rayData.sg) > survival_prob)
             {
-                // rr not survived
+                // russian roulette not survived
                 return false;
             }
             rayData.thp /= min(survival_prob, 1.0);
         }
+#if HASH_CACHE_UPDATE
+        hashCacheSetThroughput(rayData.hashCacheState, rayData.thp);
+#endif // HASH_CACHE_UPDATE
         return any(rayData.thp > 0.f);
     }
     return false;
@@ -204,6 +217,45 @@ bool handleHit(const HitInfo hit, const Ray ray, inout ScatterRayData rayData)
     ShadingData sd = loadShadingData(triangleHit, ray.dir, lod);
     IMaterialInstance mi = gScene.materials.getMaterialInstance(sd, lod);
     BSDFProperties bsdfProperties = mi.getProperties(sd);
+
+#if HASH_CACHE_UPDATE || HASH_CACHE_QUERY
+    // Construct HashCacheHitData structure needed for creating a query point at this hit location
+    HashCacheHitData hashCacheHitData;
+    hashCacheHitData.positionWorld = sd.posW;
+    hashCacheHitData.normalWorld = sd.getOrientedFaceNormal();
+#endif // HASH_CACHE_UPDATE || HASH_CACHE_QUERY
+
+#if HASH_CACHE_QUERY
+    {
+        uint gridLevel = GetGridLevel(sd.posW, rayData.hashCacheState.gridParameters);
+        if (kHashCacheDebugLevels)
+        {
+            // the actual max level is 1024 (see clamp in function)
+            // however, the upper levels are never really used, thus use 8 to get meaningful visualization
+            rayData.radiance = colormapViridis(float(gridLevel) / 8.0f);
+            return false;
+        }
+        float voxelSize = GetVoxelSize(gridLevel, rayData.hashCacheState.gridParameters);
+        bool isValidHit = rayData.t > voxelSize * lerp(1.0f, 2.0f, sampleNext1D(rayData.sg));
+        isValidHit &= rayData.numBounces > 1;
+
+        float3 hashCacheRadiance;
+        if (kHashCacheDebugVoxels || kHashCacheDebugColor)
+        {
+            // debug active; voxel debug will fetch voxel visualization values, otherwise just get color
+            float3 debugColor;
+            hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, debugColor, kHashCacheDebugVoxels);
+            rayData.radiance = debugColor;
+            return false;
+        }
+        else if (isValidHit && hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
+        {
+            rayData.radiance += hashCacheRadiance * rayData.thp;
+            return false; // Terminate the path once we've looked up into the cache
+        }
+    }
+#endif // HASH_CACHE_QUERY
+
     // # light hit by chance
     // always show directly visible lights
     // incorporate emission when: NEE is not active or could not sample this light at the last vertex, MIS is used
@@ -228,6 +280,7 @@ bool handleHit(const HitInfo hit, const Ray ray, inout ScatterRayData rayData)
         }
         rayData.radiance += rayData.thp * misWeight * bsdfProperties.emission;
     }
+
     // # NEE
     LightSample ls;
     PathVertex vertex = PathVertex(sd.posW, sd.faceN, sd.frontFacing);
@@ -262,6 +315,11 @@ bool handleHit(const HitInfo hit, const Ray ray, inout ScatterRayData rayData)
             }
         }
     }
+
+#if HASH_CACHE_UPDATE
+    hashCacheUpdateHit(rayData.hashCacheState, hashCacheHitData, rayData.radiance);
+#endif
+
     // generate scatter ray for the next path segment.
     return (generateScatterRay(sd, mi, rayData));
 }
@@ -276,8 +334,7 @@ bool traceScatterRay(inout ScatterRayData rayData)
     const Ray ray = Ray(rayData.origin, rayData.direction, 0.0f, kRayTMax);
     SceneRayQuery<1> rayQuery;
     HitInfo hit;
-    float t = 0.0f;
-    if (rayQuery.traceRay(ray, hit, t, RAY_FLAG_NONE, 0xff))
+    if (rayQuery.traceRay(ray, hit, rayData.t, RAY_FLAG_NONE, 0xff))
     {
         return handleHit(hit, ray, rayData);
     }
@@ -304,6 +361,9 @@ bool traceScatterRay(inout ScatterRayData rayData)
             float3 Le = gSampler.envMapSampler.eval(rayData.direction);
             rayData.radiance += rayData.thp * misWeight * Le;
         }
+#if HASH_CACHE_UPDATE
+        hashCacheUpdateMiss(rayData.hashCacheState, rayData.radiance);
+#endif // HASH_CACHE_UPDATE
         return false;
     }
 }
@@ -323,19 +383,32 @@ bool traceScatterRay(inout ScatterRayData rayData)
  * @param[in] frameDim Dimension of the frame in pixels.
  * @return Returns the estimated color (radiance).
  */
-float3 tracePath(const uint2 pixel, const uint2 frameDim)
+float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
 {
     float3 outColor = float3(0.f);
     const HitInfo hit = HitInfo(gVBuffer[pixel]);
+
     if (hit.isValid() && hit.getType() == HitType::Triangle)
     {
-        SampleGenerator sg = SampleGenerator(pixel, gFrameCount);
         ScatterRayData rayData = ScatterRayData(sg);
+
+#if HASH_CACHE_UPDATE || HASH_CACHE_QUERY
+        rayData.hashCacheState.gridParameters.cameraPosition = gCamPos.xyz;
+        rayData.hashCacheState.hashMapData.capacity = kHashCacheHashMapSize;
+#endif // HASH_CACHE_UPDATE || HASH_CACHE_QUERY
+#if HASH_CACHE_UPDATE
+        rayData.hashCacheState.pathLength = 0;
+#endif // HASH_CACHE_UPDATE
+
         if (!handleHit(hit, Ray(gScene.camera.getPosition(), -gViewW[pixel].xyz), rayData)) return rayData.radiance;
         rayData.numBounces++;
         // Follow path into the scene and compute its total contribution.
         while (rayData.numBounces <= kUpperBounceCount)
         {
+#if HASH_CACHE_UPDATE
+            rayData.thp = float3(1.0f);
+            rayData.radiance = float3(0.0f);
+#endif
             if (!traceScatterRay(rayData)) break;
             rayData.numBounces++;
         }
@@ -355,10 +428,14 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim)
 void main(uint3 dispatchThreadId: SV_DispatchThreadID)
 {
     uint2 pixel = dispatchThreadId.xy;
+    SampleGenerator sg = SampleGenerator(pixel, gFrameCount);
+#if HASH_CACHE_UPDATE
+    pixel = dispatchThreadId.xy * 5 + uint2(sampleNext2D(sg) * 5.99);
+#endif
     if (any(pixel >= gFrameDim)) return;
     printSetPixel(pixel);
 
-    float3 outputColor = tracePath(pixel, gFrameDim);
+    float3 outputColor = tracePath(pixel, gFrameDim, sg);
     gOutputColor[pixel] = float4(outputColor, 1.0f);
 }
 
