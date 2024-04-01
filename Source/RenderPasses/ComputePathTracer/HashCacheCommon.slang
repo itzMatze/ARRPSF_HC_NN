@@ -1,6 +1,7 @@
 import Utils.Debug.PixelDebug;
 import HashGridCommon;
 
+#if HASH_CACHE_UPDATE || HASH_CACHE_QUERY
 static const uint kHashCachePropagationDepth = 8;
 static const float kHashCacheRadianceScale = 1e4f;
 
@@ -121,7 +122,7 @@ void hashCacheCombine(uint idx)
 {
     HashCacheVoxelData voxelData = hashCacheGetVoxelData(false, idx);
     HashCacheVoxelData voxelDataPrev = hashCacheGetVoxelData(true, idx);
-    uint newSampleNum = voxelData.sampleNum;
+    uint newSampleNum = voxelData.sampleNum - voxelDataPrev.sampleNum;
     if (newSampleNum == 0)
     {
         voxelData.radiance = voxelDataPrev.radiance;
@@ -131,17 +132,16 @@ void hashCacheCombine(uint idx)
         voxelData.radiance /= float(newSampleNum);
         if (voxelDataPrev.sampleNum > 0)
         {
-            float weight = min(sqrt(newSampleNum) * 0.001, 0.5);
+            float weight = min(newSampleNum * 0.002, 0.1);
             voxelData.radiance = (1 - weight) * voxelDataPrev.radiance + weight * voxelData.radiance;
         }
     }
     if (voxelData.sampleNum > 0 || voxelDataPrev.sampleNum > 0)
     {
-        voxelData.sampleNum = 1;
         hashCacheSetVoxelData(false, idx, voxelData);
         voxelData.radiance = float3(0.0);
-        voxelData.sampleNum = 0;
         hashCacheSetVoxelData(true, idx, voxelData);
     }
 }
+#endif // HASH_CACHE_UPDATE || HASH_CACHE_QUERY
 

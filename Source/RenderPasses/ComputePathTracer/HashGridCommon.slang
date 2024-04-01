@@ -1,5 +1,6 @@
 import Utils.Debug.PixelDebug;
 
+#if HASH_CACHE_UPDATE || HASH_CACHE_QUERY
 static const uint kHashGridPositionBitNum = 8;
 static const uint kHashGridPositionBitMask = ((1u << kHashGridPositionBitNum) - 1);
 static const uint kHashGridLevelBitNum = 5;
@@ -167,4 +168,5 @@ float3 HashGridDebugColoredHash(float3 samplePosition, GridParameters gridParame
     HashKey hashKey = ComputeSpatialHash(samplePosition, float3(0, 0, 0), gridParameters);
     return GetColorFromHash32(Hash32(hashKey));
 }
+#endif // HASH_CACHE_UPDATE || HASH_CACHE_QUERY
 

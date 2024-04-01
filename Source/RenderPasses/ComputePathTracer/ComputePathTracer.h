@@ -93,6 +93,10 @@ private:
     ref<ParameterBlock> mpSamplerBlock;
     std::unique_ptr<PixelDebug> mpPixelDebug;
 
+    // should hash cache be enabled, this state is used when the options are applied
+    bool mEnableHashCache = true;
+    // is hash cache currently used in the program
+    bool mHashCacheActive = true;
     uint32_t mHashCacheHashMapSizeExp = 22;
     uint32_t mHashCacheHashMapSize = std::pow(2u, mHashCacheHashMapSizeExp);
     ref<Buffer> mpHashEntriesBuffer;

@@ -53,7 +53,9 @@ static const uint kHashCacheDebugLevels = HASH_CACHE_DEBUG_LEVELS;
 
 struct ScatterRayData
 {
+#if HASH_CACHE_UPDATE || HASH_CACHE_QUERY
     HashCacheState hashCacheState;
+#endif
     float3 radiance;  ///< Accumulated outgoing radiance from path.
     float3 thp;       ///< Current path throughput. This is updated at each path vertex.
     uint numBounces;  ///< Path length in number of path segments (0 at origin, 1 at first secondary hit, etc.). Max 2^31.
