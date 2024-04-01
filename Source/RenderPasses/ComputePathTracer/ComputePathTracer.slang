@@ -55,6 +55,8 @@ struct ScatterRayData
 {
 #if HASH_CACHE_UPDATE || HASH_CACHE_QUERY
     HashCacheState hashCacheState;
+    float materialRoughness;
+    float spread;
 #endif
     float3 radiance;  ///< Accumulated outgoing radiance from path.
     float3 thp;       ///< Current path throughput. This is updated at each path vertex.
@@ -239,7 +241,12 @@ bool handleHit(const HitInfo hit, const Ray ray, inout ScatterRayData rayData)
         }
         float voxelSize = GetVoxelSize(gridLevel, rayData.hashCacheState.gridParameters);
         bool isValidHit = rayData.t > voxelSize * lerp(1.0f, 2.0f, sampleNext1D(rayData.sg));
-        isValidHit &= rayData.numBounces > 1;
+        float alpha = min(rayData.materialRoughness * rayData.materialRoughness, 0.99);
+        rayData.materialRoughness = bsdfProperties.roughness;
+        alpha *= alpha;
+        rayData.spread += 2.0 * rayData.t * sqrt(0.5f * alpha / (1.0f - alpha));
+        isValidHit &= rayData.spread > voxelSize;
+        isValidHit &= rayData.numBounces > 0;
 
         float3 hashCacheRadiance;
         if (kHashCacheDebugVoxels || kHashCacheDebugColor)
@@ -397,6 +404,8 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
 #if HASH_CACHE_UPDATE || HASH_CACHE_QUERY
         rayData.hashCacheState.gridParameters.cameraPosition = gCamPos.xyz;
         rayData.hashCacheState.hashMapData.capacity = kHashCacheHashMapSize;
+        rayData.materialRoughness = 0.0f;
+        rayData.spread = 0.0f;
 #endif // HASH_CACHE_UPDATE || HASH_CACHE_QUERY
 #if HASH_CACHE_UPDATE
         rayData.hashCacheState.pathLength = 0;
