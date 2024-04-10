@@ -1,5 +1,7 @@
 # Build folder.
 /build/
+/shader/bin/
+/shader/glsl/
 
 # Test output folder.
 /tests/data/

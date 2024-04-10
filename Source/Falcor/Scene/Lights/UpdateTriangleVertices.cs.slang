@@ -43,6 +43,7 @@ RWStructuredBuffer<PackedEmissiveTriangle> gTriangleData;   ///< Per-triangle ge
 [numthreads(256, 1, 1)]
 void updateTriangleVertices(uint3 DTid : SV_DispatchThreadID)
 {
+    __requireGLSLExtension("GL_EXT_ray_query");
     const uint triIdx = DTid.x; // Global emissive triangle index.
     const uint vtxIdx = triIdx * 3; // The emissive triangle list is non-indexed.
 

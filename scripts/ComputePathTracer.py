@@ -4,7 +4,7 @@ def render_graph_ComputePathTracer(options = {}):
     passes = {}
     passes['VBufferRT'] = createPass("VBufferRT", {'samplePattern': 'Stratified', 'sampleCount': 16})
     passes['ComputePathTracer'] = createPass("ComputePathTracer", options)
-    passes['AccumulatePass'] = createPass("AccumulatePass", {'enabled': True, 'precisionMode': 'Single'})
+    passes['AccumulatePass'] = createPass("AccumulatePass", {'enabled': False, 'precisionMode': 'Single'})
     passes['ToneMapper'] = createPass("ToneMapper", {'autoExposure': False, 'exposureCompensation': 0.0})
     g = RenderGraph("ComputePathTracer")
     for key, value in passes.items():

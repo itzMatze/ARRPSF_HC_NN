@@ -140,6 +140,7 @@ ref<ProgramKernels> ProgramKernels::create(
         programDesc.slangEntryPoints = (slang::IComponentType**)pTypeConformanceSpecializedEntryPoints.data();
     }
 
+    programDesc.name = name.c_str();
     Slang::ComPtr<ISlangBlob> diagnostics;
     if (SLANG_FAILED(pDevice->getGfxDevice()->createProgram(programDesc, pProgram->mGfxProgram.writeRef(), diagnostics.writeRef())))
     {

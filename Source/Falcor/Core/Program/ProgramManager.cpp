@@ -691,7 +691,7 @@ SlangCompileRequest* ProgramManager::createSlangCompileRequest(const Program& pr
         targetMacroName = "FALCOR_D3D12";
         break;
     case Device::Type::Vulkan:
-        targetDesc.format = SLANG_SPIRV;
+        targetDesc.format = SLANG_GLSL;
         targetMacroName = "FALCOR_VULKAN";
         break;
     default:

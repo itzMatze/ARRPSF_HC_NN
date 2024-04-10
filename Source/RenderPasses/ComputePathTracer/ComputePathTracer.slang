@@ -435,6 +435,17 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
     return outColor;
 }
 
+void __test(float3 a, out float3 b)
+{
+    __target_switch
+    {
+    case glsl:
+        __requireGLSLExtension("GL_GOOGLE_include_directive");
+        __requirePrelude(R"(#include "test.glsl")");
+        __intrinsic_asm "$1 = func($0)";
+    }
+}
+
 [numthreads(16, 16, 1)]
 void main(uint3 dispatchThreadId: SV_DispatchThreadID)
 {
@@ -445,8 +456,9 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID)
 #endif
     if (any(pixel >= gFrameDim)) return;
     printSetPixel(pixel);
-
+    float3 b;
+    __test(float3(0.0), b);
     float3 outputColor = tracePath(pixel, gFrameDim, sg);
-    gOutputColor[pixel] = float4(outputColor, 1.0f);
+    gOutputColor[pixel] = float4(b, 1.0f);
 }
 

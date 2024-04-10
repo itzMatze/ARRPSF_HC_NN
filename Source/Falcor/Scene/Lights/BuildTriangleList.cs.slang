@@ -47,6 +47,7 @@ RWStructuredBuffer<PackedEmissiveTriangle> gTriangleData;   ///< Per-triangle da
 [numthreads(256, 1, 1)]
 void buildTriangleList(uint3 DTid : SV_DispatchThreadID)
 {
+    __requireGLSLExtension("GL_EXT_ray_query");
     if (DTid.x >= gTriangleCount) return;
 
     const GeometryInstanceID instanceID = { gInstanceID };
