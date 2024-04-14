@@ -459,6 +459,6 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID)
     float3 b;
     __test(float3(0.0), b);
     float3 outputColor = tracePath(pixel, gFrameDim, sg);
-    gOutputColor[pixel] = float4(b, 1.0f);
+    gOutputColor[pixel] = float4(outputColor, 1.0f);
 }
 

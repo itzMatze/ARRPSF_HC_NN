@@ -67,6 +67,22 @@ private:
     void setupBuffers();
     void bindData(const RenderData& renderData, uint2 frameDim);
 
+    enum // Buffer
+    {
+        HASH_ENTRIES_BUFFER = 0,
+        HASH_CACHE_VOXEL_DATA_BUFFER_0 = 1,
+        HASH_CACHE_VOXEL_DATA_BUFFER_1 = 2,
+        BUFFER_COUNT
+    };
+
+    enum // Passes
+    {
+        FILL_CACHE_PASS = 0,
+        RESOLVE_PASS = 1,
+        PATH_TRACING_PASS = 2,
+        PASS_COUNT
+    };
+
     // Current scene.
     float3 mCamPos;
     ref<Scene> mpScene;
@@ -99,9 +115,6 @@ private:
     bool mHashCacheActive = true;
     uint32_t mHashCacheHashMapSizeExp = 22;
     uint32_t mHashCacheHashMapSize = std::pow(2u, mHashCacheHashMapSizeExp);
-    ref<Buffer> mpHashEntriesBuffer;
-    ref<Buffer> mpHashCacheVoxelDataBuffer0;
-    ref<Buffer> mpHashCacheVoxelDataBuffer1;
     bool mHashCacheDebugVoxels = false;
     bool mHashCacheDebugColor = false;
     bool mHashCacheDebugLevels = false;
@@ -109,8 +122,7 @@ private:
     uint mFrameCount = 0;
     bool mOptionsChanged = true;
 
-    ref<ComputePass> mpFillCachePass;
-    ref<ComputePass> mpResolvePass;
-    ref<ComputePass> mpPathTracingPass;
+    std::array<ref<Buffer>, BUFFER_COUNT> mBuffers;
+    std::array<ref<ComputePass>, PASS_COUNT> mPasses;
 };
 
