@@ -52,6 +52,9 @@ static const uint kHashCacheHashMapSize = HASH_CACHE_HASHMAP_SIZE;
 static const uint kHashCacheDebugVoxels = HASH_CACHE_DEBUG_VOXELS;
 static const uint kHashCacheDebugColor = HASH_CACHE_DEBUG_COLOR;
 static const uint kHashCacheDebugLevels = HASH_CACHE_DEBUG_LEVELS;
+static const bool kNNDebug = NN_DEBUG;
+static const bool kNNTrain = NN_TRAIN;
+static const bool kNNQuery = NN_QUERY;
 
 struct ScatterRayData
 {
@@ -455,38 +458,46 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     uint2 pixel = dispatchThreadId.xy;
     if (any(pixel >= gFrameDim)) return;
     SampleGenerator sg = SampleGenerator(pixel, gFrameCount);
-#if HASH_CACHE_UPDATE
+#if HASH_CACHE_UPDATE || NN_TRAIN
     pixel = dispatchThreadId.xy * 5 + uint2(sampleNext2D(sg) * 5.99);
 #endif
     printSetPixel(pixel);
     float3 outputColor = float3(0.0, 1.0, 0.0);
     outputColor = tracePath(pixel, gFrameDim, sg);
-#if !HASH_CACHE_UPDATE
+
 // NN
+#if NN_TRAIN || NN_QUERY
     uint param_offset = 0; uint grad_offset = 0;
     MLPModule mlp = MLPModule(param_offset, grad_offset, thread_info);
     TensorView featureGrid = TensorView(param_offset, grad_offset, 14, 14 * gFeatureGridDim.x);
     FeatureGrid2DIndex feature_index = FeatureGrid2DIndex(gFrameDim, pixel, gFeatureGridDim);
     HalfFeature<32> feature = computeInterpolatedFeature(featureGrid, feature_index, float2(pixel) / float2(gFrameDim));
     HalfFeature<32> output = MLPModule.forward(mlp, feature);
+#if NN_TRAIN
     HalfFeature<32>.Differential output_grad;
     float3 target_color = (pixel.y + pixel.x > (gFrameDim.y / 2 + gFrameDim.x / 2)) ? float3(1.0, 0.0, 1.0) : float3(0.0, 1.0, 1.0);
     float3 color = float3(output.vals[0], output.vals[1], output.vals[2]);
     var color_pair = diffPair(color);
     float loss = L2Loss(color, target_color);
     bwd_diff(L2Loss)(color_pair, target_color, 1);
-    const float gradient_scalar = 1.0 / 16.0f;
+    const float gradient_scalar = 1.0;
     output_grad.vals[0] = float16_t(color_pair.d.x * gradient_scalar);
     output_grad.vals[1] = float16_t(color_pair.d.y * gradient_scalar);
     output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
     var input_feature_pair = diffPair(feature);
     bwd_diff(MLPModule.forward)(mlp, input_feature_pair, output_grad);
     bwd_diff(computeInterpolatedFeature)(featureGrid, feature_index, float2(pixel) / float2(gFrameDim), input_feature_pair.d);
-
-    for (uint i = 0; i < 3; i++) print("", float(output.vals[i]));
-    if (isnan(output.vals[0])) outputColor = float3(1.0, 0.0, 0.0);
-    else if (isinf(output.vals[0])) outputColor = float3(1.0, 0.0, 1.0);
-    else outputColor = float3(output.vals[0], output.vals[1], output.vals[2]);
+#elif NN_QUERY
+    if (kNNDebug)
+    {
+        if (isnan(output.vals[0])) outputColor = float3(1.0, 0.0, 0.0);
+        else if (isinf(output.vals[0])) outputColor = float3(1.0, 0.0, 1.0);
+        else outputColor = float3(output.vals[0], output.vals[1], output.vals[2]);
+    }
+#endif
+#endif
+#if !NN_TRAIN && !HASH_CACHE_UPDATE
+    print("PixelOutput:", outputColor);
     gOutputColor[pixel] = float4(outputColor, 1.0f);
 #endif
 }

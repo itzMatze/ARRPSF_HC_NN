@@ -144,6 +144,7 @@ private:
         uint nnParamCount = (64 * 64 /*weights*/ + 64 /*biases*/ * 12 /*max layers*/ + 120 * 68 * 14 /*feature grid*/ + 4096 * 4096);
         int gradOffset = 0;
         float2 weightInitBound = float2(0.001, 0.02);
+        bool debugOutput = true;
     } mNNParams;
 
     uint mFrameCount = 0;

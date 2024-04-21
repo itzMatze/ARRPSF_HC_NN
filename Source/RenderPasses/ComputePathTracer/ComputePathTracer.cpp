@@ -154,11 +154,21 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["USE_EMISSIVE_LIGHTS"] = mpScene->useEmissiveLights() ? "1" : "0";
     defineList["USE_ENV_LIGHT"] = mpScene->useEnvLight() ? "1" : "0";
     defineList["USE_ENV_BACKGROUND"] = mpScene->useEnvBackground() ? "1" : "0";
+    defineList["NN_DEBUG"] = mNNParams.debugOutput ? "1" : "0";
+    defineList["NN_PARAM_COUNT"] = std::to_string(mNNParams.nnParamCount);
+    defineList["NN_GRAD_OFFSET"] = std::to_string(mNNParams.gradOffset);
+    defineList["NN_OPTIMIZER_TYPE"] = std::to_string(mNNParams.optimizerParams.type);
+    defineList["NN_LEARNING_RATE"] = fmt::format("{:.12f}", mNNParams.optimizerParams.learn_r);
+    defineList["NN_PARAM_0"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_0);
+    defineList["NN_PARAM_1"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_1);
+    defineList["NN_PARAM_2"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_2);
 
     if (!mPasses[FILL_CACHE_PASS] && mHashCacheActive)
     {
         defineList["HASH_CACHE_UPDATE"] = "1";
         defineList["HASH_CACHE_QUERY"] = "0";
+        defineList["NN_TRAIN"] = "1";
+        defineList["NN_QUERY"] = "0";
         ProgramDesc desc;
         desc.addShaderModules(mpScene->getShaderModules());
         desc.addShaderLibrary(kPTShaderFile).csEntry("main");
@@ -169,6 +179,8 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     {
         defineList["HASH_CACHE_UPDATE"] = "0";
         defineList["HASH_CACHE_QUERY"] = mHashCacheActive ? "1" : "0";
+        defineList["NN_TRAIN"] = "0";
+        defineList["NN_QUERY"] = "1";
         ProgramDesc desc;
         desc.addShaderModules(mpScene->getShaderModules());
         desc.addShaderLibrary(kPTShaderFile).csEntry("main");
@@ -183,20 +195,12 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     }
     if (!mPasses[NN_GRADIENT_CLEAR_PASS])
     {
-        defineList["NN_PARAM_COUNT"] = std::to_string(mNNParams.nnParamCount);
         ProgramDesc desc;
         desc.addShaderLibrary(kGradientClearShaderFile).csEntry("main");
         mPasses[NN_GRADIENT_CLEAR_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
     }
     if (!mPasses[NN_GRADIENT_DESCENT_PASS])
     {
-        defineList["NN_PARAM_COUNT"] = std::to_string(mNNParams.nnParamCount);
-        defineList["NN_GRAD_OFFSET"] = std::to_string(mNNParams.gradOffset);
-        defineList["NN_OPTIMIZER_TYPE"] = std::to_string(mNNParams.optimizerParams.type);
-        defineList["NN_LEARNING_RATE"] = fmt::format("{:.12f}", mNNParams.optimizerParams.learn_r);
-        defineList["NN_PARAM_0"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_0);
-        defineList["NN_PARAM_1"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_1);
-        defineList["NN_PARAM_2"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_2);
         ProgramDesc desc;
         desc.addShaderLibrary(kGradientDescentShaderFile).csEntry("main");
         mPasses[NN_GRADIENT_DESCENT_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
@@ -261,6 +265,8 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
             var["gHashEntriesBuffer"] = mBuffers[HASH_ENTRIES_BUFFER];
             var["gHashCacheVoxelDataBuffer"] = mFrameCount % 2 == 0 ? mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_0] : mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_1];
             var["gHashCacheVoxelDataBufferPrev"] = mFrameCount % 2 == 1 ? mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_0] : mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_1];
+            var["PrimalBuffer"] = mBuffers[NN_PRIMAL_BUFFER];
+            var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
             for (auto channel : kInputChannels) var[channel.texname] = renderData.getTexture(channel.name);
             for (auto channel : kOutputChannels) var[channel.texname] = renderData.getTexture(channel.name);
             mpPixelDebug->prepareProgram(mPasses[FILL_CACHE_PASS]->getProgram(), var);
@@ -360,14 +366,14 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
 
     const uint2 targetDim = renderData.getDefaultTextureDims();
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
+    mPasses[NN_GRADIENT_CLEAR_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
     if (mHashCacheActive)
     {
         mPasses[FILL_CACHE_PASS]->execute(pRenderContext, frameDim.x / 5, frameDim.y / 5);
         mPasses[RESOLVE_PASS]->execute(pRenderContext, mHashCacheHashMapSize, 1);
     }
-    mPasses[NN_GRADIENT_CLEAR_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
-    mPasses[PATH_TRACING_PASS]->execute(pRenderContext, frameDim.x, frameDim.y);
     mPasses[NN_GRADIENT_DESCENT_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
+    mPasses[PATH_TRACING_PASS]->execute(pRenderContext, frameDim.x, frameDim.y);
     mpPixelDebug->endFrame(pRenderContext);
     mFrameCount++;
     mNNParams.optimizerParams.step_count++;
@@ -457,6 +463,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
                 ImGui::InputFloat("epsilon", &mNNParams.optimizerParams.param_2, 0.0f, 0.0f, "%.8f");
             }
             ImGui::PopItemWidth();
+            nn_group.checkbox("Debug NN output", mNNParams.debugOutput);
 
             ImGui::PushItemWidth(120);
             ImGui::Text("Weight init bounds");
