@@ -3,11 +3,16 @@
 #include "RenderGraph/RenderPassStandardFlags.h"
 #include "imgui.h"
 
+#include <random>
+#include <string>
+
 namespace
 {
 constexpr bool kUseImGui = true;
 const std::string kPTShaderFile("RenderPasses/ComputePathTracer/ComputePathTracer.slang");
 const std::string khashCacheResolveShaderFile("RenderPasses/ComputePathTracer/HashCacheResolve.slang");
+const std::string kGradientClearShaderFile("RenderPasses/ComputePathTracer/tinynn/GradientClear.slang");
+const std::string kGradientDescentShaderFile("RenderPasses/ComputePathTracer/tinynn/GradientDescentPrimal.slang");
 
 const char kInputViewDir[] = "viewW";
 
@@ -69,11 +74,13 @@ ComputePathTracer::ComputePathTracer(ref<Device> pDevice, const Properties& prop
 {
     mpSampleGenerator = SampleGenerator::create(mpDevice, SAMPLE_GENERATOR_UNIFORM);
     mpPixelDebug = std::make_unique<PixelDebug>(mpDevice);
+    mpPixelDebug->enable();
     parseProperties(props);
 }
 
 void ComputePathTracer::reset()
 {
+    mNNParams.optimizerParams.step_count = 0;
     // Retain the options for the emissive sampler.
     if (auto lightBVHSampler = dynamic_cast<LightBVHSampler*>(mpEmissiveSampler.get()))
     {
@@ -174,6 +181,26 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         desc.addShaderLibrary(khashCacheResolveShaderFile).csEntry("hashCacheResolve");
         mPasses[RESOLVE_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
     }
+    if (!mPasses[NN_GRADIENT_CLEAR_PASS])
+    {
+        defineList["NN_PARAM_COUNT"] = std::to_string(mNNParams.nnParamCount);
+        ProgramDesc desc;
+        desc.addShaderLibrary(kGradientClearShaderFile).csEntry("main");
+        mPasses[NN_GRADIENT_CLEAR_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
+    }
+    if (!mPasses[NN_GRADIENT_DESCENT_PASS])
+    {
+        defineList["NN_PARAM_COUNT"] = std::to_string(mNNParams.nnParamCount);
+        defineList["NN_GRAD_OFFSET"] = std::to_string(mNNParams.gradOffset);
+        defineList["NN_OPTIMIZER_TYPE"] = std::to_string(mNNParams.optimizerParams.type);
+        defineList["NN_LEARNING_RATE"] = fmt::format("{:.12f}", mNNParams.optimizerParams.learn_r);
+        defineList["NN_PARAM_0"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_0);
+        defineList["NN_PARAM_1"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_1);
+        defineList["NN_PARAM_2"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_2);
+        ProgramDesc desc;
+        desc.addShaderLibrary(kGradientDescentShaderFile).csEntry("main");
+        mPasses[NN_GRADIENT_DESCENT_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
+    }
 }
 
 void ComputePathTracer::setupData(RenderContext* pRenderContext)
@@ -197,6 +224,14 @@ void ComputePathTracer::setupData(RenderContext* pRenderContext)
         if (!mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_0]) mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_0] = mpDevice->createBuffer((128 / 8) * mHashCacheHashMapSize);
         if (!mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_1]) mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_1] = mpDevice->createBuffer((128 / 8) * mHashCacheHashMapSize);
     }
+    std::mt19937 rnd(0);  // Generates random integers
+    std::uniform_real_distribution<float> dis(mNNParams.weightInitBound.x, mNNParams.weightInitBound.y);
+    auto gen = [&dis, &rnd](){ return dis(rnd); };
+    std::vector<float> data(mNNParams.nnParamCount);
+    std::generate(data.begin(), data.end(), gen);
+    if (!mBuffers[NN_PRIMAL_BUFFER]) mBuffers[NN_PRIMAL_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, data.data());
+    if (!mBuffers[NN_GRADIENT_BUFFER]) mBuffers[NN_GRADIENT_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, data.data());
+    if (!mBuffers[NN_GRADIENT_AUX_BUFFER]) mBuffers[NN_GRADIENT_AUX_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float) * 4);
 }
 
 void ComputePathTracer::setupBuffers()
@@ -240,25 +275,44 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
             mpPixelDebug->prepareProgram(mPasses[RESOLVE_PASS]->getProgram(), var);
         }
     }
-    // path tracing pass
-    auto var = mPasses[PATH_TRACING_PASS]->getRootVar();
-    var["CB"]["gFrameDim"] = frameDim;
-    var["CB"]["gFrameCount"] = mFrameCount;
-    var["CB"]["gCamPos"] = mCamPos;
-    mpScene->bindShaderData(var["gScene"]);
-    mpSampleGenerator->bindShaderData(var);
-    if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
-    if (mpEmissiveSampler) mpEmissiveSampler->bindShaderData(mpSamplerBlock->getRootVar()["emissiveSampler"]);
-    var["gSampler"] = mpSamplerBlock;
-    if (mHashCacheActive)
     {
-        var["gHashEntriesBuffer"] = mBuffers[HASH_ENTRIES_BUFFER];
-        var["gHashCacheVoxelDataBuffer"] = mFrameCount % 2 == 0 ? mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_0] : mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_1];
-        var["gHashCacheVoxelDataBufferPrev"] = mFrameCount % 2 == 1 ? mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_0] : mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_1];
+        // path tracing pass
+        auto var = mPasses[PATH_TRACING_PASS]->getRootVar();
+        var["CB"]["gFrameDim"] = frameDim;
+        var["CB"]["gFrameCount"] = mFrameCount;
+        var["CB"]["gCamPos"] = mCamPos;
+        mpScene->bindShaderData(var["gScene"]);
+        mpSampleGenerator->bindShaderData(var);
+        if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
+        if (mpEmissiveSampler) mpEmissiveSampler->bindShaderData(mpSamplerBlock->getRootVar()["emissiveSampler"]);
+        var["gSampler"] = mpSamplerBlock;
+        if (mHashCacheActive)
+        {
+            var["gHashEntriesBuffer"] = mBuffers[HASH_ENTRIES_BUFFER];
+            var["gHashCacheVoxelDataBuffer"] = mFrameCount % 2 == 0 ? mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_0] : mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_1];
+            var["gHashCacheVoxelDataBufferPrev"] = mFrameCount % 2 == 1 ? mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_0] : mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_1];
+        }
+        var["PrimalBuffer"] = mBuffers[NN_PRIMAL_BUFFER];
+        var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
+        for (auto channel : kInputChannels) var[channel.texname] = renderData.getTexture(channel.name);
+        for (auto channel : kOutputChannels) var[channel.texname] = renderData.getTexture(channel.name);
+        mpPixelDebug->prepareProgram(mPasses[PATH_TRACING_PASS]->getProgram(), var);
     }
-    for (auto channel : kInputChannels) var[channel.texname] = renderData.getTexture(channel.name);
-    for (auto channel : kOutputChannels) var[channel.texname] = renderData.getTexture(channel.name);
-    mpPixelDebug->prepareProgram(mPasses[PATH_TRACING_PASS]->getProgram(), var);
+    {
+        // gradient clear pass
+        auto var = mPasses[NN_GRADIENT_CLEAR_PASS]->getRootVar();
+        var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
+        mpPixelDebug->prepareProgram(mPasses[NN_GRADIENT_CLEAR_PASS]->getProgram(), var);
+    }
+    {
+        // gradient descent pass
+        auto var = mPasses[NN_GRADIENT_DESCENT_PASS]->getRootVar();
+        var["CB"]["t"] = mNNParams.optimizerParams.step_count;
+        var["PrimalBuffer"] = mBuffers[NN_PRIMAL_BUFFER];
+        var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
+        var["GradientAuxBuffer"] = mBuffers[NN_GRADIENT_AUX_BUFFER];
+        mpPixelDebug->prepareProgram(mPasses[NN_GRADIENT_BUFFER]->getProgram(), var);
+    }
 }
 
 void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData& renderData)
@@ -311,9 +365,12 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         mPasses[FILL_CACHE_PASS]->execute(pRenderContext, frameDim.x / 5, frameDim.y / 5);
         mPasses[RESOLVE_PASS]->execute(pRenderContext, mHashCacheHashMapSize, 1);
     }
+    mPasses[NN_GRADIENT_CLEAR_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
     mPasses[PATH_TRACING_PASS]->execute(pRenderContext, frameDim.x, frameDim.y);
+    mPasses[NN_GRADIENT_DESCENT_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
     mpPixelDebug->endFrame(pRenderContext);
     mFrameCount++;
+    mNNParams.optimizerParams.step_count++;
 }
 
 void ComputePathTracer::renderUI(Gui::Widgets& widget)
@@ -381,6 +438,35 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         hash_cache_group.checkbox("Debug voxels", mHashCacheDebugVoxels);
         hash_cache_group.checkbox("Debug color", mHashCacheDebugColor);
         hash_cache_group.checkbox("Debug levels", mHashCacheDebugLevels);
+    }
+    if (Gui::Group nn_group = widget.group("NN"))
+    {
+        if (kUseImGui)
+        {
+            ImGui::PushItemWidth(160);
+            ImGui::InputFloat("learning rate", &mNNParams.optimizerParams.learn_r, 0.0f, 0.0f, "%.6f");
+            if (mNNParams.optimizerParams.type == mNNParams.SGD)
+            {
+                ImGui::InputFloat("momentum", &mNNParams.optimizerParams.param_0, 0.0f, 0.0f, "%.8f");
+                ImGui::InputFloat("dampening", &mNNParams.optimizerParams.param_1, 0.0f, 0.0f, "%.8f");
+            }
+            else if (mNNParams.optimizerParams.type == mNNParams.ADAM)
+            {
+                ImGui::InputFloat("beta_1", &mNNParams.optimizerParams.param_0, 0.0f, 0.0f, "%.8f");
+                ImGui::InputFloat("beta_2", &mNNParams.optimizerParams.param_1, 0.0f, 0.0f, "%.8f");
+                ImGui::InputFloat("epsilon", &mNNParams.optimizerParams.param_2, 0.0f, 0.0f, "%.8f");
+            }
+            ImGui::PopItemWidth();
+
+            ImGui::PushItemWidth(120);
+            ImGui::Text("Weight init bounds");
+            ImGui::InputFloat("min", &mNNParams.weightInitBound.x, 0.0f, 0.0f, "%.6f");
+            ImGui::InputFloat("max", &mNNParams.weightInitBound.y, 0.0f, 0.0f, "%.6f");
+            ImGui::PopItemWidth();
+            ImGui::Separator();
+        }
+        else
+        { }
     }
     if (Gui::Group debug_group = widget.group("Debug"))
     {

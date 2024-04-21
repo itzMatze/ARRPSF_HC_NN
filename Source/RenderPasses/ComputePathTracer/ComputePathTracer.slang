@@ -1,3 +1,5 @@
+#include "tinynn/TinynnHalfMLP.hlsli"
+#include "tinynn/TinynnFeaturegrid.hlsli"
 #include "Scene/SceneDefines.slangh"
 #include "Utils/Math/MathConstants.slangh"
 
@@ -435,30 +437,57 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
     return outColor;
 }
 
-void __test(float3 a, out float3 b)
-{
-    __target_switch
-    {
-    case glsl:
-        __requireGLSLExtension("GL_GOOGLE_include_directive");
-        __requirePrelude(R"(#include "test.glsl")");
-        __intrinsic_asm "$1 = func($0)";
-    }
+static const int2 gFeatureGridDim = int2(120, 68);
+
+[Differentiable]
+float L2Loss(float3 x, no_diff float3 y) {
+    return dot((x - y), (x - y));
 }
 
-[numthreads(16, 16, 1)]
-void main(uint3 dispatchThreadId: SV_DispatchThreadID)
+typedef MLPHalf32X32<3, ReLU> MLPModule;
+
+[numthreads(32, 4, 1)]
+void main(uint3 dispatchThreadId: SV_DispatchThreadID,
+    int3 groupThreadId: SV_GroupThreadID,
+    int3 groupId: SV_GroupID)
 {
+    const ThreadInfo thread_info = ThreadInfo(groupThreadId.xy, int2(32, 4));
     uint2 pixel = dispatchThreadId.xy;
+    if (any(pixel >= gFrameDim)) return;
     SampleGenerator sg = SampleGenerator(pixel, gFrameCount);
 #if HASH_CACHE_UPDATE
     pixel = dispatchThreadId.xy * 5 + uint2(sampleNext2D(sg) * 5.99);
 #endif
-    if (any(pixel >= gFrameDim)) return;
     printSetPixel(pixel);
-    float3 b;
-    __test(float3(0.0), b);
-    float3 outputColor = tracePath(pixel, gFrameDim, sg);
+    float3 outputColor = float3(0.0, 1.0, 0.0);
+    outputColor = tracePath(pixel, gFrameDim, sg);
+#if !HASH_CACHE_UPDATE
+// NN
+    uint param_offset = 0; uint grad_offset = 0;
+    MLPModule mlp = MLPModule(param_offset, grad_offset, thread_info);
+    TensorView featureGrid = TensorView(param_offset, grad_offset, 14, 14 * gFeatureGridDim.x);
+    FeatureGrid2DIndex feature_index = FeatureGrid2DIndex(gFrameDim, pixel, gFeatureGridDim);
+    HalfFeature<32> feature = computeInterpolatedFeature(featureGrid, feature_index, float2(pixel) / float2(gFrameDim));
+    HalfFeature<32> output = MLPModule.forward(mlp, feature);
+    HalfFeature<32>.Differential output_grad;
+    float3 target_color = (pixel.y + pixel.x > (gFrameDim.y / 2 + gFrameDim.x / 2)) ? float3(1.0, 0.0, 1.0) : float3(0.0, 1.0, 1.0);
+    float3 color = float3(output.vals[0], output.vals[1], output.vals[2]);
+    var color_pair = diffPair(color);
+    float loss = L2Loss(color, target_color);
+    bwd_diff(L2Loss)(color_pair, target_color, 1);
+    const float gradient_scalar = 1.0 / 16.0f;
+    output_grad.vals[0] = float16_t(color_pair.d.x * gradient_scalar);
+    output_grad.vals[1] = float16_t(color_pair.d.y * gradient_scalar);
+    output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
+    var input_feature_pair = diffPair(feature);
+    bwd_diff(MLPModule.forward)(mlp, input_feature_pair, output_grad);
+    bwd_diff(computeInterpolatedFeature)(featureGrid, feature_index, float2(pixel) / float2(gFrameDim), input_feature_pair.d);
+
+    for (uint i = 0; i < 3; i++) print("", float(output.vals[i]));
+    if (isnan(output.vals[0])) outputColor = float3(1.0, 0.0, 0.0);
+    else if (isinf(output.vals[0])) outputColor = float3(1.0, 0.0, 1.0);
+    else outputColor = float3(output.vals[0], output.vals[1], output.vals[2]);
     gOutputColor[pixel] = float4(outputColor, 1.0f);
+#endif
 }
 

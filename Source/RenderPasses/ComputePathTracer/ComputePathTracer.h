@@ -72,6 +72,10 @@ private:
         HASH_ENTRIES_BUFFER = 0,
         HASH_CACHE_VOXEL_DATA_BUFFER_0 = 1,
         HASH_CACHE_VOXEL_DATA_BUFFER_1 = 2,
+        NN_PRIMAL_BUFFER = 3,
+        NN_GRADIENT_BUFFER = 4,
+        NN_GRADIENT_AUX_BUFFER = 5,
+        LOSS_SUM_BUFFER = 6,
         BUFFER_COUNT
     };
 
@@ -80,6 +84,8 @@ private:
         FILL_CACHE_PASS = 0,
         RESOLVE_PASS = 1,
         PATH_TRACING_PASS = 2,
+        NN_GRADIENT_CLEAR_PASS = 3,
+        NN_GRADIENT_DESCENT_PASS = 4,
         PASS_COUNT
     };
 
@@ -109,6 +115,7 @@ private:
     ref<ParameterBlock> mpSamplerBlock;
     std::unique_ptr<PixelDebug> mpPixelDebug;
 
+// Hash Cache
     // should hash cache be enabled, this state is used when the options are applied
     bool mEnableHashCache = true;
     // is hash cache currently used in the program
@@ -118,6 +125,26 @@ private:
     bool mHashCacheDebugVoxels = false;
     bool mHashCacheDebugColor = false;
     bool mHashCacheDebugLevels = false;
+
+// NN
+    struct NNParams
+    {
+        enum OptimizerType {
+            SGD = 0,
+            ADAM = 1,
+        };
+        struct OptimizerParam {
+            OptimizerType type = ADAM;
+            int step_count = 0;
+            float learn_r = 0.01;
+            float param_0 = 0.9;
+            float param_1 = 0.999;
+            float param_2 = 1e-08;
+        } optimizerParams;
+        uint nnParamCount = (64 * 64 /*weights*/ + 64 /*biases*/ * 12 /*max layers*/ + 120 * 68 * 14 /*feature grid*/ + 4096 * 4096);
+        int gradOffset = 0;
+        float2 weightInitBound = float2(0.001, 0.02);
+    } mNNParams;
 
     uint mFrameCount = 0;
     bool mOptionsChanged = true;
