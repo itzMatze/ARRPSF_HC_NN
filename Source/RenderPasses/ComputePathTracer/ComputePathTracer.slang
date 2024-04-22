@@ -447,7 +447,7 @@ float L2Loss(float3 x, no_diff float3 y) {
     return dot((x - y), (x - y));
 }
 
-typedef MLPHalf32X32<3, ReLU> MLPModule;
+typedef MLPHalf32X32<NN_LAYER_COUNT, ReLU> MLPModule;
 
 [numthreads(32, 4, 1)]
 void main(uint3 dispatchThreadId: SV_DispatchThreadID,

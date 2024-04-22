@@ -74,13 +74,14 @@ ComputePathTracer::ComputePathTracer(ref<Device> pDevice, const Properties& prop
 {
     mpSampleGenerator = SampleGenerator::create(mpDevice, SAMPLE_GENERATOR_UNIFORM);
     mpPixelDebug = std::make_unique<PixelDebug>(mpDevice);
-    mpPixelDebug->enable();
+    //mpPixelDebug->enable();
     parseProperties(props);
 }
 
 void ComputePathTracer::reset()
 {
     mNNParams.optimizerParams.step_count = 0;
+    mNNParams.update();
     // Retain the options for the emissive sampler.
     if (auto lightBVHSampler = dynamic_cast<LightBVHSampler*>(mpEmissiveSampler.get()))
     {
@@ -162,6 +163,8 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["NN_PARAM_0"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_0);
     defineList["NN_PARAM_1"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_1);
     defineList["NN_PARAM_2"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_2);
+    defineList["NN_LAYER_WIDTH"] = std::to_string(mNNParams.nnLayerWidth);
+    defineList["NN_LAYER_COUNT"] = std::to_string(mNNParams.nnLayerCount);
 
     if (!mPasses[FILL_CACHE_PASS] && mHashCacheActive)
     {
@@ -449,23 +452,27 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     {
         if (kUseImGui)
         {
-            ImGui::PushItemWidth(160);
-            ImGui::InputFloat("learning rate", &mNNParams.optimizerParams.learn_r, 0.0f, 0.0f, "%.6f");
-            if (mNNParams.optimizerParams.type == mNNParams.SGD)
+            if (Gui::Group nn_optimizer_group = nn_group.group("Optimizer"))
             {
-                ImGui::InputFloat("momentum", &mNNParams.optimizerParams.param_0, 0.0f, 0.0f, "%.8f");
-                ImGui::InputFloat("dampening", &mNNParams.optimizerParams.param_1, 0.0f, 0.0f, "%.8f");
+                ImGui::PushItemWidth(160);
+                ImGui::InputFloat("learning rate", &mNNParams.optimizerParams.learn_r, 0.0f, 0.0f, "%.6f");
+                if (mNNParams.optimizerParams.type == mNNParams.SGD)
+                {
+                    ImGui::InputFloat("momentum", &mNNParams.optimizerParams.param_0, 0.0f, 0.0f, "%.8f");
+                    ImGui::InputFloat("dampening", &mNNParams.optimizerParams.param_1, 0.0f, 0.0f, "%.8f");
+                }
+                else if (mNNParams.optimizerParams.type == mNNParams.ADAM)
+                {
+                    ImGui::InputFloat("beta_1", &mNNParams.optimizerParams.param_0, 0.0f, 0.0f, "%.8f");
+                    ImGui::InputFloat("beta_2", &mNNParams.optimizerParams.param_1, 0.0f, 0.0f, "%.8f");
+                    ImGui::InputFloat("epsilon", &mNNParams.optimizerParams.param_2, 0.0f, 0.0f, "%.8f");
+                }
+                ImGui::PopItemWidth();
             }
-            else if (mNNParams.optimizerParams.type == mNNParams.ADAM)
-            {
-                ImGui::InputFloat("beta_1", &mNNParams.optimizerParams.param_0, 0.0f, 0.0f, "%.8f");
-                ImGui::InputFloat("beta_2", &mNNParams.optimizerParams.param_1, 0.0f, 0.0f, "%.8f");
-                ImGui::InputFloat("epsilon", &mNNParams.optimizerParams.param_2, 0.0f, 0.0f, "%.8f");
-            }
-            ImGui::PopItemWidth();
-            nn_group.checkbox("Debug NN output", mNNParams.debugOutput);
-
             ImGui::PushItemWidth(120);
+            nn_group.dropdown("NN layer width", mNNParams.nnLayerWidthList, mNNParams.nnLayerWidth);
+            ImGui::InputInt("NN layer count", &mNNParams.nnLayerCount);
+            nn_group.checkbox("Debug NN output", mNNParams.debugOutput);
             ImGui::Text("Weight init bounds");
             ImGui::InputFloat("min", &mNNParams.weightInitBound.x, 0.0f, 0.0f, "%.6f");
             ImGui::InputFloat("max", &mNNParams.weightInitBound.y, 0.0f, 0.0f, "%.6f");

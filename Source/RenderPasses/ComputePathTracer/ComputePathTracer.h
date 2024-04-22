@@ -141,10 +141,18 @@ private:
             float param_1 = 0.999;
             float param_2 = 1e-08;
         } optimizerParams;
-        uint nnParamCount = (64 * 64 /*weights*/ + 64 /*biases*/ * 12 /*max layers*/ + 120 * 68 * 14 /*feature grid*/ + 4096 * 4096);
+        int nnLayerCount = 5;
+        Gui::DropdownList nnLayerWidthList{Gui::DropdownValue{16, "16"}, Gui::DropdownValue{32, "32"}};
+        uint nnLayerWidth = 32;
+        uint nnParamCount = 0;
         int gradOffset = 0;
         float2 weightInitBound = float2(0.001, 0.02);
         bool debugOutput = true;
+
+        void update()
+        {
+            nnParamCount = ((nnLayerWidth * nnLayerWidth /*weights*/ + nnLayerWidth /*biases*/) * nnLayerCount + 120 * 68 * 14 /*feature grid*/);
+        }
     } mNNParams;
 
     uint mFrameCount = 0;
