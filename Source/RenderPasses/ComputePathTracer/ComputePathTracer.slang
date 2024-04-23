@@ -459,7 +459,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     if (any(pixel >= gFrameDim)) return;
     SampleGenerator sg = SampleGenerator(pixel, gFrameCount);
 #if HASH_CACHE_UPDATE || NN_TRAIN
-    pixel = dispatchThreadId.xy * 5 + uint2(sampleNext2D(sg) * 5.99);
+    pixel = dispatchThreadId.xy * 10 + uint2(sampleNext2D(sg) * 10.99);
 #endif
     printSetPixel(pixel);
     float3 outputColor = float3(0.0, 1.0, 0.0);

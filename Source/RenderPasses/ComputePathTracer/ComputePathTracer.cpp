@@ -369,13 +369,16 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
 
     const uint2 targetDim = renderData.getDefaultTextureDims();
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
-    mPasses[NN_GRADIENT_CLEAR_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
-    if (mHashCacheActive)
+    for (uint32_t i = 0; i < 4; i++)
     {
-        mPasses[FILL_CACHE_PASS]->execute(pRenderContext, frameDim.x / 5, frameDim.y / 5);
-        mPasses[RESOLVE_PASS]->execute(pRenderContext, mHashCacheHashMapSize, 1);
+        mPasses[NN_GRADIENT_CLEAR_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
+        if (mHashCacheActive)
+        {
+            mPasses[FILL_CACHE_PASS]->execute(pRenderContext, frameDim.x / 10, frameDim.y / 10);
+        }
+        mPasses[NN_GRADIENT_DESCENT_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
     }
-    mPasses[NN_GRADIENT_DESCENT_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
+    mPasses[RESOLVE_PASS]->execute(pRenderContext, mHashCacheHashMapSize, 1);
     mPasses[PATH_TRACING_PASS]->execute(pRenderContext, frameDim.x, frameDim.y);
     mpPixelDebug->endFrame(pRenderContext);
     mFrameCount++;
