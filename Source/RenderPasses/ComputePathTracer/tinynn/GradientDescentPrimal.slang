@@ -32,6 +32,7 @@ void main(int3 dtid: SV_DispatchThreadID) {
 
     const float theta = PrimalBuffer[tid];
     float df_dtheta = GradientBuffer[kGradOffset + tid];
+    df_dtheta = clamp(df_dtheta, -1.0, 1.0);
 
     if (kOptimizerType == uint32_t(OptimizerType::SGD)) {
         float b_t = GradientAuxBuffer[kGradOffset + tid];

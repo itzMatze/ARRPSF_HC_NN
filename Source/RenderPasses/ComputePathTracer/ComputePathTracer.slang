@@ -485,12 +485,14 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     HalfFeature<32> output = MLPModule.forward(mlp, feature);
 #if NN_TRAIN
     HalfFeature<32>.Differential output_grad;
-    float3 target_color = (pixel.y + pixel.x > (gFrameDim.y / 2 + gFrameDim.x / 2)) ? float3(1.0, 0.0, 1.0) : float3(0.0, 1.0, 1.0);
+    float3 target_color = float3(float2(pixel) / float2(gFrameDim), 0.0);
+    //floar3 target_color = (pixel.y + pixel.x > (gFrameDim.y / 2 + gFrameDim.x / 2)) ? float3(1.0, 0.0, 1.0) : float3(0.0, 1.0, 1.0);
+    //float3 target_color = outputColor;
     float3 color = float3(output.vals[0], output.vals[1], output.vals[2]);
     var color_pair = diffPair(color);
     float loss = L2Loss(color, target_color);
     bwd_diff(L2Loss)(color_pair, target_color, 1);
-    const float gradient_scalar = 1.0;
+    const float gradient_scalar = 1.0 / float(gFrameDim.x);
     output_grad.vals[0] = float16_t(color_pair.d.x * gradient_scalar);
     output_grad.vals[1] = float16_t(color_pair.d.y * gradient_scalar);
     output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
