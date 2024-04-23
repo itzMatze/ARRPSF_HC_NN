@@ -414,6 +414,8 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
 #endif // HASH_CACHE_UPDATE || HASH_CACHE_QUERY
 #if HASH_CACHE_UPDATE
         rayData.hashCacheState.pathLength = 0;
+        float3 thp = float3(1.0);
+        float3 radiance = float3(0.0);
 #endif // HASH_CACHE_UPDATE
 
         if (!handleHit(hit, Ray(gScene.camera.getPosition(), -gViewW[pixel].xyz), rayData)) return rayData.radiance;
@@ -422,6 +424,8 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
         while (rayData.numBounces <= kUpperBounceCount)
         {
 #if HASH_CACHE_UPDATE
+            radiance += thp * rayData.radiance;
+            thp *= rayData.thp;
             rayData.thp = float3(1.0f);
             rayData.radiance = float3(0.0f);
 #endif
@@ -429,7 +433,13 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
             rayData.numBounces++;
         }
         // Store contribution from scatter ray.
+#if HASH_CACHE_UPDATE
+        radiance += thp * rayData.radiance;
+        thp *= rayData.thp;
+        outColor += radiance;
+#else
         outColor += rayData.radiance;
+#endif
         if (kDebugPathLength) return colormapViridis(float(rayData.numBounces) / float(kUpperBounceCount));
     }
     else
