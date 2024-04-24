@@ -1,5 +1,7 @@
+#if NN_TRAIN || NN_QUERY
 #include "tinynn/TinynnHalfMLP.hlsli"
 #include "tinynn/TinynnFeaturegrid.hlsli"
+#endif
 #include "Scene/SceneDefines.slangh"
 #include "Utils/Math/MathConstants.slangh"
 
@@ -53,8 +55,6 @@ static const uint kHashCacheDebugVoxels = HASH_CACHE_DEBUG_VOXELS;
 static const uint kHashCacheDebugColor = HASH_CACHE_DEBUG_COLOR;
 static const uint kHashCacheDebugLevels = HASH_CACHE_DEBUG_LEVELS;
 static const bool kNNDebug = NN_DEBUG;
-static const bool kNNTrain = NN_TRAIN;
-static const bool kNNQuery = NN_QUERY;
 
 struct ScatterRayData
 {
@@ -457,14 +457,15 @@ float L2Loss(float3 x, no_diff float3 y) {
     return dot((x - y), (x - y));
 }
 
+#if NN_TRAIN || NN_QUERY
 typedef MLPHalf32X32<NN_LAYER_COUNT, ReLU> MLPModule;
+#endif
 
 [numthreads(32, 4, 1)]
 void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     int3 groupThreadId: SV_GroupThreadID,
     int3 groupId: SV_GroupID)
 {
-    const ThreadInfo thread_info = ThreadInfo(groupThreadId.xy, int2(32, 4));
     uint2 pixel = dispatchThreadId.xy;
     if (any(pixel >= gFrameDim)) return;
     SampleGenerator sg = SampleGenerator(pixel, gFrameCount);
@@ -477,6 +478,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
 
 // NN
 #if NN_TRAIN || NN_QUERY
+    const ThreadInfo thread_info = ThreadInfo(groupThreadId.xy, int2(32, 4));
     uint param_offset = 0; uint grad_offset = 0;
     MLPModule mlp = MLPModule(param_offset, grad_offset, thread_info);
     TensorView featureGrid = TensorView(param_offset, grad_offset, 14, 14 * gFeatureGridDim.x);

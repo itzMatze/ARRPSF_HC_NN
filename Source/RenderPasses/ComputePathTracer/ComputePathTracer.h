@@ -81,7 +81,7 @@ private:
 
     enum // Passes
     {
-        FILL_CACHE_PASS = 0,
+        TRAIN_NN_FILL_CACHE_PASS = 0,
         RESOLVE_PASS = 1,
         PATH_TRACING_PASS = 2,
         NN_GRADIENT_CLEAR_PASS = 3,
@@ -129,6 +129,8 @@ private:
 // NN
     struct NNParams
     {
+        bool enable = true;
+        bool active = true;
         enum OptimizerType {
             SGD = 0,
             ADAM = 1,

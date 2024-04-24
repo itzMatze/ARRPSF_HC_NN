@@ -40,6 +40,7 @@ const std::string kRRProbStartValue = "RRProbStartValue";
 const std::string kRRProbReductionFactor = "RRProbReductionFactor";
 const std::string kLightBVHOptions = "lightBVHOptions";
 const std::string kEnableHashCache = "enableHashCache";
+const std::string kEnableNN = "enableNN";
 const std::string kHashCacheHashMapSizeExponent = "hashCacheHashMapSizeExponent";
 } // namespace
 
@@ -61,6 +62,7 @@ void ComputePathTracer::parseProperties(const Properties& props)
         else if (key == kUseRR) mUseRR = value;
         else if (key == kLightBVHOptions) mLightBVHOptions = value;
         else if (key == kEnableHashCache) mEnableHashCache = value;
+        else if (key == kEnableNN) mNNParams.enable = value;
         else if (key == kHashCacheHashMapSizeExponent)
         {
             mHashCacheHashMapSizeExp = uint32_t(value);
@@ -115,6 +117,7 @@ Properties ComputePathTracer::getProperties() const
     props[kRRProbStartValue] = mRRProbStartValue;
     props[kRRProbReductionFactor] = mRRProbReductionFactor;
     props[kEnableHashCache] = mEnableHashCache;
+    props[kEnableNN] = mNNParams.enable;
     props[kHashCacheHashMapSizeExponent] = mHashCacheHashMapSizeExp;
     return props;
 }
@@ -166,24 +169,24 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["NN_LAYER_WIDTH"] = std::to_string(mNNParams.nnLayerWidth);
     defineList["NN_LAYER_COUNT"] = std::to_string(mNNParams.nnLayerCount);
 
-    if (!mPasses[FILL_CACHE_PASS] && mHashCacheActive)
+    if (!mPasses[TRAIN_NN_FILL_CACHE_PASS] && (mHashCacheActive || mNNParams.active))
     {
-        defineList["HASH_CACHE_UPDATE"] = "1";
+        defineList["HASH_CACHE_UPDATE"] = mHashCacheActive ? "1" : "0";
         defineList["HASH_CACHE_QUERY"] = "0";
-        defineList["NN_TRAIN"] = "1";
+        defineList["NN_TRAIN"] = mNNParams.active ? "1" : "0";
         defineList["NN_QUERY"] = "0";
         ProgramDesc desc;
         desc.addShaderModules(mpScene->getShaderModules());
         desc.addShaderLibrary(kPTShaderFile).csEntry("main");
         desc.addTypeConformances(mpScene->getTypeConformances());
-        mPasses[FILL_CACHE_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
+        mPasses[TRAIN_NN_FILL_CACHE_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
     }
     if (!mPasses[PATH_TRACING_PASS])
     {
         defineList["HASH_CACHE_UPDATE"] = "0";
         defineList["HASH_CACHE_QUERY"] = mHashCacheActive ? "1" : "0";
         defineList["NN_TRAIN"] = "0";
-        defineList["NN_QUERY"] = "1";
+        defineList["NN_QUERY"] = mNNParams.active ? "1" : "0";
         ProgramDesc desc;
         desc.addShaderModules(mpScene->getShaderModules());
         desc.addShaderLibrary(kPTShaderFile).csEntry("main");
@@ -196,13 +199,13 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         desc.addShaderLibrary(khashCacheResolveShaderFile).csEntry("hashCacheResolve");
         mPasses[RESOLVE_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
     }
-    if (!mPasses[NN_GRADIENT_CLEAR_PASS])
+    if (!mPasses[NN_GRADIENT_CLEAR_PASS] && mNNParams.active)
     {
         ProgramDesc desc;
         desc.addShaderLibrary(kGradientClearShaderFile).csEntry("main");
         mPasses[NN_GRADIENT_CLEAR_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
     }
-    if (!mPasses[NN_GRADIENT_DESCENT_PASS])
+    if (!mPasses[NN_GRADIENT_DESCENT_PASS] && mNNParams.active)
     {
         ProgramDesc desc;
         desc.addShaderLibrary(kGradientDescentShaderFile).csEntry("main");
@@ -252,40 +255,42 @@ void ComputePathTracer::setupBuffers()
 void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
 {
     mCamPos = mpScene->getCamera()->getPosition();
-    if (mHashCacheActive)
+    if (mHashCacheActive || mNNParams.active)
     {
+        auto var = mPasses[TRAIN_NN_FILL_CACHE_PASS]->getRootVar();
+        var["CB"]["gFrameDim"] = frameDim;
+        var["CB"]["gFrameCount"] = mFrameCount;
+        var["CB"]["gCamPos"] = mCamPos;
+        mpScene->bindShaderData(var["gScene"]);
+        mpSampleGenerator->bindShaderData(var);
+        if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
+        if (mpEmissiveSampler) mpEmissiveSampler->bindShaderData(mpSamplerBlock->getRootVar()["emissiveSampler"]);
+        var["gSampler"] = mpSamplerBlock;
+        if (mHashCacheActive)
         {
-            // fill cache pass
-            auto var = mPasses[FILL_CACHE_PASS]->getRootVar();
-            var["CB"]["gFrameDim"] = frameDim;
-            var["CB"]["gFrameCount"] = mFrameCount;
-            var["CB"]["gCamPos"] = mCamPos;
-            mpScene->bindShaderData(var["gScene"]);
-            mpSampleGenerator->bindShaderData(var);
-            if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
-            if (mpEmissiveSampler) mpEmissiveSampler->bindShaderData(mpSamplerBlock->getRootVar()["emissiveSampler"]);
-            var["gSampler"] = mpSamplerBlock;
             var["gHashEntriesBuffer"] = mBuffers[HASH_ENTRIES_BUFFER];
             var["gHashCacheVoxelDataBuffer"] = mFrameCount % 2 == 0 ? mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_0] : mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_1];
             var["gHashCacheVoxelDataBufferPrev"] = mFrameCount % 2 == 1 ? mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_0] : mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_1];
+        }
+        if (mNNParams.active)
+        {
             var["PrimalBuffer"] = mBuffers[NN_PRIMAL_BUFFER];
             var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
-            for (auto channel : kInputChannels) var[channel.texname] = renderData.getTexture(channel.name);
-            for (auto channel : kOutputChannels) var[channel.texname] = renderData.getTexture(channel.name);
-            mpPixelDebug->prepareProgram(mPasses[FILL_CACHE_PASS]->getProgram(), var);
         }
-        {
-            // resolve pass
-            auto var = mPasses[RESOLVE_PASS]->getRootVar();
-            var["CB"]["gCamPos"] = mCamPos;
-            var["gHashEntriesBuffer"] = mBuffers[HASH_ENTRIES_BUFFER];
-            var["gHashCacheVoxelDataBuffer"] = mFrameCount % 2 == 0 ? mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_0] : mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_1];
-            var["gHashCacheVoxelDataBufferPrev"] = mFrameCount % 2 == 1 ? mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_0] : mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_1];
-            mpPixelDebug->prepareProgram(mPasses[RESOLVE_PASS]->getProgram(), var);
-        }
+        for (auto channel : kInputChannels) var[channel.texname] = renderData.getTexture(channel.name);
+        for (auto channel : kOutputChannels) var[channel.texname] = renderData.getTexture(channel.name);
+        mpPixelDebug->prepareProgram(mPasses[TRAIN_NN_FILL_CACHE_PASS]->getProgram(), var);
+    }
+    if (mHashCacheActive)
+    {
+        auto var = mPasses[RESOLVE_PASS]->getRootVar();
+        var["CB"]["gCamPos"] = mCamPos;
+        var["gHashEntriesBuffer"] = mBuffers[HASH_ENTRIES_BUFFER];
+        var["gHashCacheVoxelDataBuffer"] = mFrameCount % 2 == 0 ? mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_0] : mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_1];
+        var["gHashCacheVoxelDataBufferPrev"] = mFrameCount % 2 == 1 ? mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_0] : mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_1];
+        mpPixelDebug->prepareProgram(mPasses[RESOLVE_PASS]->getProgram(), var);
     }
     {
-        // path tracing pass
         auto var = mPasses[PATH_TRACING_PASS]->getRootVar();
         var["CB"]["gFrameDim"] = frameDim;
         var["CB"]["gFrameCount"] = mFrameCount;
@@ -301,20 +306,23 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
             var["gHashCacheVoxelDataBuffer"] = mFrameCount % 2 == 0 ? mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_0] : mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_1];
             var["gHashCacheVoxelDataBufferPrev"] = mFrameCount % 2 == 1 ? mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_0] : mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_1];
         }
-        var["PrimalBuffer"] = mBuffers[NN_PRIMAL_BUFFER];
-        var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
+        if (mNNParams.active)
+        {
+            var["PrimalBuffer"] = mBuffers[NN_PRIMAL_BUFFER];
+            var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
+        }
         for (auto channel : kInputChannels) var[channel.texname] = renderData.getTexture(channel.name);
         for (auto channel : kOutputChannels) var[channel.texname] = renderData.getTexture(channel.name);
         mpPixelDebug->prepareProgram(mPasses[PATH_TRACING_PASS]->getProgram(), var);
     }
+    if (mNNParams.active)
     {
-        // gradient clear pass
         auto var = mPasses[NN_GRADIENT_CLEAR_PASS]->getRootVar();
         var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
         mpPixelDebug->prepareProgram(mPasses[NN_GRADIENT_CLEAR_PASS]->getProgram(), var);
     }
+    if (mNNParams.active)
     {
-        // gradient descent pass
         auto var = mPasses[NN_GRADIENT_DESCENT_PASS]->getRootVar();
         var["CB"]["t"] = mNNParams.optimizerParams.step_count;
         var["PrimalBuffer"] = mBuffers[NN_PRIMAL_BUFFER];
@@ -360,6 +368,7 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         reset();
         renderData.getDictionary()[Falcor::kRenderPassRefreshFlags] = Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
         mHashCacheActive = mEnableHashCache;
+        mNNParams.active = mNNParams.enable;
         setupData(pRenderContext);
         createPasses(renderData);
         setupBuffers();
@@ -371,14 +380,11 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
     for (uint32_t i = 0; i < 4; i++)
     {
-        mPasses[NN_GRADIENT_CLEAR_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
-        if (mHashCacheActive)
-        {
-            mPasses[FILL_CACHE_PASS]->execute(pRenderContext, frameDim.x / 10, frameDim.y / 10);
-        }
-        mPasses[NN_GRADIENT_DESCENT_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
+        if (mNNParams.active) mPasses[NN_GRADIENT_CLEAR_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
+        if (mHashCacheActive || mNNParams.active) mPasses[TRAIN_NN_FILL_CACHE_PASS]->execute(pRenderContext, frameDim.x / 10, frameDim.y / 10);
+        if (mNNParams.active) mPasses[NN_GRADIENT_DESCENT_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
     }
-    mPasses[RESOLVE_PASS]->execute(pRenderContext, mHashCacheHashMapSize, 1);
+    if (mHashCacheActive) mPasses[RESOLVE_PASS]->execute(pRenderContext, mHashCacheHashMapSize, 1);
     mPasses[PATH_TRACING_PASS]->execute(pRenderContext, frameDim.x, frameDim.y);
     mpPixelDebug->endFrame(pRenderContext);
     mFrameCount++;
@@ -453,6 +459,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     }
     if (Gui::Group nn_group = widget.group("NN"))
     {
+        nn_group.checkbox("Enable NN", mNNParams.enable);
         if (kUseImGui)
         {
             if (Gui::Group nn_optimizer_group = nn_group.group("Optimizer"))
