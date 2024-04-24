@@ -457,8 +457,8 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
 static const int2 gFeatureGridDim = int2(120, 68);
 
 [Differentiable]
-float L2Loss(float3 x, no_diff float3 y) {
-    return dot((x - y), (x - y));
+float L2Loss(float3 value, no_diff float3 target, no_diff float3 normValue) {
+    return dot((value - target), (value - target)) / (dot(normValue, normValue) + 0.01);
 }
 
 #if NN_TRAIN || NN_QUERY
@@ -496,8 +496,8 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     //float3 target_color = outputColor;
     float3 color = float3(output.vals[0], output.vals[1], output.vals[2]);
     var color_pair = diffPair(color);
-    float loss = L2Loss(color, target_color);
-    bwd_diff(L2Loss)(color_pair, target_color, 1);
+    float loss = L2Loss(color, target_color, color);
+    bwd_diff(L2Loss)(color_pair, target_color, color, 1);
     const float gradient_scalar = 1.0 / float(gFrameDim.x);
     output_grad.vals[0] = float16_t(color_pair.d.x * gradient_scalar);
     output_grad.vals[1] = float16_t(color_pair.d.y * gradient_scalar);
