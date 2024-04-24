@@ -249,8 +249,8 @@ bool handleHit(const HitInfo hit, const Ray ray, inout ScatterRayData rayData)
         float alpha = min(rayData.materialRoughness * rayData.materialRoughness, 0.99);
         rayData.materialRoughness = bsdfProperties.roughness;
         alpha *= alpha;
-        rayData.spread += 2.0 * rayData.t * sqrt(0.5f * alpha / (1.0f - alpha));
-        isValidHit &= rayData.spread > voxelSize;
+        rayData.spread += rayData.t * sqrt(0.5f * alpha / (1.0f - alpha));
+        isValidHit &= rayData.spread * lerp(0.5f, 1.5f, sampleNext1D(rayData.sg)) > voxelSize;
         isValidHit &= rayData.numBounces > 0;
 
         float3 hashCacheRadiance;
@@ -440,7 +440,11 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
 #else
         outColor += rayData.radiance;
 #endif
-        if (kDebugPathLength) return colormapViridis(float(rayData.numBounces) / float(kUpperBounceCount));
+        if (kDebugPathLength)
+        {
+            print("Path Length:", rayData.numBounces);
+            return colormapViridis(float(rayData.numBounces) / float(kUpperBounceCount));
+        }
     }
     else
     {
