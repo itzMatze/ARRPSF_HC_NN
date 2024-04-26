@@ -56,6 +56,22 @@ static const uint kHashCacheDebugColor = HASH_CACHE_DEBUG_COLOR;
 static const uint kHashCacheDebugLevels = HASH_CACHE_DEBUG_LEVELS;
 static const bool kNNDebug = NN_DEBUG;
 
+struct NNHitInfo
+{
+    float3 pos;
+    float3 dir;
+    float3 albedo;
+
+    __init()
+    {
+        pos = float3(0.0);
+        dir = float3(0.0);
+        albedo = float3(0.0);
+    }
+};
+
+static NNHitInfo hitInfoList[1];
+
 struct ScatterRayData
 {
 #if HASH_CACHE_UPDATE || HASH_CACHE_QUERY
@@ -226,7 +242,8 @@ bool handleHit(const HitInfo hit, const Ray ray, inout ScatterRayData rayData)
     ShadingData sd = loadShadingData(triangleHit, ray.dir, lod);
     IMaterialInstance mi = gScene.materials.getMaterialInstance(sd, lod);
     BSDFProperties bsdfProperties = mi.getProperties(sd);
-
+    if (rayData.numBounces == 0) hitInfoList[0].pos = sd.posW;
+    else if (rayData.numBounces == 1) hitInfoList[0].albedo = rayData.thp;
 #if HASH_CACHE_UPDATE || HASH_CACHE_QUERY
     // Construct HashCacheHitData structure needed for creating a query point at this hit location
     HashCacheHitData hashCacheHitData;
@@ -402,6 +419,7 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
     float3 outColor = float3(0.f);
     const HitInfo hit = HitInfo(gVBuffer[pixel]);
 
+    hitInfoList[0].dir = -gViewW[pixel].xyz;
     if (hit.isValid() && hit.getType() == HitType::Triangle)
     {
         ScatterRayData rayData = ScatterRayData(sg);
@@ -472,6 +490,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
 {
     uint2 pixel = dispatchThreadId.xy;
     if (any(pixel >= gFrameDim)) return;
+    hitInfoList[0] = NNHitInfo();
     SampleGenerator sg = SampleGenerator(pixel, gFrameCount);
 #if HASH_CACHE_UPDATE || NN_TRAIN
     pixel = dispatchThreadId.xy * 10 + uint2(sampleNext2D(sg) * 10.99);
@@ -487,24 +506,24 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     MLPModule mlp = MLPModule(param_offset, grad_offset, thread_info);
     TensorView featureGrid = TensorView(param_offset, grad_offset, 14, 14 * gFeatureGridDim.x);
     FeatureGrid2DIndex feature_index = FeatureGrid2DIndex(gFrameDim, pixel, gFeatureGridDim);
-    HalfFeature<32> feature = computeInterpolatedFeature(featureGrid, feature_index, float2(pixel) / float2(gFrameDim));
+    HalfFeature<32> feature = computeInterpolatedFeature(featureGrid, feature_index, hitInfoList[0].pos, hitInfoList[0].dir, hitInfoList[0].albedo);
     HalfFeature<32> output = MLPModule.forward(mlp, feature);
 #if NN_TRAIN
     HalfFeature<32>.Differential output_grad;
-    float3 target_color = float3(float2(pixel) / float2(gFrameDim), 0.0);
-    //floar3 target_color = (pixel.y + pixel.x > (gFrameDim.y / 2 + gFrameDim.x / 2)) ? float3(1.0, 0.0, 1.0) : float3(0.0, 1.0, 1.0);
-    //float3 target_color = outputColor;
+    //float3 target_color = float3(float2(pixel) / float2(gFrameDim), 0.0);
+    //float3 target_color = (pixel.y + pixel.x > (gFrameDim.y / 2 + gFrameDim.x / 2)) ? float3(1.0, 0.0, 1.0) : float3(0.0, 1.0, 1.0);
+    float3 target_color = outputColor;
     float3 color = float3(output.vals[0], output.vals[1], output.vals[2]);
     var color_pair = diffPair(color);
     float loss = L2Loss(color, target_color, color);
     bwd_diff(L2Loss)(color_pair, target_color, color, 1);
-    const float gradient_scalar = 1.0 / float(gFrameDim.x);
+    const float gradient_scalar = 1.0 / (gFrameDim.x * gFrameDim.y / 100.0);
     output_grad.vals[0] = float16_t(color_pair.d.x * gradient_scalar);
     output_grad.vals[1] = float16_t(color_pair.d.y * gradient_scalar);
     output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
     var input_feature_pair = diffPair(feature);
     bwd_diff(MLPModule.forward)(mlp, input_feature_pair, output_grad);
-    bwd_diff(computeInterpolatedFeature)(featureGrid, feature_index, float2(pixel) / float2(gFrameDim), input_feature_pair.d);
+    //bwd_diff(computeInterpolatedFeature)(featureGrid, feature_index, float2(pixel) / float2(gFrameDim), input_feature_pair.d);
 #elif NN_QUERY
     if (kNNDebug)
     {
