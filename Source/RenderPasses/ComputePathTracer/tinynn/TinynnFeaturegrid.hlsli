@@ -46,9 +46,9 @@ HalfFeature<32> computeInterpolatedFeature(
         feature.vals[(i * 3) + 19] = sin(float16_t(dir.y) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
         feature.vals[(i * 3) + 20] = sin(float16_t(dir.z) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
     }
-    feature.vals[29] = float16_t(albedo.x);
-    feature.vals[30] = float16_t(albedo.y);
-    feature.vals[31] = float16_t(albedo.z);
+    //feature.vals[29] = float16_t(albedo.x);
+    //feature.vals[30] = float16_t(albedo.y);
+    //feature.vals[31] = float16_t(albedo.z);
     return feature;
 }
 

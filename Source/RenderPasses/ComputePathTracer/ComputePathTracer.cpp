@@ -381,7 +381,11 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
     for (uint32_t i = 0; i < 4; i++)
     {
         if (mNNParams.active) mPasses[NN_GRADIENT_CLEAR_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
-        if (mHashCacheActive || mNNParams.active) mPasses[TRAIN_NN_FILL_CACHE_PASS]->execute(pRenderContext, frameDim.x / 10, frameDim.y / 10);
+        if (mHashCacheActive || mNNParams.active)
+        {
+            mPasses[TRAIN_NN_FILL_CACHE_PASS]->getRootVar()["CB"]["gTrainIteration"] = i;
+            mPasses[TRAIN_NN_FILL_CACHE_PASS]->execute(pRenderContext, frameDim.x / 10, frameDim.y / 10);
+        }
         if (mNNParams.active) mPasses[NN_GRADIENT_DESCENT_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
     }
     if (mHashCacheActive) mPasses[RESOLVE_PASS]->execute(pRenderContext, mHashCacheHashMapSize, 1);
