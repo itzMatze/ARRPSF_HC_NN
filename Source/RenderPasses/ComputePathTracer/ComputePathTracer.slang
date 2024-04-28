@@ -78,6 +78,8 @@ struct NNHitInfo
 static NNHitInfo nnHitInfoList[kNNMaxTrainingBounces];
 #endif
 
+static bool gDone = false;
+
 #if NN_TRAIN
 void updateNNHitInfoRadiance(float3 radiance, uint bounce)
 {
@@ -211,62 +213,13 @@ ShadingData loadShadingData(const TriangleHit hit, const float3 rayDir, const IT
     return sd;
 }
 
-/**
- * Generate a new scatter ray or terminate.
- * @param[in] sd Shading data.
- * @param[in] mi Material instance.
- * @param[in] rayOrigin Ray origin for the new ray.
- * @param[in,out] rayData Ray payload.
- * @return True if the path continues.
- */
-bool generateScatterRay(const ShadingData sd, const IMaterialInstance mi, inout ScatterRayData rayData)
-{
-    // Sample material.
-    BSDFSample bsdfSample;
-    if (mi.sample(sd, rayData.sg, bsdfSample, kUseImportanceSampling))
-    {
-        // delta lobes require some caution, store that one is used
-        if (bsdfSample.isLobe(LobeType::Delta)) rayData.setDeltaLobe(true);
-        else rayData.setDeltaLobe(false);
-
-        // prevent self-intersection
-        if (bsdfSample.isLobe(LobeType::Transmission)) rayData.origin = sd.computeRayOrigin(false);
-        else rayData.origin = sd.computeRayOrigin(true);
-        // update rayData
-        rayData.pdf = bsdfSample.pdf;
-        rayData.normal = sd.getOrientedFaceNormal();
-        rayData.thp *= bsdfSample.weight;
-        if (kUseRR)
-        {
-            float survival_prob = (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces));
-            if (sampleNext1D(rayData.sg) > survival_prob)
-            {
-                // russian roulette not survived
-                return false;
-            }
-            rayData.thp /= min(survival_prob, 1.0);
-        }
-#if HASH_CACHE_UPDATE
-        hashCacheSetThroughput(rayData.hashCacheState, rayData.thp);
-#endif // HASH_CACHE_UPDATE
-#if NN_TRAIN || NN_QUERY
-        if (rayData.numBounces < kNNMaxTrainingBounces)
-        {
-            nnHitInfoList[rayData.numBounces].dir = -rayData.direction;
-            nnHitInfoList[rayData.numBounces].pos = sd.posW;
-            nnHitInfoList[rayData.numBounces].thp = rayData.thp;
-        }
-        else nnHitInfoList[kNNMaxTrainingBounces - 1].thp *= rayData.thp;
-#endif
-        rayData.direction = bsdfSample.wo;
-        return any(rayData.thp > 0.f);
-    }
-    return false;
-}
-
 bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 {
-    if (hit.getType() != HitType::Triangle) return false;
+    if (!gDone)
+    {
+    if (hit.getType() != HitType::Triangle) gDone = true;
+    if (!gDone)
+    {
     let triangleHit = hit.getTriangleHit();
     let lod = ExplicitLodTextureSampler(0.f);
     ShadingData sd = loadShadingData(triangleHit, rayData.direction, lod);
@@ -310,11 +263,13 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         else if (isValidHit && hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
         {
             rayData.radiance += hashCacheRadiance * rayData.thp;
-            return false; // Terminate the path once we've looked up into the cache
+            gDone = true; // Terminate the path once we've looked up into the cache
         }
     }
 #endif // HASH_CACHE_QUERY
 
+    if (!gDone)
+    {
     // # light hit by chance
     // always show directly visible lights
     // incorporate emission when: NEE is not active or could not sample this light at the last vertex, MIS is used
@@ -386,7 +341,50 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 #endif // NN_TRAIN
 
     // generate scatter ray for the next path segment.
-    return (generateScatterRay(sd, mi, rayData));
+    // Sample material.
+    BSDFSample bsdfSample;
+    if (!mi.sample(sd, rayData.sg, bsdfSample, kUseImportanceSampling)) gDone = true;
+    if (!gDone)
+    {
+    // delta lobes require some caution, store that one is used
+    if (bsdfSample.isLobe(LobeType::Delta)) rayData.setDeltaLobe(true);
+    else rayData.setDeltaLobe(false);
+
+    // prevent self-intersection
+    if (bsdfSample.isLobe(LobeType::Transmission)) rayData.origin = sd.computeRayOrigin(false);
+    else rayData.origin = sd.computeRayOrigin(true);
+    // update rayData
+    rayData.pdf = bsdfSample.pdf;
+    rayData.normal = sd.getOrientedFaceNormal();
+    rayData.thp *= bsdfSample.weight;
+    if (kUseRR)
+    {
+        float survival_prob = (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces));
+        if (sampleNext1D(rayData.sg) > survival_prob)
+        {
+            // russian roulette not survived
+            gDone = true;
+        }
+        else rayData.thp /= min(survival_prob, 1.0);
+    }
+    if (!gDone)
+    {
+#if HASH_CACHE_UPDATE
+    hashCacheSetThroughput(rayData.hashCacheState, rayData.thp);
+#endif // HASH_CACHE_UPDATE
+#if NN_TRAIN || NN_QUERY
+    if (rayData.numBounces < kNNMaxTrainingBounces)
+    {
+        nnHitInfoList[rayData.numBounces].dir = -rayData.direction;
+        nnHitInfoList[rayData.numBounces].pos = sd.posW;
+        nnHitInfoList[rayData.numBounces].thp = rayData.thp;
+    }
+    else nnHitInfoList[kNNMaxTrainingBounces - 1].thp *= rayData.thp;
+#endif
+    rayData.direction = bsdfSample.wo;
+    return any(rayData.thp > 0.f);
+    }}}}} // gDone
+    return false;
 }
 
 /**
@@ -399,11 +397,7 @@ bool traceScatterRay(inout ScatterRayData rayData)
     const Ray ray = Ray(rayData.origin, rayData.direction, 0.0f, kRayTMax);
     SceneRayQuery<1> rayQuery;
     HitInfo hit;
-    if (rayQuery.traceRay(ray, hit, rayData.t, RAY_FLAG_NONE, 0xff))
-    {
-        return handleHit(hit, rayData);
-    }
-    else
+    if (!gDone && !rayQuery.traceRay(ray, hit, rayData.t, RAY_FLAG_NONE, 0xff))
     {
         // add contribution from environment map
         bool computeEnv = kUseEnvLight && (!kUseNEE || kUseMIS || !rayData.isLightSampled() || rayData.isDeltaLobe());
@@ -432,8 +426,9 @@ bool traceScatterRay(inout ScatterRayData rayData)
 #if NN_TRAIN
         updateNNHitInfoRadiance(rayData.radiance, rayData.numBounces);
 #endif // NN_TRAIN
-        return false;
+        gDone = true;
     }
+    return handleHit(hit, rayData);
 }
 
 /**
@@ -459,50 +454,48 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
 #if NN_TRAIN || NN_QUERY
     nnHitInfoList[0].dir = -gViewW[pixel].xyz;
 #endif
-    if (hit.isValid() && hit.getType() == HitType::Triangle)
-    {
-        ScatterRayData rayData = ScatterRayData(sg);
-
-#if HASH_CACHE_UPDATE || HASH_CACHE_QUERY
-        rayData.hashCacheState.gridParameters.cameraPosition = gCamPos.xyz;
-        rayData.hashCacheState.hashMapData.capacity = kHashCacheHashMapSize;
-        rayData.materialRoughness = 0.0f;
-        rayData.spread = 0.0f;
-#endif // HASH_CACHE_UPDATE || HASH_CACHE_QUERY
-#if HASH_CACHE_UPDATE
-        rayData.hashCacheState.pathLength = 0;
-#endif // HASH_CACHE_UPDATE
-        float3 thp = float3(1.0);
-        float3 radiance = float3(0.0);
-
-        rayData.direction = -gViewW[pixel].xyz;
-        if (!handleHit(hit, rayData)) return rayData.radiance;
-        rayData.numBounces++;
-        // Follow path into the scene and compute its total contribution.
-        while (rayData.numBounces <= kUpperBounceCount)
-        {
-            radiance += thp * rayData.radiance;
-            thp *= rayData.thp;
-            rayData.thp = float3(1.0f);
-            rayData.radiance = float3(0.0f);
-            if (!traceScatterRay(rayData)) break;
-            rayData.numBounces++;
-        }
-        // Store contribution from scatter ray.
-        radiance += thp * rayData.radiance;
-        thp *= rayData.thp;
-        outColor += radiance;
-        if (kDebugPathLength)
-        {
-            print("Path Length:", rayData.numBounces);
-            return colormapViridis(float(rayData.numBounces) / float(kUpperBounceCount));
-        }
-    }
-    else
+    if (!hit.isValid() || hit.getType() != HitType::Triangle)
     {
         // Background pixel.
         outColor = kUseEnvBackground ? gScene.envMap.eval(-gViewW[pixel].xyz) : kDefaultBackgroundColor;
         updateNNHitInfoRadiance(outColor, 0);
+        gDone = true;
+    }
+    ScatterRayData rayData = ScatterRayData(sg);
+
+#if HASH_CACHE_UPDATE || HASH_CACHE_QUERY
+    rayData.hashCacheState.gridParameters.cameraPosition = gCamPos.xyz;
+    rayData.hashCacheState.hashMapData.capacity = kHashCacheHashMapSize;
+    rayData.materialRoughness = 0.0f;
+    rayData.spread = 0.0f;
+#endif // HASH_CACHE_UPDATE || HASH_CACHE_QUERY
+#if HASH_CACHE_UPDATE
+    rayData.hashCacheState.pathLength = 0;
+#endif // HASH_CACHE_UPDATE
+    float3 thp = float3(1.0);
+    float3 radiance = float3(0.0);
+
+    rayData.direction = -gViewW[pixel].xyz;
+    if (!handleHit(hit, rayData)) gDone = true;
+    if (!gDone) rayData.numBounces++;
+    // Follow path into the scene and compute its total contribution.
+    for (uint i = 1; i <= kUpperBounceCount; i++)
+    {
+        radiance += thp * rayData.radiance;
+        thp *= rayData.thp;
+        rayData.thp = float3(1.0f);
+        rayData.radiance = float3(0.0f);
+        traceScatterRay(rayData);
+        if (!gDone) rayData.numBounces++;
+    }
+    // Store contribution from scatter ray.
+    radiance += thp * rayData.radiance;
+    thp *= rayData.thp;
+    outColor += radiance;
+    if (kDebugPathLength)
+    {
+        print("Path Length:", rayData.numBounces);
+        return colormapViridis(float(rayData.numBounces) / float(kUpperBounceCount));
     }
     return outColor;
 }
