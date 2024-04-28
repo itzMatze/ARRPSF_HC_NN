@@ -3,6 +3,7 @@
 import Utils.Debug.PixelDebug;
 
 RWStructuredBuffer<float> PrimalBuffer;
+RWStructuredBuffer<float> FilteredPrimalBuffer;
 RWStructuredBuffer<float> GradientBuffer;
 RWStructuredBuffer<float> GradientAuxBuffer;
 
@@ -13,6 +14,7 @@ static const float kLearningRate = NN_LEARNING_RATE; // |    SGD    |   Adam   |
 static const float kParam0 = NN_PARAM_0;             // |  momentum |  beta_1  |
 static const float kParam1 = NN_PARAM_1;             // | dampening |  beta_2  |
 static const float kParam2 = NN_PARAM_2;             // |           |  epsilon  |
+static const float kFilterAlpha = 0.99;
 
 enum OptimizerType : uint32_t {
     SGD = 0,
@@ -47,6 +49,7 @@ void main(int3 dtid: SV_DispatchThreadID) {
         GradientAuxBuffer[2 * (kGradOffset + tid) + 0] = m_t;
         GradientAuxBuffer[2 * (kGradOffset + tid) + 1] = v_t;
         PrimalBuffer[tid] = theta_new;
+        FilteredPrimalBuffer[tid] = (1 - kFilterAlpha) * theta_new + kFilterAlpha * FilteredPrimalBuffer[tid];
     }
 }
 

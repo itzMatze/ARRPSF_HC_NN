@@ -73,9 +73,10 @@ private:
         HASH_CACHE_VOXEL_DATA_BUFFER_0 = 1,
         HASH_CACHE_VOXEL_DATA_BUFFER_1 = 2,
         NN_PRIMAL_BUFFER = 3,
-        NN_GRADIENT_BUFFER = 4,
-        NN_GRADIENT_AUX_BUFFER = 5,
-        LOSS_SUM_BUFFER = 6,
+        NN_FILTERED_PRIMAL_BUFFER = 4,
+        NN_GRADIENT_BUFFER = 5,
+        NN_GRADIENT_AUX_BUFFER = 6,
+        LOSS_SUM_BUFFER = 7,
         BUFFER_COUNT
     };
 
