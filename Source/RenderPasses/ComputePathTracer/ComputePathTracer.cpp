@@ -207,6 +207,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     }
     if (!mPasses[NN_GRADIENT_DESCENT_PASS] && mNNParams.active)
     {
+        defineList["NN_FILTER_ALPHA"] = fmt::format("{:.12f}", mNNParams.filterAlpha);
         ProgramDesc desc;
         desc.addShaderLibrary(kGradientDescentShaderFile).csEntry("main");
         mPasses[NN_GRADIENT_DESCENT_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
@@ -488,6 +489,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
             ImGui::PushItemWidth(120);
             nn_group.dropdown("NN layer width", mNNParams.nnLayerWidthList, mNNParams.nnLayerWidth);
             ImGui::InputInt("NN layer count", &mNNParams.nnLayerCount);
+            ImGui::InputFloat("Filter alpha", &mNNParams.filterAlpha, 0.0f, 0.0f, "%.4f");
             nn_group.checkbox("Debug NN output", mNNParams.debugOutput);
             ImGui::Text("Weight init bounds");
             ImGui::InputFloat("min", &mNNParams.weightInitBound.x, 0.0f, 0.0f, "%.6f");

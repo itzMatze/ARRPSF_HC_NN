@@ -150,6 +150,7 @@ private:
         uint nnParamCount = 0;
         int gradOffset = 0;
         float2 weightInitBound = float2(0.001, 0.02);
+        float filterAlpha = 0.99;
         bool debugOutput = true;
 
         void update()
