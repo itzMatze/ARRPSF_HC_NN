@@ -215,24 +215,31 @@ ShadingData loadShadingData(const TriangleHit hit, const float3 rayDir, const IT
 
 bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 {
-    if (!gDone)
-    {
-    if (hit.getType() != HitType::Triangle) gDone = true;
-    if (!gDone)
-    {
-    let triangleHit = hit.getTriangleHit();
-    let lod = ExplicitLodTextureSampler(0.f);
-    ShadingData sd = loadShadingData(triangleHit, rayData.direction, lod);
-    IMaterialInstance mi = gScene.materials.getMaterialInstance(sd, lod);
-    BSDFProperties bsdfProperties = mi.getProperties(sd);
+    if (!gDone) if (hit.getType() != HitType::Triangle) gDone = true;
+
+    ShadingData sd;
+    IMaterialInstance mi;
+    TriangleHit triangleHit;
+    BSDFProperties bsdfProperties;
 #if HASH_CACHE_UPDATE || HASH_CACHE_QUERY
-    // Construct HashCacheHitData structure needed for creating a query point at this hit location
     HashCacheHitData hashCacheHitData;
-    hashCacheHitData.positionWorld = sd.posW;
-    hashCacheHitData.normalWorld = sd.getOrientedFaceNormal();
+#endif
+    if (!gDone)
+    {
+        triangleHit = hit.getTriangleHit();
+        let lod = ExplicitLodTextureSampler(0.f);
+        sd = loadShadingData(triangleHit, rayData.direction, lod);
+        mi = gScene.materials.getMaterialInstance(sd, lod);
+        bsdfProperties = mi.getProperties(sd);
+#if HASH_CACHE_UPDATE || HASH_CACHE_QUERY
+        // Construct HashCacheHitData structure needed for creating a query point at this hit location
+        hashCacheHitData.positionWorld = sd.posW;
+        hashCacheHitData.normalWorld = sd.getOrientedFaceNormal();
 #endif // HASH_CACHE_UPDATE || HASH_CACHE_QUERY
+    }
 
 #if HASH_CACHE_QUERY
+    if (!gDone)
     {
         uint gridLevel = GetGridLevel(sd.posW, rayData.hashCacheState.gridParameters);
         if (kHashCacheDebugLevels)
@@ -268,122 +275,125 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     }
 #endif // HASH_CACHE_QUERY
 
+    BSDFSample bsdfSample;
     if (!gDone)
     {
-    // # light hit by chance
-    // always show directly visible lights
-    // incorporate emission when: NEE is not active or could not sample this light at the last vertex, MIS is used
-    bool computeEmissive = rayData.numBounces >= kLowerBounceCount && kUseEmissiveLights && (!kUseNEE || kUseMIS || !rayData.isLightSampled() || rayData.isDeltaLobe());
-    if (computeEmissive && any(bsdfProperties.emission > 0.f))
-    {
-        float misWeight = 1.0;
-        // only apply MIS when NEE is used and was able to sample the light at the last vertex
-        if (kUseEmissiveLights && kUseNEE && kUseMIS && rayData.numBounces > 0 && rayData.isLightSampled() && !rayData.isDeltaLobe())
+        // # light hit by chance
+        // always show directly visible lights
+        // incorporate emission when: NEE is not active or could not sample this light at the last vertex, MIS is used
+        bool computeEmissive = rayData.numBounces >= kLowerBounceCount && kUseEmissiveLights && (!kUseNEE || kUseMIS || !rayData.isLightSampled() || rayData.isDeltaLobe());
+        if (computeEmissive && any(bsdfProperties.emission > 0.f))
         {
-            TriangleLightHit lightHit;
-            lightHit.triangleIndex = gScene.lightCollection.getTriangleIndex(triangleHit.instanceID, triangleHit.primitiveIndex);
-            lightHit.posW = sd.posW;
-            lightHit.normalW = sd.getOrientedFaceNormal();
-            // Evaluate PDF at the hit, had it been generated with light sampling.
-            // Emissive light samplers have an option to exclusively sample the upper hemisphere.
-            bool upperHemisphere = rayData.isLightSampledUpper() && !rayData.isLightSampledLower();
-            float lightPdf = getEmissiveSelectionProbability() * gSampler.emissiveSampler.evalPdf(rayData.origin, rayData.normal, upperHemisphere, lightHit);
-            // Compute MIS weight by combining this with BSDF sampling.
-            // Note we can assume path.pdf > 0.f since we shouldn't have got here otherwise.
-            misWeight = evalMIS(1, rayData.pdf, 1, lightPdf);
-        }
-        rayData.radiance += rayData.thp * misWeight * bsdfProperties.emission;
-    }
-
-    // # NEE
-    LightSample ls;
-    PathVertex vertex = PathVertex(sd.posW, sd.faceN, sd.frontFacing);
-    const uint lobeTypes = mi.getLobeTypes(sd);
-    // NEE not applicable to DeltaLobes, only apply if bounce falls in requested bounce range
-    const bool applyNEE = kUseNEE && ((lobeTypes & uint(LobeType::NonDelta)) != 0) && ((rayData.numBounces + 1) >= kLowerBounceCount && (rayData.numBounces + 1) <= kUpperBounceCount);
-    rayData.setLightSampled(false, false);
-    if (applyNEE)
-    {
-        // sample a light and store in which hemispheres a light was searched for
-        bool sampleUpperHemisphere = ((lobeTypes & uint(LobeType::NonDeltaReflection)) != 0);
-        bool sampleLowerHemisphere = ((lobeTypes & uint(LobeType::NonDeltaTransmission)) != 0);
-        bool validSample = generateLightSample(vertex, sampleUpperHemisphere, sampleLowerHemisphere, rayData.sg, ls);
-        rayData.setLightSampled(sampleUpperHemisphere, sampleLowerHemisphere);
-        if (validSample)
-        {
-            // apply MIS only to non-analytic lights
-            if (ls.lightType != uint(LightSampleType::Analytic))
+            float misWeight = 1.0;
+            // only apply MIS when NEE is used and was able to sample the light at the last vertex
+            if (kUseEmissiveLights && kUseNEE && kUseMIS && rayData.numBounces > 0 && rayData.isLightSampled() && !rayData.isDeltaLobe())
             {
-                float scatterPdf = mi.evalPdf(sd, ls.dir, kUseImportanceSampling);
-                ls.Li *= evalMIS(1, ls.pdf, 1, scatterPdf);
+                TriangleLightHit lightHit;
+                lightHit.triangleIndex = gScene.lightCollection.getTriangleIndex(triangleHit.instanceID, triangleHit.primitiveIndex);
+                lightHit.posW = sd.posW;
+                lightHit.normalW = sd.getOrientedFaceNormal();
+                // Evaluate PDF at the hit, had it been generated with light sampling.
+                // Emissive light samplers have an option to exclusively sample the upper hemisphere.
+                bool upperHemisphere = rayData.isLightSampledUpper() && !rayData.isLightSampledLower();
+                float lightPdf = getEmissiveSelectionProbability() * gSampler.emissiveSampler.evalPdf(rayData.origin, rayData.normal, upperHemisphere, lightHit);
+                // Compute MIS weight by combining this with BSDF sampling.
+                // Note we can assume path.pdf > 0.f since we shouldn't have got here otherwise.
+                misWeight = evalMIS(1, rayData.pdf, 1, lightPdf);
             }
+            rayData.radiance += rayData.thp * misWeight * bsdfProperties.emission;
+        }
 
-            // apply BSDF
-            float3 weight = mi.eval(sd, ls.dir, rayData.sg);
-            float3 Lr = weight * ls.Li;
-            if (any(Lr > 0.f))
+        // # NEE
+        LightSample ls;
+        PathVertex vertex = PathVertex(sd.posW, sd.faceN, sd.frontFacing);
+        const uint lobeTypes = mi.getLobeTypes(sd);
+        // NEE not applicable to DeltaLobes, only apply if bounce falls in requested bounce range
+        const bool applyNEE = kUseNEE && ((lobeTypes & uint(LobeType::NonDelta)) != 0) && ((rayData.numBounces + 1) >= kLowerBounceCount && (rayData.numBounces + 1) <= kUpperBounceCount);
+        rayData.setLightSampled(false, false);
+        if (applyNEE)
+        {
+            // sample a light and store in which hemispheres a light was searched for
+            bool sampleUpperHemisphere = ((lobeTypes & uint(LobeType::NonDeltaReflection)) != 0);
+            bool sampleLowerHemisphere = ((lobeTypes & uint(LobeType::NonDeltaTransmission)) != 0);
+            bool validSample = generateLightSample(vertex, sampleUpperHemisphere, sampleLowerHemisphere, rayData.sg, ls);
+            rayData.setLightSampled(sampleUpperHemisphere, sampleLowerHemisphere);
+            if (validSample)
             {
-                Ray shadowRay = ls.getVisibilityRay();
-                bool visible = traceShadowRay(shadowRay);
-                if (visible)
+                // apply MIS only to non-analytic lights
+                if (ls.lightType != uint(LightSampleType::Analytic))
                 {
-                    rayData.radiance += rayData.thp * Lr;
+                    float scatterPdf = mi.evalPdf(sd, ls.dir, kUseImportanceSampling);
+                    ls.Li *= evalMIS(1, ls.pdf, 1, scatterPdf);
+                }
+
+                // apply BSDF
+                float3 weight = mi.eval(sd, ls.dir, rayData.sg);
+                float3 Lr = weight * ls.Li;
+                if (any(Lr > 0.f))
+                {
+                    Ray shadowRay = ls.getVisibilityRay();
+                    bool visible = traceShadowRay(shadowRay);
+                    if (visible)
+                    {
+                        rayData.radiance += rayData.thp * Lr;
+                    }
                 }
             }
         }
-    }
 
 #if HASH_CACHE_UPDATE
-    hashCacheUpdateHit(rayData.hashCacheState, hashCacheHitData, rayData.radiance);
+        hashCacheUpdateHit(rayData.hashCacheState, hashCacheHitData, rayData.radiance);
 #endif
 #if NN_TRAIN
-    updateNNHitInfoRadiance(rayData.radiance, rayData.numBounces);
+        updateNNHitInfoRadiance(rayData.radiance, rayData.numBounces);
 #endif // NN_TRAIN
 
-    // generate scatter ray for the next path segment.
-    // Sample material.
-    BSDFSample bsdfSample;
-    if (!mi.sample(sd, rayData.sg, bsdfSample, kUseImportanceSampling)) gDone = true;
+        // generate scatter ray for the next path segment.
+        // Sample material.
+        if (!mi.sample(sd, rayData.sg, bsdfSample, kUseImportanceSampling)) gDone = true;
+    }
+
     if (!gDone)
     {
-    // delta lobes require some caution, store that one is used
-    if (bsdfSample.isLobe(LobeType::Delta)) rayData.setDeltaLobe(true);
-    else rayData.setDeltaLobe(false);
+        // delta lobes require some caution, store that one is used
+        if (bsdfSample.isLobe(LobeType::Delta)) rayData.setDeltaLobe(true);
+        else rayData.setDeltaLobe(false);
 
-    // prevent self-intersection
-    if (bsdfSample.isLobe(LobeType::Transmission)) rayData.origin = sd.computeRayOrigin(false);
-    else rayData.origin = sd.computeRayOrigin(true);
-    // update rayData
-    rayData.pdf = bsdfSample.pdf;
-    rayData.normal = sd.getOrientedFaceNormal();
-    rayData.thp *= bsdfSample.weight;
-    if (kUseRR)
-    {
-        float survival_prob = (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces));
-        if (sampleNext1D(rayData.sg) > survival_prob)
+        // prevent self-intersection
+        if (bsdfSample.isLobe(LobeType::Transmission)) rayData.origin = sd.computeRayOrigin(false);
+        else rayData.origin = sd.computeRayOrigin(true);
+        // update rayData
+        rayData.pdf = bsdfSample.pdf;
+        rayData.normal = sd.getOrientedFaceNormal();
+        rayData.thp *= bsdfSample.weight;
+        if (kUseRR)
         {
-            // russian roulette not survived
-            gDone = true;
+            float survival_prob = (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces));
+            if (sampleNext1D(rayData.sg) > survival_prob)
+            {
+                // russian roulette not survived
+                gDone = true;
+            }
+            else rayData.thp /= min(survival_prob, 1.0);
         }
-        else rayData.thp /= min(survival_prob, 1.0);
     }
     if (!gDone)
     {
 #if HASH_CACHE_UPDATE
-    hashCacheSetThroughput(rayData.hashCacheState, rayData.thp);
+        hashCacheSetThroughput(rayData.hashCacheState, rayData.thp);
 #endif // HASH_CACHE_UPDATE
 #if NN_TRAIN || NN_QUERY
-    if (rayData.numBounces < kNNMaxTrainingBounces)
-    {
-        nnHitInfoList[rayData.numBounces].dir = -rayData.direction;
-        nnHitInfoList[rayData.numBounces].pos = sd.posW;
-        nnHitInfoList[rayData.numBounces].thp = rayData.thp;
-    }
-    else nnHitInfoList[kNNMaxTrainingBounces - 1].thp *= rayData.thp;
+        if (rayData.numBounces < kNNMaxTrainingBounces)
+        {
+            nnHitInfoList[rayData.numBounces].dir = -rayData.direction;
+            nnHitInfoList[rayData.numBounces].pos = sd.posW;
+            nnHitInfoList[rayData.numBounces].thp = rayData.thp;
+        }
+        else nnHitInfoList[kNNMaxTrainingBounces - 1].thp *= rayData.thp;
 #endif
-    rayData.direction = bsdfSample.wo;
-    return any(rayData.thp > 0.f);
-    }}}}} // gDone
+        rayData.direction = bsdfSample.wo;
+        return any(rayData.thp > 0.f);
+    }
     return false;
 }
 
