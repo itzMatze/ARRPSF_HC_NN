@@ -8,7 +8,6 @@
 
 namespace
 {
-constexpr bool kUseImGui = true;
 const std::string kPTShaderFile("RenderPasses/ComputePathTracer/ComputePathTracer.slang");
 const std::string khashCacheResolveShaderFile("RenderPasses/ComputePathTracer/HashCacheResolve.slang");
 const std::string kGradientClearShaderFile("RenderPasses/ComputePathTracer/tinynn/GradientClear.slang");
@@ -407,21 +406,13 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
 
 void ComputePathTracer::renderUI(Gui::Widgets& widget)
 {
-    if (kUseImGui)
-    {
-        ImGui::PushItemWidth(40);
-        ImGui::Text("Bounce limits");
-        ImGui::SameLine();
-        ImGui::InputScalar("min", ImGuiDataType_U32, &mLowerBounceCount);
-        ImGui::SameLine();
-        ImGui::InputScalar("max", ImGuiDataType_U32, &mUpperBounceCount);
-        ImGui::PopItemWidth();
-    }
-    else
-    {
-        widget.var("LowerBounceCount", mLowerBounceCount, 0u, 1u << 16);
-        widget.var("UpperBounceCount", mUpperBounceCount, 0u, 1u << 16);
-    }
+    ImGui::PushItemWidth(40);
+    ImGui::Text("Bounce limits");
+    ImGui::SameLine();
+    ImGui::InputScalar("min", ImGuiDataType_U32, &mLowerBounceCount);
+    ImGui::SameLine();
+    ImGui::InputScalar("max", ImGuiDataType_U32, &mUpperBounceCount);
+    ImGui::PopItemWidth();
     widget.tooltip("Inclusive range of bounces that contribute to final image color", true);
 
     widget.checkbox("BSDF importance sampling", mUseImportanceSampling);
@@ -436,27 +427,13 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         rr_group.checkbox("enable", mUseRR);
         rr_group.checkbox("use NN", mRRUseNN);
         rr_group.tooltip("Determine the survival probability based on a radiance estimation of the nn.", true);
-        if (kUseImGui)
-        {
-            ImGui::PushItemWidth(80);
-            ImGui::InputFloat("RR start value", &mRRProbStartValue);
-            ImGui::PopItemWidth();
-        }
-        else
-        {
-            rr_group.var("RR start value", mRRProbStartValue, 1.0f, 4.0f);
-        }
+        ImGui::PushItemWidth(80);
+        ImGui::InputFloat("RR start value", &mRRProbStartValue);
+        ImGui::PopItemWidth();
         rr_group.tooltip("Starting value of the survival probability", true);
-        if (kUseImGui)
-        {
-            ImGui::PushItemWidth(80);
-            ImGui::InputFloat("RR reduction factor", &mRRProbReductionFactor);
-            ImGui::PopItemWidth();
-        }
-        else
-    {
-            widget.var("RR reduction factor", mRRProbReductionFactor, 0.1f, 0.99f);
-        }
+        ImGui::PushItemWidth(80);
+        ImGui::InputFloat("RR reduction factor", &mRRProbReductionFactor);
+        ImGui::PopItemWidth();
         widget.tooltip("Gets multiplied to the initial survival probability at each interaction", true);
     }
     if (Gui::Group emissive_sampler_group = widget.group("EmissiveSampler"))
@@ -466,12 +443,9 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     if (Gui::Group hash_cache_group = widget.group("Hash Cache"))
     {
         hash_cache_group.checkbox("Enable Hash Cache", mEnableHashCache);
-        if (kUseImGui)
-        {
-            ImGui::PushItemWidth(40);
-            ImGui::InputScalar("hashMapSizeExponent", ImGuiDataType_U32, &mHashCacheHashMapSizeExp);
-            ImGui::PopItemWidth();
-        }
+        ImGui::PushItemWidth(40);
+        ImGui::InputScalar("hashMapSizeExponent", ImGuiDataType_U32, &mHashCacheHashMapSizeExp);
+        ImGui::PopItemWidth();
         hash_cache_group.checkbox("Debug voxels", mHashCacheDebugVoxels);
         hash_cache_group.checkbox("Debug color", mHashCacheDebugColor);
         hash_cache_group.checkbox("Debug levels", mHashCacheDebugLevels);
@@ -479,39 +453,34 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     if (Gui::Group nn_group = widget.group("NN"))
     {
         nn_group.text(std::string("active: ") + (mNNParams.active ? "true" : "false"));
-        if (kUseImGui)
+        if (Gui::Group nn_optimizer_group = nn_group.group("Optimizer"))
         {
-            if (Gui::Group nn_optimizer_group = nn_group.group("Optimizer"))
+            ImGui::PushItemWidth(160);
+            ImGui::InputFloat("learning rate", &mNNParams.optimizerParams.learn_r, 0.0f, 0.0f, "%.6f");
+            if (mNNParams.optimizerParams.type == mNNParams.SGD)
             {
-                ImGui::PushItemWidth(160);
-                ImGui::InputFloat("learning rate", &mNNParams.optimizerParams.learn_r, 0.0f, 0.0f, "%.6f");
-                if (mNNParams.optimizerParams.type == mNNParams.SGD)
-                {
-                    ImGui::InputFloat("momentum", &mNNParams.optimizerParams.param_0, 0.0f, 0.0f, "%.8f");
-                    ImGui::InputFloat("dampening", &mNNParams.optimizerParams.param_1, 0.0f, 0.0f, "%.8f");
-                }
-                else if (mNNParams.optimizerParams.type == mNNParams.ADAM)
-                {
-                    ImGui::InputFloat("beta_1", &mNNParams.optimizerParams.param_0, 0.0f, 0.0f, "%.8f");
-                    ImGui::InputFloat("beta_2", &mNNParams.optimizerParams.param_1, 0.0f, 0.0f, "%.8f");
-                    ImGui::InputFloat("epsilon", &mNNParams.optimizerParams.param_2, 0.0f, 0.0f, "%.8f");
-                }
-                ImGui::PopItemWidth();
+                ImGui::InputFloat("momentum", &mNNParams.optimizerParams.param_0, 0.0f, 0.0f, "%.8f");
+                ImGui::InputFloat("dampening", &mNNParams.optimizerParams.param_1, 0.0f, 0.0f, "%.8f");
             }
-            ImGui::PushItemWidth(120);
-            nn_group.dropdown("NN layer width", mNNParams.nnLayerWidthList, mNNParams.nnLayerWidth);
-            ImGui::InputInt("NN layer count", &mNNParams.nnLayerCount);
-            ImGui::InputFloat("Filter alpha", &mNNParams.filterAlpha, 0.0f, 0.0f, "%.4f");
-            nn_group.checkbox("Debug NN output", mNNParams.debugOutput);
-            ImGui::Text("Weight init bounds");
-            ImGui::InputFloat("min", &mNNParams.weightInitBound.x, 0.0f, 0.0f, "%.6f");
-            ImGui::InputFloat("max", &mNNParams.weightInitBound.y, 0.0f, 0.0f, "%.6f");
-            ImGui::InputInt("training bounces", &mNNParams.trainingBounces);
+            else if (mNNParams.optimizerParams.type == mNNParams.ADAM)
+            {
+                ImGui::InputFloat("beta_1", &mNNParams.optimizerParams.param_0, 0.0f, 0.0f, "%.8f");
+                ImGui::InputFloat("beta_2", &mNNParams.optimizerParams.param_1, 0.0f, 0.0f, "%.8f");
+                ImGui::InputFloat("epsilon", &mNNParams.optimizerParams.param_2, 0.0f, 0.0f, "%.8f");
+            }
             ImGui::PopItemWidth();
-            ImGui::Separator();
         }
-        else
-        { }
+        ImGui::PushItemWidth(120);
+        nn_group.dropdown("NN layer width", mNNParams.nnLayerWidthList, mNNParams.nnLayerWidth);
+        ImGui::InputInt("NN layer count", &mNNParams.nnLayerCount);
+        ImGui::InputFloat("Filter alpha", &mNNParams.filterAlpha, 0.0f, 0.0f, "%.4f");
+        nn_group.checkbox("Debug NN output", mNNParams.debugOutput);
+        ImGui::Text("Weight init bounds");
+        ImGui::InputFloat("min", &mNNParams.weightInitBound.x, 0.0f, 0.0f, "%.6f");
+        ImGui::InputFloat("max", &mNNParams.weightInitBound.y, 0.0f, 0.0f, "%.6f");
+        ImGui::InputInt("training bounces", &mNNParams.trainingBounces);
+        ImGui::PopItemWidth();
+        ImGui::Separator();
     }
     if (Gui::Group debug_group = widget.group("Debug"))
     {
