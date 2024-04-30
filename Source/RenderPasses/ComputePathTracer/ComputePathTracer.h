@@ -70,8 +70,8 @@ private:
     enum // Buffer
     {
         HASH_ENTRIES_BUFFER = 0,
-        HASH_CACHE_VOXEL_DATA_BUFFER_0 = 1,
-        HASH_CACHE_VOXEL_DATA_BUFFER_1 = 2,
+        HC_VOXEL_DATA_BUFFER_0 = 1,
+        HC_VOXEL_DATA_BUFFER_1 = 2,
         NN_PRIMAL_BUFFER = 3,
         NN_FILTERED_PRIMAL_BUFFER = 4,
         NN_GRADIENT_BUFFER = 5,
@@ -123,8 +123,10 @@ private:
         bool active = false;
         uint32_t hashMapSizeExp = 22;
         uint32_t hashMapSize = std::pow(2u, hashMapSizeExp);
-        // inject radiance estimate of HC on termination of path
-        bool injectRadiance = true;
+        // inject radiance estimate of HC on rr termination of path instead of using rr weight
+        bool injectRadianceRR = true;
+        // terminate the path if the roughness of surfaces blur the inaccuracy of the hc
+        bool injectRadianceSpread = true;
         bool debugVoxels = false;
         bool debugColor = false;
         bool debugLevels = false;

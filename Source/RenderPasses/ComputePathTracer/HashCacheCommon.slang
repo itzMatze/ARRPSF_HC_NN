@@ -1,7 +1,7 @@
 import Utils.Debug.PixelDebug;
 import HashGridCommon;
 
-#if HASH_CACHE_UPDATE || HASH_CACHE_QUERY
+#if HC_UPDATE || HC_QUERY
 static const uint kHashCachePropagationDepth = 8;
 static const float kHashCacheRadianceScale = 1e4f;
 
@@ -47,11 +47,11 @@ struct HashCacheState
 {
     GridParameters gridParameters;
     HashMapData hashMapData;
-#if HASH_CACHE_UPDATE
+#if HC_UPDATE
     uint voxelIndices[kHashCachePropagationDepth];
     float3 sampleWeights[kHashCachePropagationDepth];
     uint pathLength;
-#endif // HASH_CACHE_UPDATE
+#endif // HC_UPDATE
 };
 
 struct HashCacheHitData
@@ -62,13 +62,13 @@ struct HashCacheHitData
 
 void hashCacheUpdateCache(inout HashCacheState hashCacheState, float3 radiance, uint startIdx)
 {
-#if HASH_CACHE_UPDATE
+#if HC_UPDATE
     for (int i = startIdx; i < hashCacheState.pathLength; ++i)
     {
         radiance *= hashCacheState.sampleWeights[i];
         hashCacheAddVoxelData(hashCacheState.voxelIndices[i], radiance, false);
     }
-#endif // HASH_CACHE_UPDATE
+#endif // HC_UPDATE
 }
 
 void hashCacheUpdateMiss(inout HashCacheState hashCacheState, float3 radiance)
@@ -78,7 +78,7 @@ void hashCacheUpdateMiss(inout HashCacheState hashCacheState, float3 radiance)
 
 void hashCacheUpdateHit(inout HashCacheState hashCacheState, HashCacheHitData hashCacheHitData, float3 radiance)
 {
-#if HASH_CACHE_UPDATE
+#if HC_UPDATE
     for (uint i = hashCacheState.pathLength; i > 0; --i)
     {
         hashCacheState.voxelIndices[i] = hashCacheState.voxelIndices[i - 1];
@@ -89,14 +89,14 @@ void hashCacheUpdateHit(inout HashCacheState hashCacheState, HashCacheHitData ha
     hashCacheState.pathLength = min(hashCacheState.pathLength, kHashCachePropagationDepth - 1);
     hashCacheAddVoxelData(hashCacheState.voxelIndices[0], radiance, true);
     hashCacheUpdateCache(hashCacheState, radiance, 1);
-#endif // HASH_CACHE_UPDATE
+#endif // HC_UPDATE
 }
 
 void hashCacheSetThroughput(inout HashCacheState hashCacheState, float3 throughput)
 {
-#if HASH_CACHE_UPDATE
+#if HC_UPDATE
     hashCacheState.sampleWeights[0] = throughput;
-#endif // HASH_CACHE_UPDATE
+#endif // HC_UPDATE
 }
 
 bool hashCacheGetCachedRadiance(inout HashCacheState hashCacheState, HashCacheHitData hashCacheHitData, out float3 radiance, bool debug = false)
@@ -143,5 +143,5 @@ void hashCacheCombine(uint idx)
         hashCacheSetVoxelData(true, idx, voxelData);
     }
 }
-#endif // HASH_CACHE_UPDATE || HASH_CACHE_QUERY
+#endif // HC_UPDATE || HC_QUERY
 

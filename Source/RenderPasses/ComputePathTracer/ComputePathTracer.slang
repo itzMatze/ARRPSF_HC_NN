@@ -51,10 +51,12 @@ static const bool kDebugPathLength = DEBUG_PATH_LENGTH;
 static const bool kUseImportanceSampling = USE_IMPORTANCE_SAMPLING;
 static const bool kUseEnvBackground = USE_ENV_BACKGROUND;
 static const float3 kDefaultBackgroundColor = float3(0.0, 0.0, 0.05);
-static const uint kHashCacheHashMapSize = HASH_CACHE_HASHMAP_SIZE;
-static const uint kHashCacheDebugVoxels = HASH_CACHE_DEBUG_VOXELS;
-static const uint kHashCacheDebugColor = HASH_CACHE_DEBUG_COLOR;
-static const uint kHashCacheDebugLevels = HASH_CACHE_DEBUG_LEVELS;
+static const uint kHCHashMapSize = HC_HASHMAP_SIZE;
+static const uint kHCDebugVoxels = HC_DEBUG_VOXELS;
+static const uint kHCDebugColor = HC_DEBUG_COLOR;
+static const uint kHCDebugLevels = HC_DEBUG_LEVELS;
+static const uint kHCInjectRadianceRR = HC_INJECT_RADIANCE_RR;
+static const uint kHCInjectRadianceSpread = HC_INJECT_RADIANCE_SPREAD;
 static const uint kNNMaxTrainingBounces = NN_TRAINING_BOUNCES;
 
 #if NN_TRAIN || NN_QUERY
@@ -99,7 +101,7 @@ void updateNNHitInfoRadiance(float3 radiance, uint bounce) {}
 
 struct ScatterRayData
 {
-#if HASH_CACHE_UPDATE || HASH_CACHE_QUERY
+#if HC_UPDATE || HC_QUERY
     HashCacheState hashCacheState;
     float materialRoughness;
     float spread;
@@ -223,7 +225,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     IMaterialInstance mi;
     TriangleHit triangleHit;
     BSDFProperties bsdfProperties;
-#if HASH_CACHE_UPDATE || HASH_CACHE_QUERY
+#if HC_UPDATE || HC_QUERY
     HashCacheHitData hashCacheHitData;
 #endif
     if (!gDone)
@@ -233,49 +235,50 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         sd = loadShadingData(triangleHit, rayData.direction, lod);
         mi = gScene.materials.getMaterialInstance(sd, lod);
         bsdfProperties = mi.getProperties(sd);
-#if HASH_CACHE_UPDATE || HASH_CACHE_QUERY
+#if HC_UPDATE || HC_QUERY
         // Construct HashCacheHitData structure needed for creating a query point at this hit location
         hashCacheHitData.positionWorld = sd.posW;
         hashCacheHitData.normalWorld = sd.getOrientedFaceNormal();
-#endif // HASH_CACHE_UPDATE || HASH_CACHE_QUERY
+#endif // HC_UPDATE || HC_QUERY
     }
 
-#if HASH_CACHE_QUERY
-    if (!gDone)
+    if (kHCInjectRadianceSpread)
     {
-        uint gridLevel = GetGridLevel(sd.posW, rayData.hashCacheState.gridParameters);
-        if (kHashCacheDebugLevels)
+        if (!gDone)
         {
-            // the actual max level is 1024 (see clamp in function)
-            // however, the upper levels are never really used, thus use 8 to get meaningful visualization
-            rayData.radiance = colormapViridis(float(gridLevel) / 8.0f);
-            return false;
-        }
-        float voxelSize = GetVoxelSize(gridLevel, rayData.hashCacheState.gridParameters);
-        bool isValidHit = rayData.t > voxelSize * lerp(1.0f, 2.0f, sampleNext1D(rayData.sg));
-        float alpha = min(rayData.materialRoughness * rayData.materialRoughness, 0.99);
-        rayData.materialRoughness = bsdfProperties.roughness;
-        alpha *= alpha;
-        rayData.spread += rayData.t * sqrt(0.5f * alpha / (1.0f - alpha));
-        isValidHit &= rayData.spread * lerp(0.5f, 1.5f, sampleNext1D(rayData.sg)) > voxelSize;
-        isValidHit &= rayData.numBounces > 0;
+            uint gridLevel = GetGridLevel(sd.posW, rayData.hashCacheState.gridParameters);
+            if (kHCDebugLevels)
+            {
+                // the actual max level is 1024 (see clamp in function)
+                // however, the upper levels are never really used, thus use 8 to get meaningful visualization
+                rayData.radiance = colormapViridis(float(gridLevel) / 8.0f);
+                return false;
+            }
+            float voxelSize = GetVoxelSize(gridLevel, rayData.hashCacheState.gridParameters);
+            bool isValidHit = rayData.t > voxelSize * lerp(1.0f, 2.0f, sampleNext1D(rayData.sg));
+            float alpha = min(rayData.materialRoughness * rayData.materialRoughness, 0.99);
+            rayData.materialRoughness = bsdfProperties.roughness;
+            alpha *= alpha;
+            rayData.spread += rayData.t * sqrt(0.5f * alpha / (1.0f - alpha));
+            isValidHit &= rayData.spread * lerp(0.5f, 1.5f, sampleNext1D(rayData.sg)) > voxelSize;
+            isValidHit &= rayData.numBounces > 0;
 
-        float3 hashCacheRadiance;
-        if (kHashCacheDebugVoxels || kHashCacheDebugColor)
-        {
-            // debug active; voxel debug will fetch voxel visualization values, otherwise just get color
-            float3 debugColor;
-            hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, debugColor, kHashCacheDebugVoxels);
-            rayData.radiance = debugColor;
-            return false;
-        }
-        else if (isValidHit && hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
-        {
-            rayData.radiance += hashCacheRadiance * rayData.thp;
-            gDone = true; // Terminate the path once we've looked up into the cache
+            float3 hashCacheRadiance;
+            if (kHCDebugVoxels || kHCDebugColor)
+            {
+                // debug active; voxel debug will fetch voxel visualization values, otherwise just get color
+                float3 debugColor;
+                hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, debugColor, kHCDebugVoxels);
+                rayData.radiance = debugColor;
+                return false;
+            }
+            else if (isValidHit && hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
+            {
+                rayData.radiance += hashCacheRadiance * rayData.thp;
+                gDone = true; // Terminate the path once we've looked up into the cache
+            }
         }
     }
-#endif // HASH_CACHE_QUERY
 
     BSDFSample bsdfSample;
     if (!gDone)
@@ -343,7 +346,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             }
         }
 
-#if HASH_CACHE_UPDATE
+#if HC_UPDATE
         hashCacheUpdateHit(rayData.hashCacheState, hashCacheHitData, rayData.radiance);
 #endif
 #if NN_TRAIN
@@ -409,16 +412,27 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             if (sampleNext1D(rayData.sg) > survival_prob)
             {
                 // russian roulette not survived
+#if HC_INJECT_RADIANCE_RR
+                float3 hashCacheRadiance;
+                // only actually terminate path if the hc is ready at the current position
+                if (hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
+                {
+                    gDone = true;
+                    rayData.radiance += hashCacheRadiance * rayData.thp;
+                }
+            }
+#else
                 gDone = true;
             }
             else rayData.thp /= min(survival_prob, 1.0);
+#endif
         }
     }
     if (!gDone)
     {
-#if HASH_CACHE_UPDATE
+#if HC_UPDATE
         hashCacheSetThroughput(rayData.hashCacheState, rayData.thp);
-#endif // HASH_CACHE_UPDATE
+#endif // HC_UPDATE
         return any(rayData.thp > 0.f);
     }
     return false;
@@ -457,9 +471,9 @@ bool traceScatterRay(inout ScatterRayData rayData)
             float3 Le = gSampler.envMapSampler.eval(rayData.direction);
             rayData.radiance += rayData.thp * misWeight * Le;
         }
-#if HASH_CACHE_UPDATE
+#if HC_UPDATE
         hashCacheUpdateMiss(rayData.hashCacheState, rayData.radiance);
-#endif // HASH_CACHE_UPDATE
+#endif // HC_UPDATE
 #if NN_TRAIN
         updateNNHitInfoRadiance(rayData.radiance, rayData.numBounces);
 #endif // NN_TRAIN
@@ -500,15 +514,15 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
     }
     ScatterRayData rayData = ScatterRayData(sg);
 
-#if HASH_CACHE_UPDATE || HASH_CACHE_QUERY
+#if HC_UPDATE || HC_QUERY
     rayData.hashCacheState.gridParameters.cameraPosition = gCamPos.xyz;
-    rayData.hashCacheState.hashMapData.capacity = kHashCacheHashMapSize;
+    rayData.hashCacheState.hashMapData.capacity = kHCHashMapSize;
     rayData.materialRoughness = 0.0f;
     rayData.spread = 0.0f;
-#endif // HASH_CACHE_UPDATE || HASH_CACHE_QUERY
-#if HASH_CACHE_UPDATE
+#endif // HC_UPDATE || HC_QUERY
+#if HC_UPDATE
     rayData.hashCacheState.pathLength = 0;
-#endif // HASH_CACHE_UPDATE
+#endif // HC_UPDATE
     float3 thp = float3(1.0);
     float3 radiance = float3(0.0);
 
@@ -559,7 +573,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     gMlp = MLPModule(param_offset, grad_offset, thread_info);
 #endif
     SampleGenerator sg = SampleGenerator(pixel + gFrameDim * gTrainIteration, gFrameCount);
-#if HASH_CACHE_UPDATE || NN_TRAIN
+#if HC_UPDATE || NN_TRAIN
     pixel = dispatchThreadId.xy * 10 + uint2(sampleNext2D(sg) * 10.99);
 #endif
     printSetPixel(pixel);
@@ -597,7 +611,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     else if (isinf(output.vals[0])) outputColor = float3(1.0, 0.0, 1.0);
     else outputColor = float3(output.vals[0], output.vals[1], output.vals[2]);
 #endif
-#if !NN_TRAIN && !HASH_CACHE_UPDATE
+#if !NN_TRAIN && !HC_UPDATE
     gOutputColor[pixel] = float4(outputColor, 1.0f);
 #endif
 }
