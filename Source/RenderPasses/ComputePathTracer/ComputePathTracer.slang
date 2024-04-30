@@ -55,8 +55,7 @@ static const uint kHashCacheHashMapSize = HASH_CACHE_HASHMAP_SIZE;
 static const uint kHashCacheDebugVoxels = HASH_CACHE_DEBUG_VOXELS;
 static const uint kHashCacheDebugColor = HASH_CACHE_DEBUG_COLOR;
 static const uint kHashCacheDebugLevels = HASH_CACHE_DEBUG_LEVELS;
-static const bool kNNDebug = NN_DEBUG;
-static const uint kNNMaxTrainingBounces = 4;
+static const uint kNNMaxTrainingBounces = NN_TRAINING_BOUNCES;
 
 #if NN_TRAIN || NN_QUERY
 struct NNHitInfo
@@ -76,6 +75,9 @@ struct NNHitInfo
 };
 
 static NNHitInfo nnHitInfoList[kNNMaxTrainingBounces];
+
+typedef MLPHalf32X32<NN_LAYER_COUNT, ReLU> MLPModule;
+static MLPModule gMlp;
 #endif
 
 static bool gDone = false;
@@ -366,9 +368,44 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         rayData.pdf = bsdfSample.pdf;
         rayData.normal = sd.getOrientedFaceNormal();
         rayData.thp *= bsdfSample.weight;
-        if (kUseRR)
+#if NN_TRAIN || NN_QUERY
+        if (rayData.numBounces < kNNMaxTrainingBounces)
         {
-            float survival_prob = (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces));
+            nnHitInfoList[rayData.numBounces].dir = -rayData.direction;
+            nnHitInfoList[rayData.numBounces].pos = sd.posW;
+            nnHitInfoList[rayData.numBounces].thp = rayData.thp;
+        }
+        else nnHitInfoList[kNNMaxTrainingBounces - 1].thp *= rayData.thp;
+#endif
+        rayData.direction = bsdfSample.wo;
+    }
+    if (kUseRR)
+    {
+#if RR_USE_NN
+        HalfFeature<32> feature;
+        if (!gDone)
+        {
+            feature = computeInterpolatedFeature(nnHitInfoList[rayData.numBounces].pos, nnHitInfoList[rayData.numBounces].dir, nnHitInfoList[rayData.numBounces].thp);
+        }
+        else
+        {
+            [ForceUnroll]
+            for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
+        }
+        GroupMemoryBarrierWithGroupSync();
+        HalfFeature<32> output = MLPModule.forward(gMlp, feature);
+        float survival_prob = max(output.vals[0], max(output.vals[1], output.vals[2]));
+        print("bounces", rayData.numBounces);
+        print("NN", survival_prob);
+        survival_prob = min(survival_prob, (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces)));
+        print("old", (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces)));
+        print("total", survival_prob);
+#else
+        float survival_prob = (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces));
+        print("survival_prob", survival_prob);
+#endif
+        if (!gDone)
+        {
             if (sampleNext1D(rayData.sg) > survival_prob)
             {
                 // russian roulette not survived
@@ -382,16 +419,6 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 #if HASH_CACHE_UPDATE
         hashCacheSetThroughput(rayData.hashCacheState, rayData.thp);
 #endif // HASH_CACHE_UPDATE
-#if NN_TRAIN || NN_QUERY
-        if (rayData.numBounces < kNNMaxTrainingBounces)
-        {
-            nnHitInfoList[rayData.numBounces].dir = -rayData.direction;
-            nnHitInfoList[rayData.numBounces].pos = sd.posW;
-            nnHitInfoList[rayData.numBounces].thp = rayData.thp;
-        }
-        else nnHitInfoList[kNNMaxTrainingBounces - 1].thp *= rayData.thp;
-#endif
-        rayData.direction = bsdfSample.wo;
         return any(rayData.thp > 0.f);
     }
     return false;
@@ -517,10 +544,6 @@ float L2Loss(float3 value, no_diff float3 target, no_diff float3 normValue) {
     return dot((value - target), (value - target)) / (dot(normValue, normValue) + 0.01);
 }
 
-#if NN_TRAIN || NN_QUERY
-typedef MLPHalf32X32<NN_LAYER_COUNT, ReLU> MLPModule;
-#endif
-
 [numthreads(32, 4, 1)]
 void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     int3 groupThreadId: SV_GroupThreadID,
@@ -531,6 +554,9 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
 #if NN_TRAIN || NN_QUERY
     [ForceUnroll]
     for (uint i = 0; i < kNNMaxTrainingBounces; i++) nnHitInfoList[i] = NNHitInfo();
+    const ThreadInfo thread_info = ThreadInfo(groupThreadId.xy, int2(32, 4));
+    uint param_offset = 0; uint grad_offset = 0;
+    gMlp = MLPModule(param_offset, grad_offset, thread_info);
 #endif
     SampleGenerator sg = SampleGenerator(pixel + gFrameDim * gTrainIteration, gFrameCount);
 #if HASH_CACHE_UPDATE || NN_TRAIN
@@ -541,17 +567,11 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     outputColor = tracePath(pixel, gFrameDim, sg);
 
 // NN
-#if NN_TRAIN || NN_QUERY
-    const ThreadInfo thread_info = ThreadInfo(groupThreadId.xy, int2(32, 4));
-    uint param_offset = 0; uint grad_offset = 0;
-    MLPModule mlp = MLPModule(param_offset, grad_offset, thread_info);
-    TensorView featureGrid = TensorView(param_offset, grad_offset, 14, 14 * gFeatureGridDim.x);
-    FeatureGrid2DIndex feature_index = FeatureGrid2DIndex(gFrameDim, pixel, gFeatureGridDim);
 #if NN_TRAIN
     for (uint i = 0; i < kNNMaxTrainingBounces; i++)
     {
-        HalfFeature<32> feature = computeInterpolatedFeature(featureGrid, feature_index, nnHitInfoList[i].pos, nnHitInfoList[i].dir, nnHitInfoList[i].thp);
-        HalfFeature<32> output = MLPModule.forward(mlp, feature);
+        HalfFeature<32> feature = computeInterpolatedFeature(nnHitInfoList[i].pos, nnHitInfoList[i].dir, nnHitInfoList[i].thp);
+        HalfFeature<32> output = MLPModule.forward(gMlp, feature);
         HalfFeature<32>.Differential output_grad;
         //float3 target_color = float3(float2(pixel) / float2(gFrameDim), 0.0);
         //float3 target_color = (pixel.y + pixel.x > (gFrameDim.y / 2 + gFrameDim.x / 2)) ? float3(1.0, 0.0, 1.0) : float3(0.0, 1.0, 1.0);
@@ -567,19 +587,15 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         output_grad.vals[1] = float16_t(color_pair.d.y * gradient_scalar);
         output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
         var input_feature_pair = diffPair(feature);
-        bwd_diff(MLPModule.forward)(mlp, input_feature_pair, output_grad);
-        //bwd_diff(computeInterpolatedFeature)(featureGrid, feature_index, float2(pixel) / float2(gFrameDim), input_feature_pair.d);
+        bwd_diff(MLPModule.forward)(gMlp, input_feature_pair, output_grad);
+        //bwd_diff(computeInterpolatedFeature)(float2(pixel) / float2(gFrameDim), input_feature_pair.d);
     }
-#elif NN_QUERY
-    HalfFeature<32> feature = computeInterpolatedFeature(featureGrid, feature_index, nnHitInfoList[0].pos, nnHitInfoList[0].dir, nnHitInfoList[0].thp);
-    HalfFeature<32> output = MLPModule.forward(mlp, feature);
-    if (kNNDebug)
-    {
-        if (isnan(output.vals[0])) outputColor = float3(1.0, 0.0, 0.0);
-        else if (isinf(output.vals[0])) outputColor = float3(1.0, 0.0, 1.0);
-        else outputColor = float3(output.vals[0], output.vals[1], output.vals[2]);
-    }
-#endif
+#elif NN_DEBUG
+    HalfFeature<32> feature = computeInterpolatedFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir, nnHitInfoList[0].thp);
+    HalfFeature<32> output = MLPModule.forward(gMlp, feature);
+    if (isnan(output.vals[0])) outputColor = float3(1.0, 0.0, 0.0);
+    else if (isinf(output.vals[0])) outputColor = float3(1.0, 0.0, 1.0);
+    else outputColor = float3(output.vals[0], output.vals[1], output.vals[2]);
 #endif
 #if !NN_TRAIN && !HASH_CACHE_UPDATE
     gOutputColor[pixel] = float4(outputColor, 1.0f);

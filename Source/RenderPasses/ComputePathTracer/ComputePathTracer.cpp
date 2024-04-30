@@ -40,8 +40,9 @@ const std::string kRRProbStartValue = "RRProbStartValue";
 const std::string kRRProbReductionFactor = "RRProbReductionFactor";
 const std::string kLightBVHOptions = "lightBVHOptions";
 const std::string kEnableHashCache = "enableHashCache";
-const std::string kEnableNN = "enableNN";
 const std::string kHashCacheHashMapSizeExponent = "hashCacheHashMapSizeExponent";
+const std::string kRRUseNN = "RRUseNN";
+const std::string kNNDebugOutput = "NNDebugOutput";
 } // namespace
 
 extern "C" FALCOR_API_EXPORT void registerPlugin(Falcor::PluginRegistry& registry)
@@ -62,12 +63,13 @@ void ComputePathTracer::parseProperties(const Properties& props)
         else if (key == kUseRR) mUseRR = value;
         else if (key == kLightBVHOptions) mLightBVHOptions = value;
         else if (key == kEnableHashCache) mEnableHashCache = value;
-        else if (key == kEnableNN) mNNParams.enable = value;
         else if (key == kHashCacheHashMapSizeExponent)
         {
             mHashCacheHashMapSizeExp = uint32_t(value);
             mHashCacheHashMapSize = std::pow(2u, mHashCacheHashMapSizeExp);
         }
+        else if (key == kRRUseNN) mRRUseNN = value;
+        else if (key == kNNDebugOutput) mNNParams.debugOutput = value;
         else logWarning("Unknown property '{}' in ComputePathTracer properties.", key);
     }
 }
@@ -117,8 +119,9 @@ Properties ComputePathTracer::getProperties() const
     props[kRRProbStartValue] = mRRProbStartValue;
     props[kRRProbReductionFactor] = mRRProbReductionFactor;
     props[kEnableHashCache] = mEnableHashCache;
-    props[kEnableNN] = mNNParams.enable;
     props[kHashCacheHashMapSizeExponent] = mHashCacheHashMapSizeExp;
+    props[kRRUseNN] = mRRUseNN;
+    props[kNNDebugOutput] = mNNParams.debugOutput;
     return props;
 }
 
@@ -168,6 +171,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["NN_PARAM_2"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_2);
     defineList["NN_LAYER_WIDTH"] = std::to_string(mNNParams.nnLayerWidth);
     defineList["NN_LAYER_COUNT"] = std::to_string(mNNParams.nnLayerCount);
+    defineList["NN_TRAINING_BOUNCES"] = std::to_string(mNNParams.trainingBounces);
 
     if (!mPasses[TRAIN_NN_FILL_CACHE_PASS] && (mHashCacheActive || mNNParams.active))
     {
@@ -175,6 +179,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         defineList["HASH_CACHE_QUERY"] = "0";
         defineList["NN_TRAIN"] = mNNParams.active ? "1" : "0";
         defineList["NN_QUERY"] = "0";
+        defineList["RR_USE_NN"] = "0";
         ProgramDesc desc;
         desc.addShaderModules(mpScene->getShaderModules());
         desc.addShaderLibrary(kPTShaderFile).csEntry("main");
@@ -187,6 +192,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         defineList["HASH_CACHE_QUERY"] = mHashCacheActive ? "1" : "0";
         defineList["NN_TRAIN"] = "0";
         defineList["NN_QUERY"] = mNNParams.active ? "1" : "0";
+        defineList["RR_USE_NN"] = mRRUseNN ? "1" : "0";
         ProgramDesc desc;
         desc.addShaderModules(mpScene->getShaderModules());
         desc.addShaderLibrary(kPTShaderFile).csEntry("main");
@@ -371,7 +377,8 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         reset();
         renderData.getDictionary()[Falcor::kRenderPassRefreshFlags] = Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
         mHashCacheActive = mEnableHashCache;
-        mNNParams.active = mNNParams.enable;
+        // activate nn if it is used somewhere
+        mNNParams.active = mRRUseNN | mNNParams.debugOutput;
         setupData(pRenderContext);
         createPasses(renderData);
         setupBuffers();
@@ -424,29 +431,34 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     widget.checkbox("MIS", mUseMIS);
     widget.checkbox("power heuristic", mMISUsePowerHeuristic, true);
     widget.tooltip("Active: power heuristic; Inactive: balance heuristic", true);
-    widget.checkbox("RR", mUseRR);
-    if (kUseImGui)
+    if (Gui::Group rr_group = widget.group("RR"))
     {
-        ImGui::PushItemWidth(80);
-        ImGui::InputFloat("RR start value", &mRRProbStartValue);
-        ImGui::PopItemWidth();
-    }
-    else
+        rr_group.checkbox("enable", mUseRR);
+        rr_group.checkbox("use NN", mRRUseNN);
+        rr_group.tooltip("Determine the survival probability based on a radiance estimation of the nn.", true);
+        if (kUseImGui)
+        {
+            ImGui::PushItemWidth(80);
+            ImGui::InputFloat("RR start value", &mRRProbStartValue);
+            ImGui::PopItemWidth();
+        }
+        else
+        {
+            rr_group.var("RR start value", mRRProbStartValue, 1.0f, 4.0f);
+        }
+        rr_group.tooltip("Starting value of the survival probability", true);
+        if (kUseImGui)
+        {
+            ImGui::PushItemWidth(80);
+            ImGui::InputFloat("RR reduction factor", &mRRProbReductionFactor);
+            ImGui::PopItemWidth();
+        }
+        else
     {
-        widget.var("RR start value", mRRProbStartValue, 1.0f, 4.0f);
+            widget.var("RR reduction factor", mRRProbReductionFactor, 0.1f, 0.99f);
+        }
+        widget.tooltip("Gets multiplied to the initial survival probability at each interaction", true);
     }
-    widget.tooltip("Starting value of the survival probability", true);
-    if (kUseImGui)
-    {
-        ImGui::PushItemWidth(80);
-        ImGui::InputFloat("RR reduction factor", &mRRProbReductionFactor);
-        ImGui::PopItemWidth();
-    }
-    else
-    {
-        widget.var("RR reduction factor", mRRProbReductionFactor, 0.1f, 0.99f);
-    }
-    widget.tooltip("Gets multiplied to the initial survival probability at each interaction", true);
     if (Gui::Group emissive_sampler_group = widget.group("EmissiveSampler"))
     {
         if (mpEmissiveSampler) mpEmissiveSampler->renderUI(emissive_sampler_group);
@@ -466,7 +478,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     }
     if (Gui::Group nn_group = widget.group("NN"))
     {
-        nn_group.checkbox("Enable NN", mNNParams.enable);
+        nn_group.text(std::string("active: ") + (mNNParams.active ? "true" : "false"));
         if (kUseImGui)
         {
             if (Gui::Group nn_optimizer_group = nn_group.group("Optimizer"))
@@ -494,6 +506,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
             ImGui::Text("Weight init bounds");
             ImGui::InputFloat("min", &mNNParams.weightInitBound.x, 0.0f, 0.0f, "%.6f");
             ImGui::InputFloat("max", &mNNParams.weightInitBound.y, 0.0f, 0.0f, "%.6f");
+            ImGui::InputInt("training bounces", &mNNParams.trainingBounces);
             ImGui::PopItemWidth();
             ImGui::Separator();
         }

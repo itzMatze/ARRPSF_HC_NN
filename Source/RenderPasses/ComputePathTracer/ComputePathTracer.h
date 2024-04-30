@@ -97,13 +97,14 @@ private:
 
     // show contribution of specific bounce range, upper bound will terminate path
     uint mLowerBounceCount = 0;
-    uint mUpperBounceCount = 20;
+    uint mUpperBounceCount = 10;
     bool mUseNEE = true;
     bool mUseMIS = true;
     bool mMISUsePowerHeuristic = true;
     bool mUseRR = true;
     // Use importance sampling for materials.
     bool mUseImportanceSampling = true;
+    bool mRRUseNN = false;
     // starting value for the survival probability of russian roulette
     float mRRProbStartValue = 1.2f;
     // factor by which the survival probability gets reduced
@@ -130,8 +131,7 @@ private:
 // NN
     struct NNParams
     {
-        bool enable = true;
-        bool active = true;
+        bool active = false;
         enum OptimizerType {
             SGD = 0,
             ADAM = 1,
@@ -151,7 +151,8 @@ private:
         int gradOffset = 0;
         float2 weightInitBound = float2(0.001, 0.02);
         float filterAlpha = 0.99;
-        bool debugOutput = true;
+        int trainingBounces = 4;
+        bool debugOutput = false;
 
         void update()
         {

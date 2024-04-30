@@ -3,26 +3,12 @@
 
 #include "TinynnHalfLinear.hlsli"
 
-struct FeatureGrid2DIndex {
-    uint2 cellId;
-    float2 weights;
-    __init(uint2 frameDim, int2 pixelId, int2 feature_grid) {
-        const float2 cellSize = float2(float(frameDim.x) / float(feature_grid.x), float(frameDim.y) / float(feature_grid.y));
-        this.cellId = uint2(floor(pixelId / cellSize));
-        this.weights = (float2(pixelId) / cellSize) - float2(cellId);
-    }
-};
-
 [Differentiable]
 HalfFeature<32> computeInterpolatedFeature(
-    no_diff TensorView featureGrid,
-    no_diff FeatureGrid2DIndex index,
     no_diff float3 pos,
     no_diff float3 dir,
     no_diff float3 albedo
 ) {
-    const uint2 cellId = index.cellId;
-    const float2 weights = index.weights;
     HalfFeature<32> feature;
     [ForceUnroll]
     for (uint i = 0; i < 32; i++) feature.vals[i] = 1.0h;
