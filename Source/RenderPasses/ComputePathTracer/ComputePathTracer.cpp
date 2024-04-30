@@ -38,8 +38,9 @@ const std::string kUseRR = "useRR";
 const std::string kRRProbStartValue = "RRProbStartValue";
 const std::string kRRProbReductionFactor = "RRProbReductionFactor";
 const std::string kLightBVHOptions = "lightBVHOptions";
-const std::string kEnableHashCache = "enableHashCache";
 const std::string kHashCacheHashMapSizeExponent = "hashCacheHashMapSizeExponent";
+const std::string kHashCacheInjectRadiance = "hashCacheInjectRadiance";
+const std::string kHashCacheDebugColor = "hashCacheDebugColor";
 const std::string kRRUseNN = "RRUseNN";
 const std::string kNNDebugOutput = "NNDebugOutput";
 } // namespace
@@ -61,12 +62,13 @@ void ComputePathTracer::parseProperties(const Properties& props)
         else if (key == kMISUsePowerHeuristic) mMISUsePowerHeuristic = value;
         else if (key == kUseRR) mUseRR = value;
         else if (key == kLightBVHOptions) mLightBVHOptions = value;
-        else if (key == kEnableHashCache) mEnableHashCache = value;
         else if (key == kHashCacheHashMapSizeExponent)
         {
-            mHashCacheHashMapSizeExp = uint32_t(value);
-            mHashCacheHashMapSize = std::pow(2u, mHashCacheHashMapSizeExp);
+            mHCParams.hashMapSizeExp = uint32_t(value);
+            mHCParams.hashMapSize = std::pow(2u, mHCParams.hashMapSizeExp);
         }
+        else if (key == kHashCacheInjectRadiance) mHCParams.injectRadiance = value;
+        else if (key == kHashCacheDebugColor) mHCParams.debugColor = value;
         else if (key == kRRUseNN) mRRUseNN = value;
         else if (key == kNNDebugOutput) mNNParams.debugOutput = value;
         else logWarning("Unknown property '{}' in ComputePathTracer properties.", key);
@@ -117,8 +119,9 @@ Properties ComputePathTracer::getProperties() const
     props[kUseRR] = mUseRR;
     props[kRRProbStartValue] = mRRProbStartValue;
     props[kRRProbReductionFactor] = mRRProbReductionFactor;
-    props[kEnableHashCache] = mEnableHashCache;
-    props[kHashCacheHashMapSizeExponent] = mHashCacheHashMapSizeExp;
+    props[kHashCacheHashMapSizeExponent] = mHCParams.hashMapSizeExp;
+    props[kHashCacheInjectRadiance] = mHCParams.injectRadiance;
+    props[kHashCacheDebugColor] = mHCParams.debugColor;
     props[kRRUseNN] = mRRUseNN;
     props[kNNDebugOutput] = mNNParams.debugOutput;
     return props;
@@ -151,10 +154,10 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["RR_PROB_START_VALUE"] = fmt::format("{:.4f}", mRRProbStartValue);
     defineList["RR_PROB_REDUCTION_FACTOR"] = fmt::format("{:.4f}", mRRProbReductionFactor);
     defineList["DEBUG_PATH_LENGTH"] = mDebugPathLength ? "1" : "0";
-    defineList["HASH_CACHE_DEBUG_VOXELS"] = mHashCacheDebugVoxels ? "1" : "0";
-    defineList["HASH_CACHE_DEBUG_COLOR"] = mHashCacheDebugColor ? "1" : "0";
-    defineList["HASH_CACHE_DEBUG_LEVELS"] = mHashCacheDebugLevels ? "1" : "0";
-    defineList["HASH_CACHE_HASHMAP_SIZE"] = std::to_string(mHashCacheHashMapSize);
+    defineList["HASH_CACHE_DEBUG_VOXELS"] = mHCParams.debugVoxels ? "1" : "0";
+    defineList["HASH_CACHE_DEBUG_COLOR"] = mHCParams.debugColor ? "1" : "0";
+    defineList["HASH_CACHE_DEBUG_LEVELS"] = mHCParams.debugLevels ? "1" : "0";
+    defineList["HASH_CACHE_HASHMAP_SIZE"] = std::to_string(mHCParams.hashMapSize);
     defineList["USE_IMPORTANCE_SAMPLING"] = mUseImportanceSampling ? "1" : "0";
     defineList["USE_ANALYTIC_LIGHTS"] = mpScene->useAnalyticLights() ? "1" : "0";
     defineList["USE_EMISSIVE_LIGHTS"] = mpScene->useEmissiveLights() ? "1" : "0";
@@ -172,9 +175,9 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["NN_LAYER_COUNT"] = std::to_string(mNNParams.nnLayerCount);
     defineList["NN_TRAINING_BOUNCES"] = std::to_string(mNNParams.trainingBounces);
 
-    if (!mPasses[TRAIN_NN_FILL_CACHE_PASS] && (mHashCacheActive || mNNParams.active))
+    if (!mPasses[TRAIN_NN_FILL_CACHE_PASS] && (mHCParams.active || mNNParams.active))
     {
-        defineList["HASH_CACHE_UPDATE"] = mHashCacheActive ? "1" : "0";
+        defineList["HASH_CACHE_UPDATE"] = mHCParams.active ? "1" : "0";
         defineList["HASH_CACHE_QUERY"] = "0";
         defineList["NN_TRAIN"] = mNNParams.active ? "1" : "0";
         defineList["NN_QUERY"] = "0";
@@ -188,7 +191,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     if (!mPasses[PATH_TRACING_PASS])
     {
         defineList["HASH_CACHE_UPDATE"] = "0";
-        defineList["HASH_CACHE_QUERY"] = mHashCacheActive ? "1" : "0";
+        defineList["HASH_CACHE_QUERY"] = mHCParams.active ? "1" : "0";
         defineList["NN_TRAIN"] = "0";
         defineList["NN_QUERY"] = mNNParams.active ? "1" : "0";
         defineList["RR_USE_NN"] = mRRUseNN ? "1" : "0";
@@ -198,7 +201,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         desc.addTypeConformances(mpScene->getTypeConformances());
         mPasses[PATH_TRACING_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
     }
-    if (!mPasses[RESOLVE_PASS] && mHashCacheActive)
+    if (!mPasses[RESOLVE_PASS] && mHCParams.active)
     {
         ProgramDesc desc;
         desc.addShaderLibrary(khashCacheResolveShaderFile).csEntry("hashCacheResolve");
@@ -233,12 +236,12 @@ void ComputePathTracer::setupData(RenderContext* pRenderContext)
         const auto& pLights = mpScene->getLightCollection(pRenderContext);
         mpEmissiveSampler = std::make_unique<LightBVHSampler>(pRenderContext, mpScene, mLightBVHOptions);
     }
-    if (mHashCacheActive)
+    if (mHCParams.active)
     {
-        if (!mBuffers[HASH_ENTRIES_BUFFER]) mBuffers[HASH_ENTRIES_BUFFER] = mpDevice->createStructuredBuffer(sizeof(uint32_t), mHashCacheHashMapSize);
+        if (!mBuffers[HASH_ENTRIES_BUFFER]) mBuffers[HASH_ENTRIES_BUFFER] = mpDevice->createStructuredBuffer(sizeof(uint32_t), mHCParams.hashMapSize);
         // 128 bits per entry
-        if (!mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_0]) mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_0] = mpDevice->createBuffer((128 / 8) * mHashCacheHashMapSize);
-        if (!mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_1]) mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_1] = mpDevice->createBuffer((128 / 8) * mHashCacheHashMapSize);
+        if (!mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_0]) mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_0] = mpDevice->createBuffer((128 / 8) * mHCParams.hashMapSize);
+        if (!mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_1]) mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_1] = mpDevice->createBuffer((128 / 8) * mHCParams.hashMapSize);
     }
     std::mt19937 rnd(0);  // Generates random integers
     std::uniform_real_distribution<float> dis(mNNParams.weightInitBound.x, mNNParams.weightInitBound.y);
@@ -262,7 +265,7 @@ void ComputePathTracer::setupBuffers()
 void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
 {
     mCamPos = mpScene->getCamera()->getPosition();
-    if (mHashCacheActive || mNNParams.active)
+    if (mHCParams.active || mNNParams.active)
     {
         auto var = mPasses[TRAIN_NN_FILL_CACHE_PASS]->getRootVar();
         var["CB"]["gFrameDim"] = frameDim;
@@ -273,7 +276,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
         if (mpEmissiveSampler) mpEmissiveSampler->bindShaderData(mpSamplerBlock->getRootVar()["emissiveSampler"]);
         var["gSampler"] = mpSamplerBlock;
-        if (mHashCacheActive)
+        if (mHCParams.active)
         {
             var["gHashEntriesBuffer"] = mBuffers[HASH_ENTRIES_BUFFER];
             var["gHashCacheVoxelDataBuffer"] = mFrameCount % 2 == 0 ? mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_0] : mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_1];
@@ -288,7 +291,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         for (auto channel : kOutputChannels) var[channel.texname] = renderData.getTexture(channel.name);
         mpPixelDebug->prepareProgram(mPasses[TRAIN_NN_FILL_CACHE_PASS]->getProgram(), var);
     }
-    if (mHashCacheActive)
+    if (mHCParams.active)
     {
         auto var = mPasses[RESOLVE_PASS]->getRootVar();
         var["CB"]["gCamPos"] = mCamPos;
@@ -307,7 +310,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
         if (mpEmissiveSampler) mpEmissiveSampler->bindShaderData(mpSamplerBlock->getRootVar()["emissiveSampler"]);
         var["gSampler"] = mpSamplerBlock;
-        if (mHashCacheActive)
+        if (mHCParams.active)
         {
             var["gHashEntriesBuffer"] = mBuffers[HASH_ENTRIES_BUFFER];
             var["gHashCacheVoxelDataBuffer"] = mFrameCount % 2 == 0 ? mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_0] : mBuffers[HASH_CACHE_VOXEL_DATA_BUFFER_1];
@@ -375,7 +378,8 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
     {
         reset();
         renderData.getDictionary()[Falcor::kRenderPassRefreshFlags] = Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
-        mHashCacheActive = mEnableHashCache;
+        // activate hc if it is used somewhere
+        mHCParams.active = mHCParams.injectRadiance | mHCParams.debugColor | mHCParams.debugLevels | mHCParams.debugVoxels;
         // activate nn if it is used somewhere
         mNNParams.active = mRRUseNN | mNNParams.debugOutput;
         setupData(pRenderContext);
@@ -390,14 +394,14 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
     for (uint32_t i = 0; i < 4; i++)
     {
         if (mNNParams.active) mPasses[NN_GRADIENT_CLEAR_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
-        if (mHashCacheActive || mNNParams.active)
+        if (mHCParams.active || mNNParams.active)
         {
             mPasses[TRAIN_NN_FILL_CACHE_PASS]->getRootVar()["CB"]["gTrainIteration"] = i;
             mPasses[TRAIN_NN_FILL_CACHE_PASS]->execute(pRenderContext, frameDim.x / 10, frameDim.y / 10);
         }
         if (mNNParams.active) mPasses[NN_GRADIENT_DESCENT_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
     }
-    if (mHashCacheActive) mPasses[RESOLVE_PASS]->execute(pRenderContext, mHashCacheHashMapSize, 1);
+    if (mHCParams.active) mPasses[RESOLVE_PASS]->execute(pRenderContext, mHCParams.hashMapSize, 1);
     mPasses[PATH_TRACING_PASS]->execute(pRenderContext, frameDim.x, frameDim.y);
     mpPixelDebug->endFrame(pRenderContext);
     mFrameCount++;
@@ -440,16 +444,19 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     {
         if (mpEmissiveSampler) mpEmissiveSampler->renderUI(emissive_sampler_group);
     }
-    if (Gui::Group hash_cache_group = widget.group("Hash Cache"))
+    // hash cache
+    if (Gui::Group hc_group = widget.group("Hash Cache"))
     {
-        hash_cache_group.checkbox("Enable Hash Cache", mEnableHashCache);
+        hc_group.text(std::string("active: ") + (mHCParams.active ? "true" : "false"));
         ImGui::PushItemWidth(40);
-        ImGui::InputScalar("hashMapSizeExponent", ImGuiDataType_U32, &mHashCacheHashMapSizeExp);
+        ImGui::InputScalar("hashMapSizeExponent", ImGuiDataType_U32, &mHCParams.hashMapSizeExp);
         ImGui::PopItemWidth();
-        hash_cache_group.checkbox("Debug voxels", mHashCacheDebugVoxels);
-        hash_cache_group.checkbox("Debug color", mHashCacheDebugColor);
-        hash_cache_group.checkbox("Debug levels", mHashCacheDebugLevels);
+        hc_group.checkbox("inject radiance", mHCParams.injectRadiance);
+        hc_group.checkbox("debug voxels", mHCParams.debugVoxels);
+        hc_group.checkbox("debug color", mHCParams.debugColor);
+        hc_group.checkbox("debug levels", mHCParams.debugLevels);
     }
+    // neural network
     if (Gui::Group nn_group = widget.group("NN"))
     {
         nn_group.text(std::string("active: ") + (mNNParams.active ? "true" : "false"));
@@ -484,7 +491,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     }
     if (Gui::Group debug_group = widget.group("Debug"))
     {
-        debug_group.checkbox("Path length", mDebugPathLength);
+        debug_group.checkbox("path length", mDebugPathLength);
         mpPixelDebug->renderUI(debug_group);
     }
 
@@ -492,7 +499,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     // In execute() we will pass the flag to other passes for reset of temporal data etc.
     if (widget.button("Reload shader"))
     {
-        mHashCacheHashMapSize = std::pow(2, mHashCacheHashMapSizeExp);
+        mHCParams.hashMapSize = std::pow(2, mHCParams.hashMapSizeExp);
         mOptionsChanged = true;
         reset();
     }

@@ -118,15 +118,17 @@ private:
     std::unique_ptr<PixelDebug> mpPixelDebug;
 
 // Hash Cache
-    // should hash cache be enabled, this state is used when the options are applied
-    bool mEnableHashCache = true;
-    // is hash cache currently used in the program
-    bool mHashCacheActive = true;
-    uint32_t mHashCacheHashMapSizeExp = 22;
-    uint32_t mHashCacheHashMapSize = std::pow(2u, mHashCacheHashMapSizeExp);
-    bool mHashCacheDebugVoxels = false;
-    bool mHashCacheDebugColor = false;
-    bool mHashCacheDebugLevels = false;
+    struct HCParams
+    {
+        bool active = false;
+        uint32_t hashMapSizeExp = 22;
+        uint32_t hashMapSize = std::pow(2u, hashMapSizeExp);
+        // inject radiance estimate of HC on termination of path
+        bool injectRadiance = true;
+        bool debugVoxels = false;
+        bool debugColor = false;
+        bool debugLevels = false;
+    } mHCParams;
 
 // NN
     struct NNParams
