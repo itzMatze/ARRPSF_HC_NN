@@ -102,9 +102,16 @@ private:
     bool mUseMIS = true;
     bool mMISUsePowerHeuristic = true;
     bool mUseRR = true;
+    enum SurvivalProbOptions
+    {
+        RR_USE_DEFAULT = 0,
+        RR_USE_NN = 1,
+        RR_USE_HC = 2
+    };
+    Gui::DropdownList mRRSurvivalProbOptionList{Gui::DropdownValue{RR_USE_DEFAULT, "default"}, Gui::DropdownValue{RR_USE_NN, "nn"}, Gui::DropdownValue{RR_USE_HC, "hc"}};
+    uint mRRSurvivalProbOption = RR_USE_DEFAULT;
     // Use importance sampling for materials.
     bool mUseImportanceSampling = true;
-    bool mRRUseNN = false;
     // starting value for the survival probability of russian roulette
     float mRRProbStartValue = 1.2f;
     // factor by which the survival probability gets reduced

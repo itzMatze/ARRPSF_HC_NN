@@ -42,7 +42,7 @@ const std::string kHCHashMapSizeExponent = "HCHashMapSizeExponent";
 const std::string kHCInjectRadianceRR = "HCInjectRadianceRR";
 const std::string kHCInjectRadianceSpread = "HCInjectRadianceSpread";
 const std::string kHCDebugColor = "HCDebugColor";
-const std::string kRRUseNN = "RRUseNN";
+const std::string kRRSurvivalProbOption = "RRSurvivalProbOption";
 const std::string kNNDebugOutput = "NNDebugOutput";
 } // namespace
 
@@ -71,7 +71,7 @@ void ComputePathTracer::parseProperties(const Properties& props)
         else if (key == kHCInjectRadianceRR) mHCParams.injectRadianceRR = value;
         else if (key == kHCInjectRadianceSpread) mHCParams.injectRadianceSpread = value;
         else if (key == kHCDebugColor) mHCParams.debugColor = value;
-        else if (key == kRRUseNN) mRRUseNN = value;
+        else if (key == kRRSurvivalProbOption) mRRSurvivalProbOption = value;
         else if (key == kNNDebugOutput) mNNParams.debugOutput = value;
         else logWarning("Unknown property '{}' in ComputePathTracer properties.", key);
     }
@@ -125,7 +125,7 @@ Properties ComputePathTracer::getProperties() const
     props[kHCInjectRadianceRR] = mHCParams.injectRadianceRR;
     props[kHCInjectRadianceSpread] = mHCParams.injectRadianceSpread;
     props[kHCDebugColor] = mHCParams.debugColor;
-    props[kRRUseNN] = mRRUseNN;
+    props[kRRSurvivalProbOption] = mRRSurvivalProbOption;
     props[kNNDebugOutput] = mNNParams.debugOutput;
     return props;
 }
@@ -185,6 +185,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         defineList["NN_TRAIN"] = mNNParams.active ? "1" : "0";
         defineList["NN_QUERY"] = "0";
         defineList["RR_USE_NN"] = "0";
+        defineList["RR_USE_HC"] = "0";
         defineList["HC_INJECT_RADIANCE_RR"] = "0";
         defineList["HC_INJECT_RADIANCE_SPREAD"] = "0";
         ProgramDesc desc;
@@ -199,7 +200,8 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         defineList["HC_QUERY"] = mHCParams.active ? "1" : "0";
         defineList["NN_TRAIN"] = "0";
         defineList["NN_QUERY"] = mNNParams.active ? "1" : "0";
-        defineList["RR_USE_NN"] = mRRUseNN ? "1" : "0";
+        defineList["RR_USE_NN"] = mRRSurvivalProbOption == RR_USE_NN ? "1" : "0";
+        defineList["RR_USE_HC"] = mRRSurvivalProbOption == RR_USE_HC ? "1" : "0";
         defineList["HC_INJECT_RADIANCE_RR"] = mHCParams.injectRadianceRR ? "1" : "0";
         defineList["HC_INJECT_RADIANCE_SPREAD"] = mHCParams.injectRadianceSpread ? "1" : "0";
         ProgramDesc desc;
@@ -386,9 +388,9 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         reset();
         renderData.getDictionary()[Falcor::kRenderPassRefreshFlags] = Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
         // activate hc if it is used somewhere
-        mHCParams.active = mHCParams.injectRadianceRR | mHCParams.injectRadianceSpread | mHCParams.debugColor | mHCParams.debugLevels | mHCParams.debugVoxels;
+        mHCParams.active = (mRRSurvivalProbOption == RR_USE_HC) | mHCParams.injectRadianceRR | mHCParams.injectRadianceSpread | mHCParams.debugColor | mHCParams.debugLevels | mHCParams.debugVoxels;
         // activate nn if it is used somewhere
-        mNNParams.active = mRRUseNN | mNNParams.debugOutput;
+        mNNParams.active = (mRRSurvivalProbOption == RR_USE_NN) | mNNParams.debugOutput;
         setupData(pRenderContext);
         createPasses(renderData);
         setupBuffers();
@@ -436,8 +438,10 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     if (Gui::Group rr_group = widget.group("RR"))
     {
         rr_group.checkbox("enable", mUseRR);
-        rr_group.checkbox("use NN", mRRUseNN);
-        rr_group.tooltip("Determine the survival probability based on a radiance estimation of the nn.", true);
+        ImGui::PushItemWidth(120);
+        rr_group.dropdown("survival probability base", mRRSurvivalProbOptionList, mRRSurvivalProbOption);
+        rr_group.tooltip("Determine the survival probability using one of the option.\ndefault: use a constantly shrinking probability based on the parameters\nnn: based on a radiance estimate from the nn\nhc: based on a radiance estimate from the hc", true);
+        ImGui::PopItemWidth();
         ImGui::PushItemWidth(80);
         ImGui::InputFloat("RR start value", &mRRProbStartValue);
         ImGui::PopItemWidth();
@@ -491,7 +495,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         nn_group.dropdown("NN layer width", mNNParams.nnLayerWidthList, mNNParams.nnLayerWidth);
         ImGui::InputInt("NN layer count", &mNNParams.nnLayerCount);
         ImGui::InputFloat("Filter alpha", &mNNParams.filterAlpha, 0.0f, 0.0f, "%.4f");
-        nn_group.checkbox("Debug NN output", mNNParams.debugOutput);
+        nn_group.checkbox("debug NN output", mNNParams.debugOutput);
         ImGui::Text("Weight init bounds");
         ImGui::InputFloat("min", &mNNParams.weightInitBound.x, 0.0f, 0.0f, "%.6f");
         ImGui::InputFloat("max", &mNNParams.weightInitBound.y, 0.0f, 0.0f, "%.6f");

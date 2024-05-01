@@ -239,21 +239,28 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         // Construct HashCacheHitData structure needed for creating a query point at this hit location
         hashCacheHitData.positionWorld = sd.posW;
         hashCacheHitData.normalWorld = sd.getOrientedFaceNormal();
-#endif // HC_UPDATE || HC_QUERY
-    }
+        uint gridLevel = GetGridLevel(sd.posW, rayData.hashCacheState.gridParameters);
+#endif
 
-    if (kHCInjectRadianceSpread)
-    {
-        if (!gDone)
+#if HC_QUERY
+        if (kHCDebugLevels)
         {
-            uint gridLevel = GetGridLevel(sd.posW, rayData.hashCacheState.gridParameters);
-            if (kHCDebugLevels)
-            {
-                // the actual max level is 1024 (see clamp in function)
-                // however, the upper levels are never really used, thus use 8 to get meaningful visualization
-                rayData.radiance = colormapViridis(float(gridLevel) / 8.0f);
-                return false;
-            }
+            // the actual max level is 1024 (see clamp in function)
+            // however, the upper levels are never really used, thus use 8 to get meaningful visualization
+            rayData.radiance = colormapViridis(float(gridLevel) / 8.0f);
+            return false;
+        }
+        if (kHCDebugVoxels || kHCDebugColor)
+        {
+            // debug active; voxel debug will fetch voxel visualization values, otherwise just get color
+            float3 debugColor;
+            hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, debugColor, kHCDebugVoxels);
+            rayData.radiance = debugColor;
+            return false;
+        }
+
+        if (kHCInjectRadianceSpread)
+        {
             float voxelSize = GetVoxelSize(gridLevel, rayData.hashCacheState.gridParameters);
             bool isValidHit = rayData.t > voxelSize * lerp(1.0f, 2.0f, sampleNext1D(rayData.sg));
             float alpha = min(rayData.materialRoughness * rayData.materialRoughness, 0.99);
@@ -264,20 +271,13 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             isValidHit &= rayData.numBounces > 0;
 
             float3 hashCacheRadiance;
-            if (kHCDebugVoxels || kHCDebugColor)
-            {
-                // debug active; voxel debug will fetch voxel visualization values, otherwise just get color
-                float3 debugColor;
-                hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, debugColor, kHCDebugVoxels);
-                rayData.radiance = debugColor;
-                return false;
-            }
-            else if (isValidHit && hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
+            if (isValidHit && hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
             {
                 rayData.radiance += hashCacheRadiance * rayData.thp;
                 gDone = true; // Terminate the path once we've looked up into the cache
             }
         }
+#endif
     }
 
     BSDFSample bsdfSample;
@@ -397,7 +397,9 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         }
         GroupMemoryBarrierWithGroupSync();
         HalfFeature<32> output = MLPModule.forward(gMlp, feature);
-        float survival_prob = max(output.vals[0], max(output.vals[1], output.vals[2]));
+        float3 nnRadiance = float3(output.vals[0], output.vals[1], output.vals[2]);
+        nnRadiance *= rayData.thp;
+        float survival_prob = max(nnRadiance.x, max(nnRadiance.y, nnRadiance.z));
         print("bounces", rayData.numBounces);
         print("NN", survival_prob);
         survival_prob = min(survival_prob, (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces)));
@@ -405,6 +407,15 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         print("total", survival_prob);
 #else
         float survival_prob = (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces));
+#if RR_USE_HC
+        float3 hashCacheRadiance;
+        // only use hc for survival prob if the hc is ready at the current position, otherwise use default rr values
+        if (hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
+        {
+            hashCacheRadiance *= rayData.thp;
+            survival_prob = max(hashCacheRadiance.x, max(hashCacheRadiance.y, hashCacheRadiance.z));
+        }
+#endif
         print("survival_prob", survival_prob);
 #endif
         if (!gDone)
