@@ -9,6 +9,7 @@
 namespace
 {
 const std::string kPTShaderFile("RenderPasses/ComputePathTracer/ComputePathTracer.slang");
+const std::string kPTTrainShaderFile("RenderPasses/ComputePathTracer/ComputePathTracerTrain.slang");
 const std::string kHCResolveShaderFile("RenderPasses/ComputePathTracer/HashCacheResolve.slang");
 const std::string kGradientClearShaderFile("RenderPasses/ComputePathTracer/tinynn/GradientClear.slang");
 const std::string kGradientDescentShaderFile("RenderPasses/ComputePathTracer/tinynn/GradientDescentPrimal.slang");
@@ -190,7 +191,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         defineList["HC_INJECT_RADIANCE_SPREAD"] = "0";
         ProgramDesc desc;
         desc.addShaderModules(mpScene->getShaderModules());
-        desc.addShaderLibrary(kPTShaderFile).csEntry("main");
+        desc.addShaderLibrary(kPTTrainShaderFile).csEntry("main");
         desc.addTypeConformances(mpScene->getTypeConformances());
         mPasses[TRAIN_NN_FILL_CACHE_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
     }
