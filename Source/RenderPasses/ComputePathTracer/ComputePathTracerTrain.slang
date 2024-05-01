@@ -108,6 +108,8 @@ struct ScatterRayData
 #endif
     float3 radiance;  ///< Accumulated outgoing radiance from path.
     float3 thp;       ///< Current path throughput. This is updated at each path vertex.
+    float3 cur_radiance;
+    float3 cur_thp;
     uint numBounces;  ///< Path length in number of path segments (0 at origin, 1 at first secondary hit, etc.). Max 2^31.
     float3 origin;    ///< Next path segment origin.
     float3 direction; ///< Next path segment direction.
@@ -128,6 +130,8 @@ struct ScatterRayData
         this.numBounces = 0;
         this.radiance = float3(0, 0, 0);
         this.thp = float3(1, 1, 1);
+        this.cur_radiance = float3(0, 0, 0);
+        this.cur_thp = float3(1, 1, 1);
         this.origin = float3(0, 0, 0);
         this.direction = float3(0, 0, 0);
         this.pdf = 1.0;
@@ -269,7 +273,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
                 // Note we can assume path.pdf > 0.f since we shouldn't have got here otherwise.
                 misWeight = evalMIS(1, rayData.pdf, 1, lightPdf);
             }
-            rayData.radiance += rayData.thp * misWeight * bsdfProperties.emission;
+            rayData.cur_radiance += rayData.cur_thp * misWeight * bsdfProperties.emission;
         }
 
         // # NEE
@@ -304,17 +308,17 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
                     bool visible = traceShadowRay(shadowRay);
                     if (visible)
                     {
-                        rayData.radiance += rayData.thp * Lr;
+                        rayData.cur_radiance += rayData.cur_thp * Lr;
                     }
                 }
             }
         }
 
 #if HC_UPDATE
-        hashCacheUpdateHit(rayData.hashCacheState, hashCacheHitData, rayData.radiance);
+        hashCacheUpdateHit(rayData.hashCacheState, hashCacheHitData, rayData.cur_radiance);
 #endif
 #if NN_TRAIN
-        updateNNHitInfoRadiance(rayData.radiance, rayData.numBounces);
+        updateNNHitInfoRadiance(rayData.cur_radiance, rayData.numBounces);
 #endif // NN_TRAIN
 
         // generate scatter ray for the next path segment.
@@ -334,15 +338,15 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         // update rayData
         rayData.pdf = bsdfSample.pdf;
         rayData.normal = sd.getOrientedFaceNormal();
-        rayData.thp *= bsdfSample.weight;
+        rayData.cur_thp *= bsdfSample.weight;
 #if NN_TRAIN
         if (rayData.numBounces < kNNMaxTrainingBounces)
         {
             nnHitInfoList[rayData.numBounces].dir = -rayData.direction;
             nnHitInfoList[rayData.numBounces].pos = sd.posW;
-            nnHitInfoList[rayData.numBounces].thp = rayData.thp;
+            nnHitInfoList[rayData.numBounces].thp = rayData.cur_thp;
         }
-        else nnHitInfoList[kNNMaxTrainingBounces - 1].thp *= rayData.thp;
+        else nnHitInfoList[kNNMaxTrainingBounces - 1].thp *= rayData.cur_thp;
 #endif
         rayData.direction = bsdfSample.wo;
     }
@@ -393,22 +397,22 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
                 if (hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
                 {
                     gDone = true;
-                    rayData.radiance += hashCacheRadiance * rayData.thp;
+                    rayData.cur_radiance += hashCacheRadiance * rayData.cur_thp;
                 }
             }
 #else
                 gDone = true;
             }
-            else rayData.thp /= min(survival_prob, 1.0);
+            else rayData.cur_thp /= min(survival_prob, 1.0);
 #endif
         }
     }
     if (!gDone)
     {
 #if HC_UPDATE
-        hashCacheSetThroughput(rayData.hashCacheState, rayData.thp);
+        hashCacheSetThroughput(rayData.hashCacheState, rayData.cur_thp);
 #endif // HC_UPDATE
-        return any(rayData.thp > 0.f);
+        return any(rayData.cur_thp > 0.f);
     }
     return false;
 }
@@ -444,13 +448,13 @@ bool traceScatterRay(inout ScatterRayData rayData)
             }
 
             float3 Le = gSampler.envMapSampler.eval(rayData.direction);
-            rayData.radiance += rayData.thp * misWeight * Le;
+            rayData.cur_radiance += rayData.cur_thp * misWeight * Le;
         }
 #if HC_UPDATE
-        hashCacheUpdateMiss(rayData.hashCacheState, rayData.radiance);
+        hashCacheUpdateMiss(rayData.hashCacheState, rayData.cur_radiance);
 #endif // HC_UPDATE
 #if NN_TRAIN
-        updateNNHitInfoRadiance(rayData.radiance, rayData.numBounces);
+        updateNNHitInfoRadiance(rayData.cur_radiance, rayData.numBounces);
 #endif // NN_TRAIN
         gDone = true;
     }
@@ -498,26 +502,23 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
 #if HC_UPDATE
     rayData.hashCacheState.pathLength = 0;
 #endif // HC_UPDATE
-    float3 thp = float3(1.0);
-    float3 radiance = float3(0.0);
-
     rayData.direction = -gViewW[pixel].xyz;
     if (!handleHit(hit, rayData)) gDone = true;
     if (!gDone) rayData.numBounces++;
     // Follow path into the scene and compute its total contribution.
     for (uint i = 1; i <= kUpperBounceCount; i++)
     {
-        radiance += thp * rayData.radiance;
-        thp *= rayData.thp;
-        rayData.thp = float3(1.0f);
-        rayData.radiance = float3(0.0f);
+        rayData.radiance += rayData.thp * rayData.cur_radiance;
+        rayData.thp *= rayData.cur_thp;
+        rayData.cur_thp = float3(1.0f);
+        rayData.cur_radiance = float3(0.0f);
         traceScatterRay(rayData);
         if (!gDone) rayData.numBounces++;
     }
     // Store contribution from scatter ray.
-    radiance += thp * rayData.radiance;
-    thp *= rayData.thp;
-    outColor += radiance;
+    rayData.radiance += rayData.thp * rayData.cur_radiance;
+    rayData.thp *= rayData.cur_thp;
+    outColor += rayData.radiance;
     if (kDebugPathLength)
     {
         print("Path Length:", rayData.numBounces);
