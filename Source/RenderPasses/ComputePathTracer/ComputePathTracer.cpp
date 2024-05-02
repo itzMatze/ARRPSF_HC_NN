@@ -202,6 +202,8 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         defineList["NN_TRAIN"] = "0";
         defineList["NN_QUERY"] = mNNParams.active ? "1" : "0";
         defineList["RR_USE_NN"] = mRRSurvivalProbOption == RR_USE_NN ? "1" : "0";
+        // when using the nn during pt the threads need to be kept running for the cooperative matrices
+        defineList["KEEP_THREADS"] = mRRSurvivalProbOption == RR_USE_NN ? "1" : "0";
         defineList["RR_USE_HC"] = mRRSurvivalProbOption == RR_USE_HC ? "1" : "0";
         defineList["HC_INJECT_RADIANCE_RR"] = mHCParams.injectRadianceRR ? "1" : "0";
         defineList["HC_INJECT_RADIANCE_SPREAD"] = mHCParams.injectRadianceSpread ? "1" : "0";

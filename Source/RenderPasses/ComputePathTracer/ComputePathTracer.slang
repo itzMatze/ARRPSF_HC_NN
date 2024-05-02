@@ -81,7 +81,16 @@ typedef MLPHalf32X32<NN_LAYER_COUNT, ReLU> MLPModule;
 static MLPModule gMlp;
 #endif
 
+#if KEEP_THREADS
 static bool gDone = false;
+#define MASK_BLOCK if(!gDone)
+#define TERMINATE_PATH_0 gDone = true
+#define TERMINATE_PATH_1 gDone = true
+#else
+#define MASK_BLOCK
+#define TERMINATE_PATH_0 return false
+#define TERMINATE_PATH_1 return rayData.cur_radiance
+#endif
 
 struct ScatterRayData
 {
@@ -207,7 +216,7 @@ ShadingData loadShadingData(const TriangleHit hit, const float3 rayDir, const IT
 
 bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 {
-    if (!gDone) if (hit.getType() != HitType::Triangle) gDone = true;
+    MASK_BLOCK if (hit.getType() != HitType::Triangle) TERMINATE_PATH_0;
 
     ShadingData sd;
     IMaterialInstance mi;
@@ -216,7 +225,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 #if HC_QUERY
     HashCacheHitData hashCacheHitData;
 #endif
-    if (!gDone)
+    MASK_BLOCK
     {
         triangleHit = hit.getTriangleHit();
         let lod = ExplicitLodTextureSampler(0.f);
@@ -262,14 +271,14 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             if (isValidHit && hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
             {
                 rayData.cur_radiance += hashCacheRadiance * rayData.cur_thp;
-                gDone = true; // Terminate the path once we've looked up into the cache
+                TERMINATE_PATH_0; // Terminate the path once we've looked up into the cache
             }
         }
 #endif
     }
 
     BSDFSample bsdfSample;
-    if (!gDone)
+    MASK_BLOCK
     {
         // # light hit by chance
         // always show directly visible lights
@@ -336,18 +345,15 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
         // generate scatter ray for the next path segment.
         // Sample material.
-        if (!mi.sample(sd, rayData.sg, bsdfSample, kUseImportanceSampling)) gDone = true;
+        if (!mi.sample(sd, rayData.sg, bsdfSample, kUseImportanceSampling)) TERMINATE_PATH_0;
     }
 
-    if (!gDone)
+    MASK_BLOCK
     {
         // delta lobes require some caution, store that one is used
-        if (bsdfSample.isLobe(LobeType::Delta)) rayData.setDeltaLobe(true);
-        else rayData.setDeltaLobe(false);
-
+        rayData.setDeltaLobe(bsdfSample.isLobe(LobeType::Delta));
         // prevent self-intersection
-        if (bsdfSample.isLobe(LobeType::Transmission)) rayData.origin = sd.computeRayOrigin(false);
-        else rayData.origin = sd.computeRayOrigin(true);
+        rayData.origin = sd.computeRayOrigin(!bsdfSample.isLobe(LobeType::Transmission));
         // update rayData
         rayData.pdf = bsdfSample.pdf;
         rayData.normal = sd.getOrientedFaceNormal();
@@ -395,7 +401,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 #endif
         print("survival_prob", survival_prob);
 #endif
-        if (!gDone)
+        MASK_BLOCK
         {
             if (sampleNext1D(rayData.sg) > survival_prob)
             {
@@ -405,22 +411,24 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
                 // only actually terminate path if the hc is ready at the current position
                 if (hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
                 {
-                    gDone = true;
                     rayData.cur_radiance += hashCacheRadiance * rayData.cur_thp;
+                    TERMINATE_PATH_0;
                 }
             }
 #else
-                gDone = true;
+                TERMINATE_PATH_0;
             }
             else rayData.cur_thp /= min(survival_prob, 1.0);
 #endif
         }
     }
-    if (!gDone)
+    MASK_BLOCK
     {
         return any(rayData.cur_thp > 0.f);
     }
+#if KEEP_THREADS
     return false;
+#endif
 }
 
 /**
@@ -433,30 +441,33 @@ bool traceScatterRay(inout ScatterRayData rayData)
     const Ray ray = Ray(rayData.origin, rayData.direction, 0.0f, kRayTMax);
     SceneRayQuery<1> rayQuery;
     HitInfo hit;
-    if (!gDone && !rayQuery.traceRay(ray, hit, rayData.t, RAY_FLAG_NONE, 0xff))
+    MASK_BLOCK
     {
-        // add contribution from environment map
-        bool computeEnv = kUseEnvLight && (!kUseNEE || kUseMIS || !rayData.isLightSampled() || rayData.isDeltaLobe());
-        if (computeEnv && rayData.numBounces >= kLowerBounceCount && rayData.numBounces <= kUpperBounceCount)
+        if (!rayQuery.traceRay(ray, hit, rayData.t, RAY_FLAG_NONE, 0xff))
         {
-            float misWeight = 1.f;
-            if (kUseNEE && kUseMIS && rayData.isLightSampled() && !rayData.isDeltaLobe())
+            // add contribution from environment map
+            bool computeEnv = kUseEnvLight && (!kUseNEE || kUseMIS || !rayData.isLightSampled() || rayData.isDeltaLobe());
+            if (computeEnv && rayData.numBounces >= kLowerBounceCount && rayData.numBounces <= kUpperBounceCount)
             {
-                // If NEE and MIS are enabled, and we've already sampled the env map,
-                // then we need to evaluate the MIS weight here to account for the remaining contribution.
+                float misWeight = 1.f;
+                if (kUseNEE && kUseMIS && rayData.isLightSampled() && !rayData.isDeltaLobe())
+                {
+                    // If NEE and MIS are enabled, and we've already sampled the env map,
+                    // then we need to evaluate the MIS weight here to account for the remaining contribution.
 
-                // Evaluate PDF, had it been generated with light sampling.
-                float lightPdf = getEnvMapSelectionProbability() * gSampler.envMapSampler.evalPdf(rayData.direction);
+                    // Evaluate PDF, had it been generated with light sampling.
+                    float lightPdf = getEnvMapSelectionProbability() * gSampler.envMapSampler.evalPdf(rayData.direction);
 
-                // Compute MIS weight by combining this with BSDF sampling.
-                // Note we can assume path.pdf > 0.f since we shouldn't have got here otherwise.
-                misWeight = evalMIS(1, rayData.pdf, 1, lightPdf);
+                    // Compute MIS weight by combining this with BSDF sampling.
+                    // Note we can assume path.pdf > 0.f since we shouldn't have got here otherwise.
+                    misWeight = evalMIS(1, rayData.pdf, 1, lightPdf);
+                }
+
+                float3 Le = gSampler.envMapSampler.eval(rayData.direction);
+                rayData.cur_radiance += rayData.cur_thp * misWeight * Le;
             }
-
-            float3 Le = gSampler.envMapSampler.eval(rayData.direction);
-            rayData.cur_radiance += rayData.cur_thp * misWeight * Le;
+            TERMINATE_PATH_0;
         }
-        gDone = true;
     }
     return handleHit(hit, rayData);
 }
@@ -480,6 +491,7 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
 {
     float3 outColor = float3(0.f);
     const HitInfo hit = HitInfo(gVBuffer[pixel]);
+    ScatterRayData rayData = ScatterRayData(sg);
 
 #if NN_QUERY
     nnHitInfoList[0].dir = -gViewW[pixel].xyz;
@@ -487,10 +499,9 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
     if (!hit.isValid() || hit.getType() != HitType::Triangle)
     {
         // Background pixel.
-        outColor = kUseEnvBackground ? gScene.envMap.eval(-gViewW[pixel].xyz) : kDefaultBackgroundColor;
-        gDone = true;
+        rayData.cur_radiance = kUseEnvBackground ? gScene.envMap.eval(-gViewW[pixel].xyz) : kDefaultBackgroundColor;
+        TERMINATE_PATH_1;
     }
-    ScatterRayData rayData = ScatterRayData(sg);
 
 #if HC_QUERY
     rayData.hashCacheState.gridParameters.cameraPosition = gCamPos.xyz;
@@ -499,8 +510,8 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
     rayData.spread = 0.0f;
 #endif
     rayData.direction = -gViewW[pixel].xyz;
-    if (!handleHit(hit, rayData)) gDone = true;
-    if (!gDone) rayData.numBounces++;
+    if (!handleHit(hit, rayData)) TERMINATE_PATH_1;
+    MASK_BLOCK rayData.numBounces++;
     // Follow path into the scene and compute its total contribution.
     for (uint i = 1; i <= kUpperBounceCount; i++)
     {
@@ -508,8 +519,12 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
         rayData.thp *= rayData.cur_thp;
         rayData.cur_thp = float3(1.0f);
         rayData.cur_radiance = float3(0.0f);
+#if KEEP_THREADS
         traceScatterRay(rayData);
-        if (!gDone) rayData.numBounces++;
+#else
+        if (!traceScatterRay(rayData)) break;
+#endif
+        MASK_BLOCK rayData.numBounces++;
     }
     // Store contribution from scatter ray.
     rayData.radiance += rayData.thp * rayData.cur_radiance;
