@@ -520,6 +520,7 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
         rayData.cur_thp = float3(1.0f);
         rayData.cur_radiance = float3(0.0f);
 #if KEEP_THREADS
+        if (WaveActiveAllTrue(gDone)) break;
         traceScatterRay(rayData);
 #else
         if (!traceScatterRay(rayData)) break;
