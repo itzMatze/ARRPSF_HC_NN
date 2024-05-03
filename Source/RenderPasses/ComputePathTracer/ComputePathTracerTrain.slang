@@ -303,10 +303,10 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     }
 
 #if HC_UPDATE
-        hashCacheUpdateHit(rayData.hashCacheState, hashCacheHitData, rayData.cur_radiance);
+    hashCacheUpdateHit(rayData.hashCacheState, hashCacheHitData, rayData.cur_radiance);
 #endif
 #if NN_TRAIN
-        updateNNHitInfoRadiance(rayData.cur_radiance, rayData.numBounces);
+    updateNNHitInfoRadiance(rayData.cur_radiance, rayData.numBounces);
 #endif // NN_TRAIN
 
     // generate scatter ray for the next path segment.
@@ -412,9 +412,6 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
     float3 outColor = float3(0.f);
     const HitInfo hit = HitInfo(gVBuffer[pixel]);
 
-#if NN_TRAIN
-    nnHitInfoList[0].dir = -gViewW[pixel].xyz;
-#endif
     if (!hit.isValid() || hit.getType() != HitType::Triangle)
     {
         // Background pixel.
@@ -470,8 +467,10 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     int3 groupThreadId: SV_GroupThreadID,
     int3 groupId: SV_GroupID)
 {
-    uint2 pixel = dispatchThreadId.xy;
-    if (any(pixel >= gFrameDim)) return;
+    SampleGenerator sg = SampleGenerator(dispatchThreadId.xy + gFrameDim * gTrainIteration, gFrameCount);
+    uint2 pixel = dispatchThreadId.xy * 10 + uint2(sampleNext2D(sg) * 10.99);
+
+    bool mainThread = (any(pixel >= gFrameDim)) ? false : true;
 #if NN_TRAIN
     [ForceUnroll]
     for (uint i = 0; i < kNNMaxTrainingBounces; i++) nnHitInfoList[i] = NNHitInfo();
@@ -479,13 +478,9 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     uint param_offset = 0; uint grad_offset = 0;
     gMlp = MLPModule(param_offset, grad_offset, thread_info);
 #endif
-    SampleGenerator sg = SampleGenerator(pixel + gFrameDim * gTrainIteration, gFrameCount);
-#if HC_UPDATE || NN_TRAIN
-    pixel = dispatchThreadId.xy * 10 + uint2(sampleNext2D(sg) * 10.99);
-#endif
     printSetPixel(pixel);
     float3 outputColor = float3(0.0, 1.0, 0.0);
-    outputColor = tracePath(pixel, gFrameDim, sg);
+    if (mainThread) outputColor = tracePath(pixel, gFrameDim, sg);
 
 // NN
 #if NN_TRAIN
@@ -503,7 +498,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         float loss = L2Loss(color, target_color, color);
         bwd_diff(L2Loss)(color_pair, target_color, color, 1);
         // set gradient to zero if current hitInfoList entry is invalid as it was never updated
-        const float gradient_scalar = (length(nnHitInfoList[i].dir) < 0.1) ? 0.0 : 1.0 / (gFrameDim.x * gFrameDim.y / 100.0);
+        const float gradient_scalar = (!mainThread || length(nnHitInfoList[i].dir) < 0.1) ? 0.0 : 1.0 / (gFrameDim.x * gFrameDim.y / 100.0);
         output_grad.vals[0] = float16_t(color_pair.d.x * gradient_scalar);
         output_grad.vals[1] = float16_t(color_pair.d.y * gradient_scalar);
         output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
