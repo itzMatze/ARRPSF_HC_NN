@@ -164,6 +164,7 @@ private:
         float filterAlpha = 0.99;
         int trainingBounces = 4;
         bool debugOutput = false;
+        bool keepThreads = false;
 
         void update()
         {

@@ -203,7 +203,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         defineList["NN_QUERY"] = mNNParams.active ? "1" : "0";
         defineList["RR_USE_NN"] = mRRSurvivalProbOption == RR_USE_NN ? "1" : "0";
         // when using the nn during pt the threads need to be kept running for the cooperative matrices
-        defineList["KEEP_THREADS"] = mRRSurvivalProbOption == RR_USE_NN ? "1" : "0";
+        defineList["KEEP_THREADS"] = mNNParams.keepThreads ? "1" : "0";
         defineList["RR_USE_HC"] = mRRSurvivalProbOption == RR_USE_HC ? "1" : "0";
         defineList["HC_INJECT_RADIANCE_RR"] = mHCParams.injectRadianceRR ? "1" : "0";
         defineList["HC_INJECT_RADIANCE_SPREAD"] = mHCParams.injectRadianceSpread ? "1" : "0";
@@ -394,6 +394,7 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         mHCParams.active = (mRRSurvivalProbOption == RR_USE_HC) | mHCParams.injectRadianceRR | mHCParams.injectRadianceSpread | mHCParams.debugColor | mHCParams.debugLevels | mHCParams.debugVoxels;
         // activate nn if it is used somewhere
         mNNParams.active = (mRRSurvivalProbOption == RR_USE_NN) | mNNParams.debugOutput;
+        mNNParams.keepThreads = (mRRSurvivalProbOption == RR_USE_NN) | mNNParams.debugOutput;
         setupData(pRenderContext);
         createPasses(renderData);
         setupBuffers();

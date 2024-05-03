@@ -493,9 +493,6 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
     const HitInfo hit = HitInfo(gVBuffer[pixel]);
     ScatterRayData rayData = ScatterRayData(sg);
 
-#if NN_QUERY
-    nnHitInfoList[0].dir = -gViewW[pixel].xyz;
-#endif
     if (!hit.isValid() || hit.getType() != HitType::Triangle)
     {
         // Background pixel.
@@ -511,6 +508,14 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
 #endif
     rayData.direction = -gViewW[pixel].xyz;
     if (!handleHit(hit, rayData)) TERMINATE_PATH_1;
+#if NN_DEBUG
+    HalfFeature<32> feature = computeInterpolatedFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir, nnHitInfoList[0].thp);
+    HalfFeature<32> output = MLPModule.forward(gMlp, feature);
+    if (isnan(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 0.0);
+    else if (isinf(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 1.0);
+    else rayData.cur_radiance = float3(output.vals[0], output.vals[1], output.vals[2]);
+    TERMINATE_PATH_1;
+#endif
     MASK_BLOCK rayData.numBounces++;
     // Follow path into the scene and compute its total contribution.
     for (uint i = 1; i <= kUpperBounceCount; i++)
@@ -539,8 +544,6 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
     return outColor;
 }
 
-static const int2 gFeatureGridDim = int2(120, 68);
-
 [Differentiable]
 float L2Loss(float3 value, no_diff float3 target, no_diff float3 normValue) {
     return dot((value - target), (value - target)) / (dot(normValue, normValue) + 0.01);
@@ -565,14 +568,6 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     float3 outputColor = float3(0.0, 1.0, 0.0);
     outputColor = tracePath(pixel, gFrameDim, sg);
 
-// NN
-#if NN_DEBUG
-    HalfFeature<32> feature = computeInterpolatedFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir, nnHitInfoList[0].thp);
-    HalfFeature<32> output = MLPModule.forward(gMlp, feature);
-    if (isnan(output.vals[0])) outputColor = float3(1.0, 0.0, 0.0);
-    else if (isinf(output.vals[0])) outputColor = float3(1.0, 0.0, 1.0);
-    else outputColor = float3(output.vals[0], output.vals[1], output.vals[2]);
-#endif
     gOutputColor[pixel] = float4(outputColor, 1.0f);
 }
 
