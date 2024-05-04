@@ -81,8 +81,10 @@ static MLPModule gMlp;
 #endif
 
 #if NN_TRAIN
-void updateNNHitInfoRadiance(float3 radiance, uint bounce)
+void updateNNHitInfoRadiance(float3 radiance, int bounce)
 {
+    // in nirc emitted radiance is applied as incident radiance to the previous position
+    bounce -= 1;
     // found light, propagate it through the path
     for (int i = min(kNNMaxTrainingBounces - 1, bounce); i >= 0; i--)
     {
@@ -321,16 +323,16 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     rayData.pdf = bsdfSample.pdf;
     rayData.normal = sd.getOrientedFaceNormal();
     rayData.cur_thp *= bsdfSample.weight;
+    rayData.direction = bsdfSample.wo;
 #if NN_TRAIN
     if (rayData.numBounces < kNNMaxTrainingBounces)
     {
-        nnHitInfoList[rayData.numBounces].dir = -rayData.direction;
+        nnHitInfoList[rayData.numBounces].dir = rayData.direction;
         nnHitInfoList[rayData.numBounces].pos = sd.posW;
         nnHitInfoList[rayData.numBounces].thp = rayData.cur_thp;
     }
     else nnHitInfoList[kNNMaxTrainingBounces - 1].thp *= rayData.cur_thp;
 #endif
-    rayData.direction = bsdfSample.wo;
     if (kUseRR)
     {
         float survival_prob = (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces));

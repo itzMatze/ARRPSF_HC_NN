@@ -358,16 +358,16 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         rayData.pdf = bsdfSample.pdf;
         rayData.normal = sd.getOrientedFaceNormal();
         rayData.cur_thp *= bsdfSample.weight;
+        rayData.direction = bsdfSample.wo;
 #if NN_QUERY
         if (rayData.numBounces < kNNMaxTrainingBounces)
         {
-            nnHitInfoList[rayData.numBounces].dir = -rayData.direction;
+            nnHitInfoList[rayData.numBounces].dir = rayData.direction;
             nnHitInfoList[rayData.numBounces].pos = sd.posW;
             nnHitInfoList[rayData.numBounces].thp = rayData.cur_thp;
         }
         else nnHitInfoList[kNNMaxTrainingBounces - 1].thp *= rayData.cur_thp;
 #endif
-        rayData.direction = bsdfSample.wo;
     }
     if (kUseRR)
     {
@@ -513,7 +513,7 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
     HalfFeature<32> output = MLPModule.forward(gMlp, feature);
     if (isnan(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 0.0);
     else if (isinf(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 1.0);
-    else rayData.cur_radiance = float3(output.vals[0], output.vals[1], output.vals[2]);
+    else rayData.cur_radiance += float3(output.vals[0], output.vals[1], output.vals[2]) * rayData.cur_thp;
     TERMINATE_PATH_1;
 #endif
     MASK_BLOCK rayData.numBounces++;
