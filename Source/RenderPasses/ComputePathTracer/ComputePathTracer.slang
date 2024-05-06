@@ -277,7 +277,6 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 #endif
     }
 
-    BSDFSample bsdfSample;
     MASK_BLOCK
     {
         // # light hit by chance
@@ -304,49 +303,95 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             }
             rayData.cur_radiance += rayData.cur_thp * misWeight * bsdfProperties.emission;
         }
+    }
 
-        // # NEE
-        LightSample ls;
+    // # NEE
+    LightSample ls;
+    float3 Lr;
+    bool applyNEE = false;
+    bool validSample = false;
+    float3 weight = float3(0.0);
+    MASK_BLOCK
+    {
         PathVertex vertex = PathVertex(sd.posW, sd.faceN, sd.frontFacing);
         const uint lobeTypes = mi.getLobeTypes(sd);
         // NEE not applicable to DeltaLobes, only apply if bounce falls in requested bounce range
-        const bool applyNEE = kUseNEE && ((lobeTypes & uint(LobeType::NonDelta)) != 0) && ((rayData.numBounces + 1) >= kLowerBounceCount && (rayData.numBounces + 1) <= kUpperBounceCount);
+        applyNEE = kUseNEE && ((lobeTypes & uint(LobeType::NonDelta)) != 0) && ((rayData.numBounces + 1) >= kLowerBounceCount && (rayData.numBounces + 1) <= kUpperBounceCount);
         rayData.setLightSampled(false, false);
         if (applyNEE)
         {
             // sample a light and store in which hemispheres a light was searched for
             bool sampleUpperHemisphere = ((lobeTypes & uint(LobeType::NonDeltaReflection)) != 0);
             bool sampleLowerHemisphere = ((lobeTypes & uint(LobeType::NonDeltaTransmission)) != 0);
-            bool validSample = generateLightSample(vertex, sampleUpperHemisphere, sampleLowerHemisphere, rayData.sg, ls);
+            validSample = generateLightSample(vertex, sampleUpperHemisphere, sampleLowerHemisphere, rayData.sg, ls);
             rayData.setLightSampled(sampleUpperHemisphere, sampleLowerHemisphere);
             if (validSample)
             {
+                // apply BSDF
+                weight = mi.eval(sd, ls.dir, rayData.sg);
+                Lr = weight * ls.Li;
                 // apply MIS only to non-analytic lights
                 if (ls.lightType != uint(LightSampleType::Analytic))
                 {
                     float scatterPdf = mi.evalPdf(sd, ls.dir, kUseImportanceSampling);
-                    ls.Li *= evalMIS(1, ls.pdf, 1, scatterPdf);
-                }
-
-                // apply BSDF
-                float3 weight = mi.eval(sd, ls.dir, rayData.sg);
-                float3 Lr = weight * ls.Li;
-                if (any(Lr > 0.f))
-                {
-                    Ray shadowRay = ls.getVisibilityRay();
-                    bool visible = traceShadowRay(shadowRay);
-                    if (visible)
-                    {
-                        rayData.cur_radiance += rayData.cur_thp * Lr;
-                    }
+                    Lr *= evalMIS(1, ls.pdf, 1, scatterPdf);
                 }
             }
         }
+    }
 
+#if NN_DEBUG
+    // evaluate nn for nee
+    HalfFeature<32> feature;
+    if (!gDone) feature = computeInterpolatedFeature(sd.posW, ls.dir);
+    else
+    {
+        [ForceUnroll]
+        for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
+    }
+    HalfFeature<32> output = MLPModule.forward(gMlp, feature);
+    rayData.cur_radiance += 0.5 * float3(output.vals[0], output.vals[1], output.vals[2]) * weight;
+#else
+    MASK_BLOCK
+    {
+        if (applyNEE && validSample)
+        {
+            if (any(Lr > 0.f))
+            {
+                Ray shadowRay = ls.getVisibilityRay();
+                bool visible = traceShadowRay(shadowRay);
+                if (visible)
+                {
+                    rayData.cur_radiance += rayData.cur_thp * Lr;
+                }
+            }
+        }
+    }
+#endif
+
+    BSDFSample bsdfSample;
+    MASK_BLOCK
+    {
         // generate scatter ray for the next path segment.
         // Sample material.
         if (!mi.sample(sd, rayData.sg, bsdfSample, kUseImportanceSampling)) TERMINATE_PATH_0;
     }
+
+#if NN_DEBUG
+    // evaluate nn for the bsdf sampled direction
+    //HalfFeature<32> feature = computeInterpolatedFeature(gCamPos.xyz, -gViewW[pixel].xyz);
+    if (!gDone) feature = computeInterpolatedFeature(sd.posW, bsdfSample.wo);
+    else
+    {
+        [ForceUnroll]
+        for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
+    }
+    output = MLPModule.forward(gMlp, feature);
+    if (isnan(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 0.0);
+    else if (isinf(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 1.0);
+    else rayData.cur_radiance += 0.5 * float3(output.vals[0], output.vals[1], output.vals[2]) * bsdfSample.weight;
+    TERMINATE_PATH_0;
+#endif
 
     MASK_BLOCK
     {
@@ -375,7 +420,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         HalfFeature<32> feature;
         if (!gDone)
         {
-            feature = computeInterpolatedFeature(nnHitInfoList[rayData.numBounces].pos, nnHitInfoList[rayData.numBounces].dir, nnHitInfoList[rayData.numBounces].thp);
+            feature = computeInterpolatedFeature(nnHitInfoList[rayData.numBounces].pos, nnHitInfoList[rayData.numBounces].dir);
         }
         else
         {
@@ -508,14 +553,6 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
 #endif
     rayData.direction = -gViewW[pixel].xyz;
     if (!handleHit(hit, rayData)) TERMINATE_PATH_1;
-#if NN_DEBUG
-    HalfFeature<32> feature = computeInterpolatedFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir, nnHitInfoList[0].thp);
-    HalfFeature<32> output = MLPModule.forward(gMlp, feature);
-    if (isnan(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 0.0);
-    else if (isinf(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 1.0);
-    else rayData.cur_radiance += float3(output.vals[0], output.vals[1], output.vals[2]) * rayData.cur_thp;
-    TERMINATE_PATH_1;
-#endif
     MASK_BLOCK rayData.numBounces++;
     // Follow path into the scene and compute its total contribution.
     for (uint i = 1; i <= kUpperBounceCount; i++)

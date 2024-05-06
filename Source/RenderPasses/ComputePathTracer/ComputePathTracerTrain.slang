@@ -75,6 +75,7 @@ struct NNHitInfo
 };
 
 static NNHitInfo nnHitInfoList[kNNMaxTrainingBounces];
+static NNHitInfo nnNeeHitInfoList[kNNMaxTrainingBounces];
 
 typedef MLPHalf32X32<NN_LAYER_COUNT, ReLU> MLPModule;
 static MLPModule gMlp;
@@ -282,26 +283,35 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         rayData.setLightSampled(sampleUpperHemisphere, sampleLowerHemisphere);
         if (validSample)
         {
-            // apply MIS only to non-analytic lights
-            if (ls.lightType != uint(LightSampleType::Analytic))
-            {
-                float scatterPdf = mi.evalPdf(sd, ls.dir, kUseImportanceSampling);
-                ls.Li *= evalMIS(1, ls.pdf, 1, scatterPdf);
-            }
 
             // apply BSDF
             float3 weight = mi.eval(sd, ls.dir, rayData.sg);
             float3 Lr = weight * ls.Li;
+            // apply MIS only to non-analytic lights
+            if (ls.lightType != uint(LightSampleType::Analytic))
+            {
+                float scatterPdf = mi.evalPdf(sd, ls.dir, kUseImportanceSampling);
+                Lr *= evalMIS(1, ls.pdf, 1, scatterPdf);
+            }
             if (any(Lr > 0.f))
             {
                 Ray shadowRay = ls.getVisibilityRay();
                 bool visible = traceShadowRay(shadowRay);
-                if (visible)
+                if (!visible)
                 {
-                    rayData.cur_radiance += rayData.cur_thp * Lr;
+                    ls.Li = float3(0.0);
                 }
+                rayData.cur_radiance += rayData.cur_thp * Lr;
             }
         }
+#if NN_TRAIN
+        if (rayData.numBounces < kNNMaxTrainingBounces)
+        {
+            nnNeeHitInfoList[rayData.numBounces].pos = sd.posW;
+            nnNeeHitInfoList[rayData.numBounces].dir = ls.dir;
+            nnNeeHitInfoList[rayData.numBounces].radiance = ls.Li;
+        }
+#endif
     }
 
 #if HC_UPDATE
@@ -476,6 +486,8 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
 #if NN_TRAIN
     [ForceUnroll]
     for (uint i = 0; i < kNNMaxTrainingBounces; i++) nnHitInfoList[i] = NNHitInfo();
+    [ForceUnroll]
+    for (uint i = 0; i < kNNMaxTrainingBounces; i++) nnNeeHitInfoList[i] = NNHitInfo();
     const ThreadInfo thread_info = ThreadInfo(groupThreadId.xy, int2(32, 4));
     uint param_offset = 0; uint grad_offset = 0;
     gMlp = MLPModule(param_offset, grad_offset, thread_info);
@@ -488,7 +500,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
 #if NN_TRAIN
     for (uint i = 0; i < kNNMaxTrainingBounces; i++)
     {
-        HalfFeature<32> feature = computeInterpolatedFeature(nnHitInfoList[i].pos, nnHitInfoList[i].dir, nnHitInfoList[i].thp);
+        HalfFeature<32> feature = computeInterpolatedFeature(nnHitInfoList[i].pos, nnHitInfoList[i].dir);
         HalfFeature<32> output = MLPModule.forward(gMlp, feature);
         HalfFeature<32>.Differential output_grad;
         //float3 target_color = float3(float2(pixel) / float2(gFrameDim), 0.0);
@@ -501,6 +513,29 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         bwd_diff(L2Loss)(color_pair, target_color, color, 1);
         // set gradient to zero if current hitInfoList entry is invalid as it was never updated
         const float gradient_scalar = (!mainThread || length(nnHitInfoList[i].dir) < 0.1) ? 0.0 : 1.0 / (gFrameDim.x * gFrameDim.y / 100.0);
+        output_grad.vals[0] = float16_t(color_pair.d.x * gradient_scalar);
+        output_grad.vals[1] = float16_t(color_pair.d.y * gradient_scalar);
+        output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
+        var input_feature_pair = diffPair(feature);
+        bwd_diff(MLPModule.forward)(gMlp, input_feature_pair, output_grad);
+        //bwd_diff(computeInterpolatedFeature)(float2(pixel) / float2(gFrameDim), input_feature_pair.d);
+    }
+    // nee training
+    for (uint i = 0; i < kNNMaxTrainingBounces; i++)
+    {
+        HalfFeature<32> feature = computeInterpolatedFeature(nnNeeHitInfoList[i].pos, nnNeeHitInfoList[i].dir);
+        HalfFeature<32> output = MLPModule.forward(gMlp, feature);
+        HalfFeature<32>.Differential output_grad;
+        //float3 target_color = float3(float2(pixel) / float2(gFrameDim), 0.0);
+        //float3 target_color = (pixel.y + pixel.x > (gFrameDim.y / 2 + gFrameDim.x / 2)) ? float3(1.0, 0.0, 1.0) : float3(0.0, 1.0, 1.0);
+        //float3 target_color = outputColor;
+        float3 target_color = nnNeeHitInfoList[i].radiance;
+        float3 color = float3(output.vals[0], output.vals[1], output.vals[2]);
+        var color_pair = diffPair(color);
+        float loss = L2Loss(color, target_color, color);
+        bwd_diff(L2Loss)(color_pair, target_color, color, 1);
+        // set gradient to zero if current hitInfoList entry is invalid as it was never updated
+        const float gradient_scalar = (!mainThread || length(nnNeeHitInfoList[i].dir) < 0.1) ? 0.0 : 1.0 / (gFrameDim.x * gFrameDim.y / 100.0);
         output_grad.vals[0] = float16_t(color_pair.d.x * gradient_scalar);
         output_grad.vals[1] = float16_t(color_pair.d.y * gradient_scalar);
         output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
