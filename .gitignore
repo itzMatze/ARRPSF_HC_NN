@@ -10,6 +10,7 @@
 # Media folders.
 /media
 /media_internal
+/images
 
 # Packman folders.
 /external/packman/

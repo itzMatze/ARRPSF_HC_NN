@@ -599,7 +599,8 @@ void SampleApp::captureScreen(Texture* pTexture)
     mCaptureScreen = false;
 
     std::string filename = getExecutableName();
-    std::filesystem::path directory = getRuntimeDirectory();
+    std::filesystem::path directory(getProjectDirectory() / "images");
+    if (!std::filesystem::exists(directory)) std::filesystem::create_directory(directory);
     std::filesystem::path path = findAvailableFilename(filename, directory, "png");
     pTexture->captureToFile(0, 0, path);
 }
