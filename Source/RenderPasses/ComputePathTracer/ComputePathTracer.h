@@ -104,14 +104,23 @@ private:
     struct RRParams
     {
         bool active = true;
-        enum SurvivalProbOptions
+        // how to determine the survival probability for rr
+        enum class SurvivalProbOptions
         {
-            USE_DEFAULT = 0,
-            USE_NN = 1,
-            USE_HC = 2
+            USE_DEFAULT = 1,
+            USE_EXP_CONTRIB = 2,
+            USE_ADRRS = 4
         };
-        Gui::DropdownList survivalProbOptionList{Gui::DropdownValue{USE_DEFAULT, "default"}, Gui::DropdownValue{USE_NN, "nn"}, Gui::DropdownValue{USE_HC, "hc"}};
-        uint survivalProbOption = USE_DEFAULT;
+        Gui::DropdownList survivalProbOptionList{Gui::DropdownValue{uint(SurvivalProbOptions::USE_DEFAULT), "default"}, Gui::DropdownValue{uint(SurvivalProbOptions::USE_EXP_CONTRIB), "exp contrib"}, Gui::DropdownValue{uint(SurvivalProbOptions::USE_ADRRS), "adrrs"}};
+        uint survivalProbOption = uint(SurvivalProbOptions::USE_DEFAULT);
+        // how to estimate the expected radiance to come at a vertex on a path
+        enum class PathContribEstimateOptions
+        {
+            USE_HC = 1,
+            USE_NN = 2,
+        };
+        Gui::DropdownList pathContribEstimateOptionList{Gui::DropdownValue{uint(PathContribEstimateOptions::USE_HC), "hc"}, Gui::DropdownValue{uint(PathContribEstimateOptions::USE_NN), "nn"}};
+        uint pathContribEstimateOption = uint(PathContribEstimateOptions::USE_HC);
         // starting value for the survival probability of russian roulette
         float probStartValue = 1.2f;
         // factor by which the survival probability gets reduced
@@ -132,12 +141,12 @@ private:
     struct HCParams
     {
         bool active = false;
-        uint32_t hashMapSizeExp = 22;
-        uint32_t hashMapSize = std::pow(2u, hashMapSizeExp);
+        uint hashMapSizeExp = 22;
+        uint hashMapSize = std::pow(2u, hashMapSizeExp);
         // inject radiance estimate of HC on rr termination of path instead of using rr weight
         bool injectRadianceRR = true;
         // terminate the path if the roughness of surfaces blur the inaccuracy of the hc
-        bool injectRadianceSpread = true;
+        bool injectRadianceSpread = false;
         bool debugVoxels = false;
         bool debugColor = false;
         bool debugLevels = false;

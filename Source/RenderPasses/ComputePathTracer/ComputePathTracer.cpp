@@ -185,8 +185,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         defineList["HC_QUERY"] = "0";
         defineList["NN_TRAIN"] = mNNParams.active ? "1" : "0";
         defineList["NN_QUERY"] = "0";
-        defineList["RR_USE_NN"] = "0";
-        defineList["RR_USE_HC"] = "0";
+        defineList["RR_SURVIVAL_PROB_OPTION"] = "0";
         defineList["HC_INJECT_RADIANCE_RR"] = "0";
         defineList["HC_INJECT_RADIANCE_SPREAD"] = "0";
         ProgramDesc desc;
@@ -201,10 +200,10 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         defineList["HC_QUERY"] = mHCParams.active ? "1" : "0";
         defineList["NN_TRAIN"] = "0";
         defineList["NN_QUERY"] = mNNParams.active ? "1" : "0";
-        defineList["RR_USE_NN"] = mRRParams.survivalProbOption == RRParams::USE_NN ? "1" : "0";
+        defineList["RR_SURVIVAL_PROB_OPTION"] = std::to_string(mRRParams.survivalProbOption);
+        defineList["RR_CONTRIB_ESTIMATE_OPTION"] = std::to_string(mRRParams.pathContribEstimateOption);
         // when using the nn during pt the threads need to be kept running for the cooperative matrices
         defineList["KEEP_THREADS"] = mNNParams.keepThreads ? "1" : "0";
-        defineList["RR_USE_HC"] = mRRParams.survivalProbOption == RRParams::USE_HC ? "1" : "0";
         defineList["HC_INJECT_RADIANCE_RR"] = mHCParams.injectRadianceRR ? "1" : "0";
         defineList["HC_INJECT_RADIANCE_SPREAD"] = mHCParams.injectRadianceSpread ? "1" : "0";
         ProgramDesc desc;
@@ -391,10 +390,10 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         reset();
         renderData.getDictionary()[Falcor::kRenderPassRefreshFlags] = Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
         // activate hc if it is used somewhere
-        mHCParams.active = (mRRParams.survivalProbOption == RRParams::USE_HC) | mHCParams.injectRadianceRR | mHCParams.injectRadianceSpread | mHCParams.debugColor | mHCParams.debugLevels | mHCParams.debugVoxels;
+        mHCParams.active = (mRRParams.pathContribEstimateOption == uint(RRParams::PathContribEstimateOptions::USE_HC)) | mHCParams.injectRadianceRR | mHCParams.injectRadianceSpread | mHCParams.debugColor | mHCParams.debugLevels | mHCParams.debugVoxels;
         // activate nn if it is used somewhere
-        mNNParams.active = (mRRParams.survivalProbOption == RRParams::USE_NN) | mNNParams.debugOutput;
-        mNNParams.keepThreads = (mRRParams.survivalProbOption == RRParams::USE_NN) | mNNParams.debugOutput;
+        mNNParams.active = (mRRParams.pathContribEstimateOption == uint(RRParams::PathContribEstimateOptions::USE_NN)) | mNNParams.debugOutput;
+        mNNParams.keepThreads = (mRRParams.pathContribEstimateOption == uint(RRParams::PathContribEstimateOptions::USE_NN)) | mNNParams.debugOutput;
         setupData(pRenderContext);
         createPasses(renderData);
         setupBuffers();
@@ -443,17 +442,27 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     {
         rr_group.checkbox("enable", mRRParams.active);
         ImGui::PushItemWidth(120);
-        rr_group.dropdown("survival probability base", mRRParams.survivalProbOptionList, mRRParams.survivalProbOption);
-        rr_group.tooltip("Determine the survival probability using one of the option.\ndefault: use a constantly shrinking probability based on the parameters\nnn: based on a radiance estimate from the nn\nhc: based on a radiance estimate from the hc", true);
+        rr_group.dropdown("survival prob method", mRRParams.survivalProbOptionList, mRRParams.survivalProbOption);
+        rr_group.tooltip("Determine the survival probability using one of the option.\ndefault: use a constantly shrinking probability based on the parameters\nexpected thp: based on the expected contribution to come\nadrrs: based on the weight window method from adrrs", true);
         ImGui::PopItemWidth();
-        ImGui::PushItemWidth(80);
-        ImGui::InputFloat("RR start value", &mRRParams.probStartValue);
-        ImGui::PopItemWidth();
-        rr_group.tooltip("Starting value of the survival probability", true);
-        ImGui::PushItemWidth(80);
-        ImGui::InputFloat("RR reduction factor", &mRRParams.probReductionFactor);
-        ImGui::PopItemWidth();
-        widget.tooltip("Gets multiplied to the initial survival probability at each interaction", true);
+        if (mRRParams.survivalProbOption & uint(RRParams::SurvivalProbOptions::USE_DEFAULT))
+        {
+            ImGui::PushItemWidth(80);
+            ImGui::InputFloat("RR start value", &mRRParams.probStartValue);
+            ImGui::PopItemWidth();
+            rr_group.tooltip("Starting value of the survival probability", true);
+            ImGui::PushItemWidth(80);
+            ImGui::InputFloat("RR reduction factor", &mRRParams.probReductionFactor);
+            ImGui::PopItemWidth();
+            rr_group.tooltip("Gets multiplied to the initial survival probability at each interaction", true);
+        }
+        else if (mRRParams.survivalProbOption & (uint(RRParams::SurvivalProbOptions::USE_EXP_CONTRIB) | uint(RRParams::SurvivalProbOptions::USE_ADRRS)))
+        {
+            ImGui::PushItemWidth(120);
+            rr_group.dropdown("contrib estimation method", mRRParams.pathContribEstimateOptionList, mRRParams.pathContribEstimateOption);
+            rr_group.tooltip("Estimate the expected radiance to come at a vertex on a path.\nhc: use estimate from hc\nnn: use estimate from nn", true);
+            ImGui::PopItemWidth();
+        }
     }
     if (Gui::Group emissive_sampler_group = widget.group("EmissiveSampler"))
     {

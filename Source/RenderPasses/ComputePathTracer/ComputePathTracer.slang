@@ -103,6 +103,7 @@ struct ScatterRayData
     float3 thp;       ///< Current path throughput. This is updated at each path vertex.
     float3 cur_radiance;
     float3 cur_thp;
+    float radiance_estimate;
     uint numBounces;  ///< Path length in number of path segments (0 at origin, 1 at first secondary hit, etc.). Max 2^31.
     float3 origin;    ///< Next path segment origin.
     float3 direction; ///< Next path segment direction.
@@ -413,11 +414,21 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     }
     if (kUseRR)
     {
-#if RR_USE_NN
+        // use the parameters as fallback; will be overwritten by the actually used method
+        float survival_prob = (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces));;
+#if RR_SURVIVAL_PROB_OPTION & (2 | 4)
+        float3 radiance = float3(0.0);
+#if RR_CONTRIB_ESTIMATE_OPTION & 1
+        // only use hc for survival prob if the hc is ready at the current position, otherwise signal that the query was not successful
+        if (!hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, radiance))
+        {
+            radiance = float3(-1.0);
+        }
+#elif RR_CONTRIB_ESTIMATE_OPTION & 2
         HalfFeature<32> feature;
         if (!gDone)
         {
-            feature = computeInterpolatedFeature(nnHitInfoList[rayData.numBounces].pos, nnHitInfoList[rayData.numBounces].dir);
+            feature = computeInterpolatedFeature(sd.posW, rayData.direction);
         }
         else
         {
@@ -426,23 +437,28 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         }
         GroupMemoryBarrierWithGroupSync();
         HalfFeature<32> output = MLPModule.forward(gMlp, feature);
-        float3 nnRadiance = float3(output.vals[0], output.vals[1], output.vals[2]);
-        nnRadiance *= rayData.thp;
-        float survival_prob = max(nnRadiance.x, max(nnRadiance.y, nnRadiance.z));
-        survival_prob = min(survival_prob, (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces)));
-#else
-        float survival_prob = (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces));
-#if RR_USE_HC
-        float3 hashCacheRadiance;
-        // only use hc for survival prob if the hc is ready at the current position, otherwise use default rr values
-        if (hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
+        radiance = float3(output.vals[0], output.vals[1], output.vals[2]);
+#endif
+#if RR_SURVIVAL_PROB_OPTION & 2
+        if (radiance.x >= 0.0)
         {
-            hashCacheRadiance *= rayData.thp;
-            survival_prob = max(hashCacheRadiance.x, max(hashCacheRadiance.y, hashCacheRadiance.z));
+            radiance *= rayData.thp;
+            survival_prob = max(radiance.x, max(radiance.y, radiance.z));
+            survival_prob = min(survival_prob, (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces)));
         }
+#elif RR_SURVIVAL_PROB_OPTION & 4
+        float local_radiance_estimate = max(radiance.x, max(radiance.y, radiance.z));
+        if (local_radiance_estimate < 0.001) local_radiance_estimate = 0.001;
+        float center = rayData.radiance_estimate / local_radiance_estimate;
+        static const float s = 5.0;
+        float low = (2.0 * center) / (1.0 + s);
+        float high = s * low;
+        float weight = max(rayData.thp.x, max(rayData.thp.y, rayData.thp.z));
+        if (weight < low) survival_prob = weight / low;
+        else survival_prob = 1.0;
+#endif
 #endif
         print("survival_prob", survival_prob);
-#endif
         MASK_BLOCK
         {
             if (sampleNext1D(rayData.sg) > survival_prob)
@@ -534,6 +550,9 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
     float3 outColor = float3(0.f);
     const HitInfo hit = HitInfo(gVBuffer[pixel]);
     ScatterRayData rayData = ScatterRayData(sg);
+#if RR_SURVIVAL_PROB_OPTION & 4
+    rayData.radiance_estimate = 0.5;
+#endif
 
     if (!hit.isValid() || hit.getType() != HitType::Triangle)
     {
