@@ -62,7 +62,7 @@ void ComputePathTracer::parseProperties(const Properties& props)
         else if (key == kUseNEE) mUseNEE = value;
         else if (key == kUseMIS) mUseMIS = value;
         else if (key == kMISUsePowerHeuristic) mMISUsePowerHeuristic = value;
-        else if (key == kUseRR) mUseRR = value;
+        else if (key == kUseRR) mRRParams.active = value;
         else if (key == kLightBVHOptions) mLightBVHOptions = value;
         else if (key == kHCHashMapSizeExponent)
         {
@@ -72,7 +72,7 @@ void ComputePathTracer::parseProperties(const Properties& props)
         else if (key == kHCInjectRadianceRR) mHCParams.injectRadianceRR = value;
         else if (key == kHCInjectRadianceSpread) mHCParams.injectRadianceSpread = value;
         else if (key == kHCDebugColor) mHCParams.debugColor = value;
-        else if (key == kRRSurvivalProbOption) mRRSurvivalProbOption = value;
+        else if (key == kRRSurvivalProbOption) mRRParams.survivalProbOption = value;
         else if (key == kNNDebugOutput) mNNParams.debugOutput = value;
         else logWarning("Unknown property '{}' in ComputePathTracer properties.", key);
     }
@@ -119,14 +119,14 @@ Properties ComputePathTracer::getProperties() const
     props[kUseNEE] = mUseNEE;
     props[kUseMIS] = mUseMIS;
     props[kMISUsePowerHeuristic] = mMISUsePowerHeuristic;
-    props[kUseRR] = mUseRR;
-    props[kRRProbStartValue] = mRRProbStartValue;
-    props[kRRProbReductionFactor] = mRRProbReductionFactor;
+    props[kUseRR] = mRRParams.active;
+    props[kRRProbStartValue] = mRRParams.probStartValue;
+    props[kRRProbReductionFactor] = mRRParams.probReductionFactor;
     props[kHCHashMapSizeExponent] = mHCParams.hashMapSizeExp;
     props[kHCInjectRadianceRR] = mHCParams.injectRadianceRR;
     props[kHCInjectRadianceSpread] = mHCParams.injectRadianceSpread;
     props[kHCDebugColor] = mHCParams.debugColor;
-    props[kRRSurvivalProbOption] = mRRSurvivalProbOption;
+    props[kRRSurvivalProbOption] = mRRParams.survivalProbOption;
     props[kNNDebugOutput] = mNNParams.debugOutput;
     return props;
 }
@@ -154,9 +154,9 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["USE_NEE"] = mUseNEE ? "1" : "0";
     defineList["USE_MIS"] = mUseMIS ? "1" : "0";
     defineList["MIS_USE_POWER_HEURISTIC"] = mMISUsePowerHeuristic ? "1" : "0";
-    defineList["USE_RR"] = mUseRR ? "1" : "0";
-    defineList["RR_PROB_START_VALUE"] = fmt::format("{:.4f}", mRRProbStartValue);
-    defineList["RR_PROB_REDUCTION_FACTOR"] = fmt::format("{:.4f}", mRRProbReductionFactor);
+    defineList["USE_RR"] = mRRParams.active ? "1" : "0";
+    defineList["RR_PROB_START_VALUE"] = fmt::format("{:.4f}", mRRParams.probStartValue);
+    defineList["RR_PROB_REDUCTION_FACTOR"] = fmt::format("{:.4f}", mRRParams.probReductionFactor);
     defineList["DEBUG_PATH_LENGTH"] = mDebugPathLength ? "1" : "0";
     defineList["HC_DEBUG_VOXELS"] = mHCParams.debugVoxels ? "1" : "0";
     defineList["HC_DEBUG_COLOR"] = mHCParams.debugColor ? "1" : "0";
@@ -201,10 +201,10 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         defineList["HC_QUERY"] = mHCParams.active ? "1" : "0";
         defineList["NN_TRAIN"] = "0";
         defineList["NN_QUERY"] = mNNParams.active ? "1" : "0";
-        defineList["RR_USE_NN"] = mRRSurvivalProbOption == RR_USE_NN ? "1" : "0";
+        defineList["RR_USE_NN"] = mRRParams.survivalProbOption == RRParams::USE_NN ? "1" : "0";
         // when using the nn during pt the threads need to be kept running for the cooperative matrices
         defineList["KEEP_THREADS"] = mNNParams.keepThreads ? "1" : "0";
-        defineList["RR_USE_HC"] = mRRSurvivalProbOption == RR_USE_HC ? "1" : "0";
+        defineList["RR_USE_HC"] = mRRParams.survivalProbOption == RRParams::USE_HC ? "1" : "0";
         defineList["HC_INJECT_RADIANCE_RR"] = mHCParams.injectRadianceRR ? "1" : "0";
         defineList["HC_INJECT_RADIANCE_SPREAD"] = mHCParams.injectRadianceSpread ? "1" : "0";
         ProgramDesc desc;
@@ -391,10 +391,10 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         reset();
         renderData.getDictionary()[Falcor::kRenderPassRefreshFlags] = Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
         // activate hc if it is used somewhere
-        mHCParams.active = (mRRSurvivalProbOption == RR_USE_HC) | mHCParams.injectRadianceRR | mHCParams.injectRadianceSpread | mHCParams.debugColor | mHCParams.debugLevels | mHCParams.debugVoxels;
+        mHCParams.active = (mRRParams.survivalProbOption == RRParams::USE_HC) | mHCParams.injectRadianceRR | mHCParams.injectRadianceSpread | mHCParams.debugColor | mHCParams.debugLevels | mHCParams.debugVoxels;
         // activate nn if it is used somewhere
-        mNNParams.active = (mRRSurvivalProbOption == RR_USE_NN) | mNNParams.debugOutput;
-        mNNParams.keepThreads = (mRRSurvivalProbOption == RR_USE_NN) | mNNParams.debugOutput;
+        mNNParams.active = (mRRParams.survivalProbOption == RRParams::USE_NN) | mNNParams.debugOutput;
+        mNNParams.keepThreads = (mRRParams.survivalProbOption == RRParams::USE_NN) | mNNParams.debugOutput;
         setupData(pRenderContext);
         createPasses(renderData);
         setupBuffers();
@@ -441,17 +441,17 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     widget.tooltip("Active: power heuristic; Inactive: balance heuristic", true);
     if (Gui::Group rr_group = widget.group("RR"))
     {
-        rr_group.checkbox("enable", mUseRR);
+        rr_group.checkbox("enable", mRRParams.active);
         ImGui::PushItemWidth(120);
-        rr_group.dropdown("survival probability base", mRRSurvivalProbOptionList, mRRSurvivalProbOption);
+        rr_group.dropdown("survival probability base", mRRParams.survivalProbOptionList, mRRParams.survivalProbOption);
         rr_group.tooltip("Determine the survival probability using one of the option.\ndefault: use a constantly shrinking probability based on the parameters\nnn: based on a radiance estimate from the nn\nhc: based on a radiance estimate from the hc", true);
         ImGui::PopItemWidth();
         ImGui::PushItemWidth(80);
-        ImGui::InputFloat("RR start value", &mRRProbStartValue);
+        ImGui::InputFloat("RR start value", &mRRParams.probStartValue);
         ImGui::PopItemWidth();
         rr_group.tooltip("Starting value of the survival probability", true);
         ImGui::PushItemWidth(80);
-        ImGui::InputFloat("RR reduction factor", &mRRProbReductionFactor);
+        ImGui::InputFloat("RR reduction factor", &mRRParams.probReductionFactor);
         ImGui::PopItemWidth();
         widget.tooltip("Gets multiplied to the initial survival probability at each interaction", true);
     }
