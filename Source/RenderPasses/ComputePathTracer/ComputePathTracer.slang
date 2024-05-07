@@ -237,9 +237,6 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         hashCacheHitData.positionWorld = sd.posW;
         hashCacheHitData.normalWorld = sd.getOrientedFaceNormal();
         uint gridLevel = GetGridLevel(sd.posW, rayData.hashCacheState.gridParameters);
-#endif
-
-#if HC_QUERY
         if (kHCDebugLevels)
         {
             // the actual max level is 1024 (see clamp in function)
@@ -270,7 +267,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             float3 hashCacheRadiance;
             if (isValidHit && hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
             {
-                rayData.cur_radiance += hashCacheRadiance * rayData.cur_thp;
+                rayData.cur_radiance += hashCacheRadiance;
                 TERMINATE_PATH_0; // Terminate the path once we've looked up into the cache
             }
         }
@@ -301,7 +298,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
                 // Note we can assume path.pdf > 0.f since we shouldn't have got here otherwise.
                 misWeight = evalMIS(1, rayData.pdf, 1, lightPdf);
             }
-            rayData.cur_radiance += rayData.cur_thp * misWeight * bsdfProperties.emission;
+            rayData.cur_radiance += misWeight * bsdfProperties.emission;
         }
     }
 
@@ -362,7 +359,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
                 bool visible = traceShadowRay(shadowRay);
                 if (visible)
                 {
-                    rayData.cur_radiance += rayData.cur_thp * Lr;
+                    rayData.cur_radiance += Lr;
                 }
             }
         }
@@ -509,7 +506,7 @@ bool traceScatterRay(inout ScatterRayData rayData)
                 }
 
                 float3 Le = gSampler.envMapSampler.eval(rayData.direction);
-                rayData.cur_radiance += rayData.cur_thp * misWeight * Le;
+                rayData.cur_radiance += misWeight * Le;
             }
             TERMINATE_PATH_0;
         }
