@@ -121,6 +121,15 @@ private:
         };
         Gui::DropdownList pathContribEstimateOptionList{Gui::DropdownValue{uint(PathContribEstimateOptions::USE_HC), "hc"}, Gui::DropdownValue{uint(PathContribEstimateOptions::USE_NN), "nn"}};
         uint pathContribEstimateOption = uint(PathContribEstimateOptions::USE_HC);
+        // how to estimate the pixel measurement value
+        enum class PixelMeasurementEstimateOptions
+        {
+            USE_REF = 1,
+            USE_HC = 2,
+            USE_NN = 4,
+        };
+        Gui::DropdownList pixelMeasurementEstimateOptionList{Gui::DropdownValue{uint(PixelMeasurementEstimateOptions::USE_REF), "ref"}, Gui::DropdownValue{uint(PixelMeasurementEstimateOptions::USE_HC), "hc"}, Gui::DropdownValue{uint(PixelMeasurementEstimateOptions::USE_NN), "nn"}};
+        uint pixelMeasurementEstimateOption = uint(PixelMeasurementEstimateOptions::USE_HC);
         // starting value for the survival probability of russian roulette
         float probStartValue = 1.2f;
         // factor by which the survival probability gets reduced
@@ -144,7 +153,7 @@ private:
         uint hashMapSizeExp = 22;
         uint hashMapSize = std::pow(2u, hashMapSizeExp);
         // inject radiance estimate of HC on rr termination of path instead of using rr weight
-        bool injectRadianceRR = true;
+        bool injectRadianceRR = false;
         // terminate the path if the roughness of surfaces blur the inaccuracy of the hc
         bool injectRadianceSpread = false;
         bool debugVoxels = false;

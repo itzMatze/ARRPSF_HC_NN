@@ -540,6 +540,21 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         bwd_diff(MLPModule.forward)(gMlp, input_feature_pair, output_grad);
         //bwd_diff(computeInterpolatedFeature)(float2(pixel) / float2(gFrameDim), input_feature_pair.d);
     }
+    HalfFeature<32> feature = computeInterpolatedFeature(gCamPos.xyz, -gViewW[pixel].xyz);
+    HalfFeature<32> output = MLPModule.forward(gMlp, feature);
+    HalfFeature<32>.Differential output_grad;
+    float3 target_color = outputColor;
+    float3 color = float3(output.vals[0], output.vals[1], output.vals[2]);
+    var color_pair = diffPair(color);
+    float loss = L2Loss(color, target_color, color);
+    bwd_diff(L2Loss)(color_pair, target_color, color, 1);
+    // set gradient to zero if current hitInfoList entry is invalid as it was never updated
+    const float gradient_scalar = (!mainThread) ? 0.0 : 1.0 / (gFrameDim.x * gFrameDim.y / 100.0);
+    output_grad.vals[0] = float16_t(color_pair.d.x * gradient_scalar);
+    output_grad.vals[1] = float16_t(color_pair.d.y * gradient_scalar);
+    output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
+    var input_feature_pair = diffPair(feature);
+    bwd_diff(MLPModule.forward)(gMlp, input_feature_pair, output_grad);
 #endif
 }
 

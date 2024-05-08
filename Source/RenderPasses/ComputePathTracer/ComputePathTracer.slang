@@ -275,6 +275,33 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         }
 #endif
     }
+    if (rayData.numBounces == 0)
+    {
+        // set pixel measurement estimate
+#if PIXEL_MEASUREMENT_ESTIMATE & 1
+        rayData.luminance_estimate = luminance(gRefImage[pixel].xyz);
+#elif PIXEL_MEASUREMENT_ESTIMATE & 2
+        float3 hcRadiance;
+        // only use hc for survival prob if the hc is ready at the current position, otherwise signal that the query was not successful
+        if (!hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hcRadiance))
+        {
+            hcRadiance = float3(-1.0);
+        }
+        // if hc query was not successful use 0.5 as luminance
+        rayData.luminance_estimate = hcRadiance.x >= 0.0 ? luminance(hcRadiance) : 0.5;
+#elif PIXEL_MEASUREMENT_ESTIMATE & 4
+        HalfFeature<32> feature;
+        if (!gDone) feature = computeInterpolatedFeature(sd.posW, rayData.direction);
+        else
+        {
+            [ForceUnroll]
+            for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
+        }
+        HalfFeature<32> output = MLPModule.forward(gMlp, feature);
+        float3 nnRadiance = float3(output.vals[0], output.vals[1], output.vals[2]);
+        rayData.luminance_estimate = luminance(nnRadiance);
+#endif
+    }
 
     MASK_BLOCK
     {
@@ -551,9 +578,6 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
     float3 outColor = float3(0.f);
     const HitInfo hit = HitInfo(gVBuffer[pixel]);
     ScatterRayData rayData = ScatterRayData(sg);
-#if RR_SURVIVAL_PROB_OPTION & 4
-    rayData.luminance_estimate = luminance(gRefImage[pixel].xyz);
-#endif
 
     if (!hit.isValid() || hit.getType() != HitType::Triangle)
     {

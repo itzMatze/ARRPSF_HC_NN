@@ -200,6 +200,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         defineList["NN_QUERY"] = mNNParams.active ? "1" : "0";
         defineList["RR_SURVIVAL_PROB_OPTION"] = std::to_string(mRRParams.survivalProbOption);
         defineList["RR_CONTRIB_ESTIMATE_OPTION"] = std::to_string(mRRParams.pathContribEstimateOption);
+        defineList["PIXEL_MEASUREMENT_ESTIMATE"] = std::to_string(mRRParams.pixelMeasurementEstimateOption);
         // when using the nn during pt the threads need to be kept running for the cooperative matrices
         defineList["KEEP_THREADS"] = mNNParams.keepThreads ? "1" : "0";
         defineList["HC_INJECT_RADIANCE_RR"] = mHCParams.injectRadianceRR ? "1" : "0";
@@ -388,10 +389,10 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         reset();
         renderData.getDictionary()[Falcor::kRenderPassRefreshFlags] = Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
         // activate hc if it is used somewhere
-        mHCParams.active = (mRRParams.pathContribEstimateOption == uint(RRParams::PathContribEstimateOptions::USE_HC)) | mHCParams.injectRadianceRR | mHCParams.injectRadianceSpread | mHCParams.debugColor | mHCParams.debugLevels | mHCParams.debugVoxels;
+        mHCParams.active = (mRRParams.pathContribEstimateOption == uint(RRParams::PathContribEstimateOptions::USE_HC)) | (mRRParams.pixelMeasurementEstimateOption == uint(RRParams::PixelMeasurementEstimateOptions::USE_HC)) | mHCParams.injectRadianceRR | mHCParams.injectRadianceSpread | mHCParams.debugColor | mHCParams.debugLevels | mHCParams.debugVoxels;
         // activate nn if it is used somewhere
-        mNNParams.active = (mRRParams.pathContribEstimateOption == uint(RRParams::PathContribEstimateOptions::USE_NN)) | mNNParams.debugOutput;
-        mNNParams.keepThreads = (mRRParams.pathContribEstimateOption == uint(RRParams::PathContribEstimateOptions::USE_NN)) | mNNParams.debugOutput;
+        mNNParams.active = (mRRParams.pathContribEstimateOption == uint(RRParams::PathContribEstimateOptions::USE_NN)) | (mRRParams.pixelMeasurementEstimateOption == uint(RRParams::PixelMeasurementEstimateOptions::USE_NN)) | mNNParams.debugOutput;
+        mNNParams.keepThreads = (mRRParams.pathContribEstimateOption == uint(RRParams::PathContribEstimateOptions::USE_NN)) | (mRRParams.pixelMeasurementEstimateOption == uint(RRParams::PixelMeasurementEstimateOptions::USE_NN)) | mNNParams.debugOutput;
         setupData(pRenderContext);
         createPasses(renderData);
         setupBuffers();
@@ -440,7 +441,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     {
         rr_group.checkbox("enable", mRRParams.active);
         ImGui::PushItemWidth(120);
-        rr_group.dropdown("survival prob method", mRRParams.survivalProbOptionList, mRRParams.survivalProbOption);
+        rr_group.dropdown("survival prob", mRRParams.survivalProbOptionList, mRRParams.survivalProbOption);
         rr_group.tooltip("Determine the survival probability using one of the option.\ndefault: use a constantly shrinking probability based on the parameters\nexpected thp: based on the expected contribution to come\nadrrs: based on the weight window method from adrrs", true);
         ImGui::PopItemWidth();
         if (mRRParams.survivalProbOption & uint(RRParams::SurvivalProbOptions::USE_DEFAULT))
@@ -457,8 +458,15 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         else if (mRRParams.survivalProbOption & (uint(RRParams::SurvivalProbOptions::USE_EXP_CONTRIB) | uint(RRParams::SurvivalProbOptions::USE_ADRRS)))
         {
             ImGui::PushItemWidth(120);
-            rr_group.dropdown("contrib estimation method", mRRParams.pathContribEstimateOptionList, mRRParams.pathContribEstimateOption);
+            rr_group.dropdown("contrib estimation", mRRParams.pathContribEstimateOptionList, mRRParams.pathContribEstimateOption);
             rr_group.tooltip("Estimate the expected radiance to come at a vertex on a path.\nhc: use estimate from hc\nnn: use estimate from nn", true);
+            ImGui::PopItemWidth();
+        }
+        if (mRRParams.survivalProbOption & (uint(RRParams::SurvivalProbOptions::USE_ADRRS)))
+        {
+            ImGui::PushItemWidth(120);
+            rr_group.dropdown("pixel measurement estimation", mRRParams.pixelMeasurementEstimateOptionList, mRRParams.pixelMeasurementEstimateOption);
+            rr_group.tooltip("Estimate the total measurement of a pixel for adrrs.\nhc: use estimate from hc\nnn: use estimate from nn", true);
             ImGui::PopItemWidth();
         }
     }
