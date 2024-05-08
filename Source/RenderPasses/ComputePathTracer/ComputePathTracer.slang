@@ -32,6 +32,7 @@ cbuffer CB
 // Inputs
 Texture2D<PackedHitInfo> gVBuffer;
 Texture2D<float4> gViewW;
+Texture2D<float4> gRefImage;
 
 // Outputs
 RWTexture2D<float4> gOutputColor;
@@ -551,7 +552,8 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
     const HitInfo hit = HitInfo(gVBuffer[pixel]);
     ScatterRayData rayData = ScatterRayData(sg);
 #if RR_SURVIVAL_PROB_OPTION & 4
-    rayData.radiance_estimate = 0.5;
+    float3 pixel_estimate = gRefImage[pixel].xyz;
+    rayData.radiance_estimate = max(pixel_estimate.x, max(pixel_estimate.y, pixel_estimate.z));
 #endif
 
     if (!hit.isValid() || hit.getType() != HitType::Triangle)

@@ -34,9 +34,6 @@ cbuffer CB
 Texture2D<PackedHitInfo> gVBuffer;
 Texture2D<float4> gViewW;
 
-// Outputs
-RWTexture2D<float4> gOutputColor;
-
 // Static configuration based on defines set from the host.
 #define is_valid(name) (is_valid_##name != 0)
 static const uint kLowerBounceCount = LOWER_BOUNCE_COUNT;

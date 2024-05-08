@@ -14,15 +14,13 @@ const std::string kHCResolveShaderFile("RenderPasses/ComputePathTracer/HashCache
 const std::string kGradientClearShaderFile("RenderPasses/ComputePathTracer/tinynn/GradientClear.slang");
 const std::string kGradientDescentShaderFile("RenderPasses/ComputePathTracer/tinynn/GradientDescentPrimal.slang");
 
-const char kInputViewDir[] = "viewW";
+// inputs
+const ChannelDesc kInputVBuffer{"vbuffer", "gVBuffer", "Visibility buffer in packed format"};
+const ChannelDesc kInputViewDir{"viewW", "gViewW", "World-space view direction (xyz float format)"};
+const ChannelDesc kInputRefImage{"refImage", "gRefImage", "Reference image for the current scene. Used for debugging."};
+const ChannelList kInputChannels = {kInputVBuffer, kInputViewDir, kInputRefImage};
 
-const ChannelList kInputChannels = {
-    // clang-format off
-    { "vbuffer",        "gVBuffer",     "Visibility buffer in packed format" },
-    { kInputViewDir,    "gViewW",       "World-space view direction (xyz float format)" },
-    // clang-format on
-};
-
+// outputs
 const ChannelList kOutputChannels = {
     // clang-format off
     { "color",          "gOutputColor", "Output color (sum of direct and indirect)", false, ResourceFormat::RGBA32Float },
@@ -298,8 +296,8 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
             var["PrimalBuffer"] = mBuffers[NN_PRIMAL_BUFFER];
             var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
         }
-        for (auto channel : kInputChannels) var[channel.texname] = renderData.getTexture(channel.name);
-        for (auto channel : kOutputChannels) var[channel.texname] = renderData.getTexture(channel.name);
+        var[kInputVBuffer.texname] = renderData.getTexture(kInputVBuffer.name);
+        var[kInputViewDir.texname] = renderData.getTexture(kInputViewDir.name);
         mpPixelDebug->prepareProgram(mPasses[TRAIN_NN_FILL_CACHE_PASS]->getProgram(), var);
     }
     if (mHCParams.active)
