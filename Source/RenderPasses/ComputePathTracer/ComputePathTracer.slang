@@ -104,7 +104,7 @@ struct ScatterRayData
     float3 thp;       ///< Current path throughput. This is updated at each path vertex.
     float3 cur_radiance;
     float3 cur_thp;
-    float radiance_estimate;
+    float luminance_estimate;
     uint numBounces;  ///< Path length in number of path segments (0 at origin, 1 at first secondary hit, etc.). Max 2^31.
     float3 origin;    ///< Next path segment origin.
     float3 direction; ///< Next path segment direction.
@@ -444,17 +444,17 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         if (radiance.x >= 0.0)
         {
             radiance *= rayData.thp;
-            survival_prob = max(radiance.x, max(radiance.y, radiance.z));
+            survival_prob = luminance(radiance);
             survival_prob = min(survival_prob, (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces)));
         }
 #elif RR_SURVIVAL_PROB_OPTION & 4
-        float local_radiance_estimate = max(radiance.x, max(radiance.y, radiance.z));
-        if (local_radiance_estimate < 0.001) local_radiance_estimate = 0.001;
-        float center = rayData.radiance_estimate / local_radiance_estimate;
+        float local_luminance_estimate = luminance(radiance);
+        if (local_luminance_estimate < 0.001) local_luminance_estimate = 0.001;
+        float center = rayData.luminance_estimate / local_luminance_estimate;
         static const float s = 5.0;
         float low = (2.0 * center) / (1.0 + s);
         float high = s * low;
-        float weight = max(rayData.thp.x, max(rayData.thp.y, rayData.thp.z));
+        float weight = luminance(rayData.thp);
         if (weight < low) survival_prob = weight / low;
         else survival_prob = 1.0;
 #endif
@@ -552,8 +552,7 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
     const HitInfo hit = HitInfo(gVBuffer[pixel]);
     ScatterRayData rayData = ScatterRayData(sg);
 #if RR_SURVIVAL_PROB_OPTION & 4
-    float3 pixel_estimate = gRefImage[pixel].xyz;
-    rayData.radiance_estimate = max(pixel_estimate.x, max(pixel_estimate.y, pixel_estimate.z));
+    rayData.luminance_estimate = luminance(gRefImage[pixel].xyz);
 #endif
 
     if (!hit.isValid() || hit.getType() != HitType::Triangle)
