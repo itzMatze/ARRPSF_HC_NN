@@ -104,36 +104,48 @@ private:
     struct RRParams
     {
         bool active = true;
-        // how to determine the survival probability for rr
-        enum class SurvivalProbOptions
-        {
-            USE_DEFAULT = 1,
-            USE_EXP_CONTRIB = 2,
-            USE_ADRRS = 4
-        };
-        Gui::DropdownList survivalProbOptionList{Gui::DropdownValue{uint(SurvivalProbOptions::USE_DEFAULT), "default"}, Gui::DropdownValue{uint(SurvivalProbOptions::USE_EXP_CONTRIB), "exp contrib"}, Gui::DropdownValue{uint(SurvivalProbOptions::USE_ADRRS), "adrrs"}};
-        uint survivalProbOption = uint(SurvivalProbOptions::USE_DEFAULT);
-        // how to estimate the expected radiance to come at a vertex on a path
-        enum class PathContribEstimateOptions
-        {
-            USE_HC = 1,
-            USE_NN = 2,
-        };
-        Gui::DropdownList pathContribEstimateOptionList{Gui::DropdownValue{uint(PathContribEstimateOptions::USE_HC), "hc"}, Gui::DropdownValue{uint(PathContribEstimateOptions::USE_NN), "nn"}};
-        uint pathContribEstimateOption = uint(PathContribEstimateOptions::USE_HC);
-        // how to estimate the pixel measurement value
-        enum class PixelMeasurementEstimateOptions
-        {
-            USE_REF = 1,
-            USE_HC = 2,
-            USE_NN = 4,
-        };
-        Gui::DropdownList pixelMeasurementEstimateOptionList{Gui::DropdownValue{uint(PixelMeasurementEstimateOptions::USE_REF), "ref"}, Gui::DropdownValue{uint(PixelMeasurementEstimateOptions::USE_HC), "hc"}, Gui::DropdownValue{uint(PixelMeasurementEstimateOptions::USE_NN), "nn"}};
-        uint pixelMeasurementEstimateOption = uint(PixelMeasurementEstimateOptions::USE_HC);
+        Gui::DropdownList survivalProbOptionList{Gui::DropdownValue{SP_USE_DEFAULT, "default"}, Gui::DropdownValue{SP_USE_EXP_CONTRIB, "exp contrib"}, Gui::DropdownValue{SP_USE_ADRRS, "adrrs"}};
+        uint survivalProbOption = SP_USE_DEFAULT;
+        Gui::DropdownList pathContribEstimateOptionList{Gui::DropdownValue{PCE_USE_HC, "hc"}, Gui::DropdownValue{PCE_USE_NN, "nn"}};
+        uint pathContribEstimateOption = PCE_USE_HC;
+        Gui::DropdownList pixelMeasurementEstimateOptionList{Gui::DropdownValue{PME_USE_REF, "ref"}, Gui::DropdownValue{PME_USE_HC, "hc"}, Gui::DropdownValue{PME_USE_NN, "nn"}};
+        uint pixelMeasurementEstimateOption = PME_USE_HC;
         // starting value for the survival probability of russian roulette
         float probStartValue = 1.2f;
         // factor by which the survival probability gets reduced
         float probReductionFactor = 0.9f;
+
+        uint getOptionBits() { return optionsBits; }
+        void update() { optionsBits = survivalProbOption | pathContribEstimateOption | pixelMeasurementEstimateOption; }
+        bool requiresReductionParams() { return optionsBits & SP_USE_DEFAULT; }
+        bool requiresPCE() { return optionsBits & PCE_REQUIRED_MASK; }
+        bool requiresPME() { return optionsBits & PME_REQUIRED_MASK; }
+        bool requiresHC() { return (requiresPCE() && (optionsBits & PCE_USE_HC)) || (requiresPME() && (optionsBits & PME_USE_HC)); }
+        bool requiresNN() { return (requiresPCE() && (optionsBits & PCE_USE_NN)) || (requiresPME() && (optionsBits & PME_USE_NN)); }
+    private:
+        uint optionsBits = 0u;
+        // how to determine the survival probability for rr
+        enum SurvivalProbOptions
+        {
+            SP_USE_DEFAULT = 0u,
+            SP_USE_EXP_CONTRIB = (1u << 0),
+            SP_USE_ADRRS = (1u << 1)
+        };
+        // how to estimate the expected radiance to come at a vertex on a path
+        enum PathContribEstimateOptions
+        {
+            PCE_REQUIRED_MASK = SP_USE_EXP_CONTRIB | SP_USE_ADRRS,
+            PCE_USE_HC = (1u << 2),
+            PCE_USE_NN = (1u << 3),
+        };
+        // how to estimate the pixel measurement value
+        enum PixelMeasurementEstimateOptions
+        {
+            PME_REQUIRED_MASK = SP_USE_ADRRS,
+            PME_USE_REF = (1u << 4),
+            PME_USE_HC = (1u << 5),
+            PME_USE_NN = (1u << 6),
+        };
     } mRRParams;
 
     // Use importance sampling for materials.

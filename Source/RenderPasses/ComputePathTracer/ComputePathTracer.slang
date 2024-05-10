@@ -101,6 +101,8 @@ static bool gDone = false;
 #define TERMINATE_PATH_1 return rayData.cur_radiance
 #endif
 
+float2 gPixel;
+
 struct ScatterRayData
 {
 #if HC_QUERY
@@ -286,9 +288,9 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     if (rayData.numBounces == 0)
     {
         // set pixel measurement estimate
-#if PIXEL_MEASUREMENT_ESTIMATE & 1
-        rayData.luminance_estimate = luminance(gRefImage[pixel].xyz);
-#elif PIXEL_MEASUREMENT_ESTIMATE & 2
+#if RR_OPTION_BITS & (1u << 4)
+        rayData.luminance_estimate = luminance(gRefImage[gPixel].xyz);
+#elif RR_OPTION_BITS & (1u << 5)
         float3 hcRadiance;
         // only use hc for survival prob if the hc is ready at the current position, otherwise signal that the query was not successful
         if (!hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hcRadiance))
@@ -297,7 +299,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         }
         // if hc query was not successful use 0.5 as luminance
         rayData.luminance_estimate = hcRadiance.x >= 0.0 ? luminance(hcRadiance) : 0.5;
-#elif PIXEL_MEASUREMENT_ESTIMATE & 4
+#elif RR_OPTION_BITS & (1u << 6)
         HalfFeature<32> feature;
         if (!gDone) feature = computeInterpolatedFeature(sd.posW, rayData.direction);
         else
@@ -452,15 +454,15 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     {
         // use the parameters as fallback; will be overwritten by the actually used method
         float survival_prob = (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces));;
-#if RR_SURVIVAL_PROB_OPTION & (2 | 4)
+#if RR_OPTION_BITS & ((1u << 0) | (1u << 1))
         float3 radiance = float3(0.0);
-#if RR_CONTRIB_ESTIMATE_OPTION & 1
+#if RR_OPTION_BITS & (1u << 2)
         // only use hc for survival prob if the hc is ready at the current position, otherwise signal that the query was not successful
         if (!hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, radiance))
         {
             radiance = float3(-1.0);
         }
-#elif RR_CONTRIB_ESTIMATE_OPTION & 2
+#elif RR_OPTION_BITS & (1u << 3)
         HalfFeature<32> feature;
         if (!gDone)
         {
@@ -475,14 +477,14 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
         radiance = float3(output.vals[0], output.vals[1], output.vals[2]);
 #endif
-#if RR_SURVIVAL_PROB_OPTION & 2
+#if RR_OPTION_BITS & (1u << 0)
         if (radiance.x >= 0.0)
         {
             radiance *= rayData.thp;
             survival_prob = luminance(radiance);
             survival_prob = min(survival_prob, (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces)));
         }
-#elif RR_SURVIVAL_PROB_OPTION & 4
+#elif RR_OPTION_BITS & (1u << 1)
         float local_luminance_estimate = luminance(radiance);
         if (local_luminance_estimate < 0.001) local_luminance_estimate = 0.001;
         float center = rayData.luminance_estimate / local_luminance_estimate;
@@ -640,9 +642,9 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     int3 groupThreadId: SV_GroupThreadID,
     int3 groupId: SV_GroupID)
 {
-    uint2 pixel = dispatchThreadId.xy;
-    if (any(pixel >= gFrameDim)) return;
-    printSetPixel(pixel);
+    uint2 gPixel = dispatchThreadId.xy;
+    if (any(gPixel >= gFrameDim)) return;
+    printSetPixel(gPixel);
 #if NN_QUERY
     [ForceUnroll]
     for (uint i = 0; i < kNNMaxTrainingBounces; i++) nnHitInfoList[i] = NNHitInfo();
@@ -650,9 +652,9 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     uint param_offset = 0; uint grad_offset = 0;
     gMlp0 = MLPModule0(param_offset, grad_offset, thread_info);
 #endif
-    SampleGenerator sg = SampleGenerator(pixel, gFrameCount);
+    SampleGenerator sg = SampleGenerator(gPixel, gFrameCount);
     float3 outputColor = float3(0.0, 1.0, 0.0);
-    outputColor = tracePath(pixel, gFrameDim, sg);
-    gOutputColor[pixel] = float4(outputColor, 1.0f);
+    outputColor = tracePath(gPixel, gFrameDim, sg);
+    gOutputColor[gPixel] = float4(outputColor, 1.0f);
 }
 
