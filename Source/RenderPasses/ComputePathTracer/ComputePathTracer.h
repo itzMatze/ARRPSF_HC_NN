@@ -177,7 +177,8 @@ private:
             float param_1 = 0.999;
             float param_2 = 1e-08;
         } optimizerParams;
-        int nnLayerCount = 5;
+        std::vector<int> nnLayerCount = {4, 3, 2};
+        int mlpCount = nnLayerCount.size();
         Gui::DropdownList nnLayerWidthList{Gui::DropdownValue{16, "16"}, Gui::DropdownValue{32, "32"}};
         uint nnLayerWidth = 32;
         uint nnParamCount = 0;
@@ -190,7 +191,7 @@ private:
 
         void update()
         {
-            nnParamCount = ((nnLayerWidth * nnLayerWidth /*weights*/ + nnLayerWidth /*biases*/) * nnLayerCount + 120 * 68 * 14 /*feature grid*/);
+            nnParamCount = ((nnLayerWidth * nnLayerWidth /*weights*/ + nnLayerWidth /*biases*/) * std::reduce(nnLayerCount.begin(), nnLayerCount.end()) + 120 * 68 * 14 /*feature grid*/);
         }
     } mNNParams;
 

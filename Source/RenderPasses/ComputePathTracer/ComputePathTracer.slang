@@ -78,8 +78,16 @@ struct NNHitInfo
 
 static NNHitInfo nnHitInfoList[kNNMaxTrainingBounces];
 
-typedef MLPHalf32X32<NN_LAYER_COUNT, ReLU> MLPModule;
-static MLPModule gMlp;
+typedef MLPHalf32X32<NN_LAYER_COUNT0, ReLU> MLPModule0;
+static MLPModule0 gMlp0;
+#if MLP_COUNT > 1
+typedef MLPHalf32X32<NN_LAYER_COUNT1, ReLU> MLPModule1;
+static MLPModule1 gMlp1;
+#endif
+#if MLP_COUNT > 2
+typedef MLPHalf32X32<NN_LAYER_COUNT2, ReLU> MLPModule2;
+static MLPModule2 gMlp2;
+#endif
 #endif
 
 #if KEEP_THREADS
@@ -297,7 +305,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             [ForceUnroll]
             for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
         }
-        HalfFeature<32> output = MLPModule.forward(gMlp, feature);
+        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
         float3 nnRadiance = float3(output.vals[0], output.vals[1], output.vals[2]);
         rayData.luminance_estimate = luminance(nnRadiance);
 #endif
@@ -375,7 +383,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         [ForceUnroll]
         for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
     }
-    HalfFeature<32> output = MLPModule.forward(gMlp, feature);
+    HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
     rayData.cur_radiance += 0.5 * float3(output.vals[0], output.vals[1], output.vals[2]) * weight;
 #else
     MASK_BLOCK
@@ -412,7 +420,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         [ForceUnroll]
         for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
     }
-    output = MLPModule.forward(gMlp, feature);
+    output = MLPModule0.forward(gMlp0, feature);
     if (isnan(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 0.0);
     else if (isinf(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 1.0);
     else rayData.cur_radiance += 0.5 * float3(output.vals[0], output.vals[1], output.vals[2]) * bsdfSample.weight;
@@ -464,7 +472,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
         }
         GroupMemoryBarrierWithGroupSync();
-        HalfFeature<32> output = MLPModule.forward(gMlp, feature);
+        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
         radiance = float3(output.vals[0], output.vals[1], output.vals[2]);
 #endif
 #if RR_SURVIVAL_PROB_OPTION & 2
@@ -640,12 +648,11 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     for (uint i = 0; i < kNNMaxTrainingBounces; i++) nnHitInfoList[i] = NNHitInfo();
     const ThreadInfo thread_info = ThreadInfo(groupThreadId.xy, int2(32, 4));
     uint param_offset = 0; uint grad_offset = 0;
-    gMlp = MLPModule(param_offset, grad_offset, thread_info);
+    gMlp0 = MLPModule0(param_offset, grad_offset, thread_info);
 #endif
     SampleGenerator sg = SampleGenerator(pixel, gFrameCount);
     float3 outputColor = float3(0.0, 1.0, 0.0);
     outputColor = tracePath(pixel, gFrameDim, sg);
-
     gOutputColor[pixel] = float4(outputColor, 1.0f);
 }
 

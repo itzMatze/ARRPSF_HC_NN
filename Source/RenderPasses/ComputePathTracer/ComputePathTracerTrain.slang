@@ -74,8 +74,16 @@ struct NNHitInfo
 static NNHitInfo nnHitInfoList[kNNMaxTrainingBounces];
 static NNHitInfo nnNeeHitInfoList[kNNMaxTrainingBounces];
 
-typedef MLPHalf32X32<NN_LAYER_COUNT, ReLU> MLPModule;
-static MLPModule gMlp;
+typedef MLPHalf32X32<NN_LAYER_COUNT0, ReLU> MLPModule0;
+static MLPModule0 gMlp0;
+#if MLP_COUNT > 1
+typedef MLPHalf32X32<NN_LAYER_COUNT1, ReLU> MLPModule1;
+static MLPModule1 gMlp1;
+#endif
+#if MLP_COUNT > 2
+typedef MLPHalf32X32<NN_LAYER_COUNT2, ReLU> MLPModule2;
+static MLPModule2 gMlp2;
+#endif
 #endif
 
 #if NN_TRAIN
@@ -487,7 +495,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     for (uint i = 0; i < kNNMaxTrainingBounces; i++) nnNeeHitInfoList[i] = NNHitInfo();
     const ThreadInfo thread_info = ThreadInfo(groupThreadId.xy, int2(32, 4));
     uint param_offset = 0; uint grad_offset = 0;
-    gMlp = MLPModule(param_offset, grad_offset, thread_info);
+    gMlp0 = MLPModule0(param_offset, grad_offset, thread_info);
 #endif
     printSetPixel(pixel);
     float3 outputColor = float3(0.0, 1.0, 0.0);
@@ -498,7 +506,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     for (uint i = 0; i < kNNMaxTrainingBounces; i++)
     {
         HalfFeature<32> feature = computeInterpolatedFeature(nnHitInfoList[i].pos, nnHitInfoList[i].dir);
-        HalfFeature<32> output = MLPModule.forward(gMlp, feature);
+        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
         HalfFeature<32>.Differential output_grad;
         //float3 target_color = float3(float2(pixel) / float2(gFrameDim), 0.0);
         //float3 target_color = (pixel.y + pixel.x > (gFrameDim.y / 2 + gFrameDim.x / 2)) ? float3(1.0, 0.0, 1.0) : float3(0.0, 1.0, 1.0);
@@ -514,14 +522,14 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         output_grad.vals[1] = float16_t(color_pair.d.y * gradient_scalar);
         output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
         var input_feature_pair = diffPair(feature);
-        bwd_diff(MLPModule.forward)(gMlp, input_feature_pair, output_grad);
+        bwd_diff(MLPModule0.forward)(gMlp0, input_feature_pair, output_grad);
         //bwd_diff(computeInterpolatedFeature)(float2(pixel) / float2(gFrameDim), input_feature_pair.d);
     }
     // nee training
     for (uint i = 0; i < kNNMaxTrainingBounces; i++)
     {
         HalfFeature<32> feature = computeInterpolatedFeature(nnNeeHitInfoList[i].pos, nnNeeHitInfoList[i].dir);
-        HalfFeature<32> output = MLPModule.forward(gMlp, feature);
+        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
         HalfFeature<32>.Differential output_grad;
         //float3 target_color = float3(float2(pixel) / float2(gFrameDim), 0.0);
         //float3 target_color = (pixel.y + pixel.x > (gFrameDim.y / 2 + gFrameDim.x / 2)) ? float3(1.0, 0.0, 1.0) : float3(0.0, 1.0, 1.0);
@@ -537,12 +545,15 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         output_grad.vals[1] = float16_t(color_pair.d.y * gradient_scalar);
         output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
         var input_feature_pair = diffPair(feature);
-        bwd_diff(MLPModule.forward)(gMlp, input_feature_pair, output_grad);
+        bwd_diff(MLPModule0.forward)(gMlp0, input_feature_pair, output_grad);
         //bwd_diff(computeInterpolatedFeature)(float2(pixel) / float2(gFrameDim), input_feature_pair.d);
     }
     HalfFeature<32> feature = computeInterpolatedFeature(gCamPos.xyz, -gViewW[pixel].xyz);
-    HalfFeature<32> output = MLPModule.forward(gMlp, feature);
+    HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
     HalfFeature<32>.Differential output_grad;
+    //float3 target_color = float3(float2(pixel) / float2(gFrameDim), 0.0);
+    //float3 target_color = (pixel.y + pixel.x > (gFrameDim.y / 2 + gFrameDim.x / 2)) ? float3(1.0, 0.0, 1.0) : float3(0.0, 1.0, 1.0);
+    //float3 target_color = outputColor;
     float3 target_color = outputColor;
     float3 color = float3(output.vals[0], output.vals[1], output.vals[2]);
     var color_pair = diffPair(color);
@@ -554,7 +565,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     output_grad.vals[1] = float16_t(color_pair.d.y * gradient_scalar);
     output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
     var input_feature_pair = diffPair(feature);
-    bwd_diff(MLPModule.forward)(gMlp, input_feature_pair, output_grad);
+    bwd_diff(MLPModule0.forward)(gMlp0, input_feature_pair, output_grad);
 #endif
 }
 

@@ -174,7 +174,8 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["NN_PARAM_1"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_1);
     defineList["NN_PARAM_2"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_2);
     defineList["NN_LAYER_WIDTH"] = std::to_string(mNNParams.nnLayerWidth);
-    defineList["NN_LAYER_COUNT"] = std::to_string(mNNParams.nnLayerCount);
+    defineList["MLP_COUNT"] = std::to_string(mNNParams.nnLayerCount.size());
+    for (uint i = 0; i < mNNParams.nnLayerCount.size(); i++) defineList[std::string("NN_LAYER_COUNT") + std::to_string(i)] = std::to_string(mNNParams.nnLayerCount[i]);
     defineList["NN_TRAINING_BOUNCES"] = std::to_string(mNNParams.trainingBounces);
 
     if (!mPasses[TRAIN_NN_FILL_CACHE_PASS] && (mHCParams.active || mNNParams.active))
@@ -512,7 +513,9 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         }
         ImGui::PushItemWidth(120);
         nn_group.dropdown("NN layer width", mNNParams.nnLayerWidthList, mNNParams.nnLayerWidth);
-        ImGui::InputInt("NN layer count", &mNNParams.nnLayerCount);
+        ImGui::InputInt("MLP count", &mNNParams.mlpCount);
+        if (mNNParams.nnLayerCount.size() != mNNParams.mlpCount) mNNParams.nnLayerCount.resize(mNNParams.mlpCount);
+        for (uint i = 0; i < mNNParams.nnLayerCount.size(); i++) ImGui::InputInt(std::string(std::string("MLP ") + std::to_string(i) + std::string(" layer count")).c_str(), &mNNParams.nnLayerCount[i]);
         ImGui::InputFloat("Filter alpha", &mNNParams.filterAlpha, 0.0f, 0.0f, "%.4f");
         nn_group.checkbox("debug NN output", mNNParams.debugOutput);
         ImGui::Text("Weight init bounds");
