@@ -189,7 +189,7 @@ private:
             float param_1 = 0.999;
             float param_2 = 1e-08;
         } optimizerParams;
-        std::vector<int> nnLayerCount = {4, 3, 2};
+        std::vector<int> nnLayerCount = {4};
         int mlpCount = nnLayerCount.size();
         Gui::DropdownList nnLayerWidthList{Gui::DropdownValue{16, "16"}, Gui::DropdownValue{32, "32"}};
         uint nnLayerWidth = 32;
