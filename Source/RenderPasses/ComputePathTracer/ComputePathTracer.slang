@@ -101,7 +101,7 @@ static bool gDone = false;
 #define TERMINATE_PATH_1 return rayData.cur_radiance
 #endif
 
-float2 gPixel;
+static float2 gPixel;
 
 struct ScatterRayData
 {
