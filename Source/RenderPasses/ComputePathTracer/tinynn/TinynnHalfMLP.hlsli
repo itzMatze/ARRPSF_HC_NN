@@ -4,12 +4,9 @@
 #include "TinynnActivations.hlsli"
 #include "TinynnHalfLinear.hlsli"
 
-struct MLPHalf<let N : int, let C : int> {
-    typedef HalfFeature<C> Input;
-    typedef HalfFeature<C> Output;
-};
-
-struct MLPHalf16X16<let N:int, Act:IActivationFn> : MLPHalf<N, 16> {
+struct MLPHalf16X16<let N:int, Act:IActivationFn> {
+    typedef HalfFeature<16> Input;
+    typedef HalfFeature<16> Output;
     LinearHalf16X16 linears[N];
 
     __init(inout uint offset_prim, inout uint offset_grad, ThreadInfo threadInfo) {
@@ -17,7 +14,7 @@ struct MLPHalf16X16<let N:int, Act:IActivationFn> : MLPHalf<N, 16> {
         linears[i] = LinearHalf16X16(offset_prim, offset_grad, threadInfo); }
 
     [Differentiable]
-    Output _foward(Input input) {
+    Output _forward(Input input) {
         HalfFeature<16> out_feature = input;
         [ForceUnroll] for (int i = 0; i < N; i++) {
             out_feature = LinearHalf16X16.eval(linears[i], out_feature);
@@ -27,10 +24,12 @@ struct MLPHalf16X16<let N:int, Act:IActivationFn> : MLPHalf<N, 16> {
 
     [Differentiable]
     static Output forward(no_diff MLPHalf16X16<N, Act> mlp, Input input) {
-        return mlp._foward(input); }
+        return mlp._forward(input); }
 };
 
-struct MLPHalf32X32<let N:int, Act:IActivationFn> : MLPHalf<N, 32> {
+struct MLPHalf32X32<let N:int, Act:IActivationFn> {
+    typedef HalfFeature<32> Input;
+    typedef HalfFeature<32> Output;
     LinearHalf32X32 linears[N];
 
     __init(inout uint offset_prim, inout uint offset_grad, ThreadInfo threadInfo) {
@@ -38,7 +37,7 @@ struct MLPHalf32X32<let N:int, Act:IActivationFn> : MLPHalf<N, 32> {
         linears[i] = LinearHalf32X32(offset_prim, offset_grad, threadInfo); }
 
     [Differentiable]
-    Output _foward(Input input) {
+    Output _forward(Input input) {
         HalfFeature<32> out_feature = input;
         [ForceUnroll] for (int i = 0; i < N; i++) {
             out_feature = LinearHalf32X32.eval(linears[i], out_feature);
@@ -48,7 +47,7 @@ struct MLPHalf32X32<let N:int, Act:IActivationFn> : MLPHalf<N, 32> {
 
     [Differentiable]
     static Output forward(no_diff MLPHalf32X32<N, Act> mlp, Input input) {
-        return mlp._foward(input); }
+        return mlp._forward(input); }
 };
 
 #endif // !_SRENDERER_ADDON_HALF_TINYNN_LINEAR_HLSLI_HEADER_
