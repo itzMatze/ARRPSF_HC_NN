@@ -18,7 +18,7 @@ import Utils.Color.ColorHelpers;
 import Utils.Color.ColorMap;
 import Utils.Debug.PixelDebug;
 
-import HashGridCommon;
+import HashCacheHashGridCommon;
 import HashCacheCommon;
 import LightSampling;
 

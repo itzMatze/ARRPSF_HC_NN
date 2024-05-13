@@ -1,5 +1,5 @@
 import Utils.Debug.PixelDebug;
-import HashGridCommon;
+import HashCacheHashGridCommon;
 
 #if HC_UPDATE || HC_QUERY
 static const uint kHashCachePropagationDepth = 8;

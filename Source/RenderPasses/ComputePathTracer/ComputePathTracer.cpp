@@ -248,7 +248,7 @@ void ComputePathTracer::setupData(RenderContext* pRenderContext)
     }
     if (mHCParams.active)
     {
-        if (!mBuffers[HASH_ENTRIES_BUFFER]) mBuffers[HASH_ENTRIES_BUFFER] = mpDevice->createStructuredBuffer(sizeof(uint32_t), mHCParams.hashMapSize);
+        if (!mBuffers[HC_HASH_GRID_ENTRIES_BUFFER]) mBuffers[HC_HASH_GRID_ENTRIES_BUFFER] = mpDevice->createStructuredBuffer(sizeof(uint32_t), mHCParams.hashMapSize);
         // 128 bits per entry
         if (!mBuffers[HC_VOXEL_DATA_BUFFER_0]) mBuffers[HC_VOXEL_DATA_BUFFER_0] = mpDevice->createBuffer((128 / 8) * mHCParams.hashMapSize);
         if (!mBuffers[HC_VOXEL_DATA_BUFFER_1]) mBuffers[HC_VOXEL_DATA_BUFFER_1] = mpDevice->createBuffer((128 / 8) * mHCParams.hashMapSize);
@@ -288,7 +288,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["gSampler"] = mpSamplerBlock;
         if (mHCParams.active)
         {
-            var["gHashEntriesBuffer"] = mBuffers[HASH_ENTRIES_BUFFER];
+            var["gHashCacheHashGridEntriesBuffer"] = mBuffers[HC_HASH_GRID_ENTRIES_BUFFER];
             var["gHashCacheVoxelDataBuffer"] = mFrameCount % 2 == 0 ? mBuffers[HC_VOXEL_DATA_BUFFER_0] : mBuffers[HC_VOXEL_DATA_BUFFER_1];
             var["gHashCacheVoxelDataBufferPrev"] = mFrameCount % 2 == 1 ? mBuffers[HC_VOXEL_DATA_BUFFER_0] : mBuffers[HC_VOXEL_DATA_BUFFER_1];
         }
@@ -305,7 +305,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
     {
         auto var = mPasses[RESOLVE_PASS]->getRootVar();
         var["CB"]["gCamPos"] = mCamPos;
-        var["gHashEntriesBuffer"] = mBuffers[HASH_ENTRIES_BUFFER];
+        var["gHashCacheHashGridEntriesBuffer"] = mBuffers[HC_HASH_GRID_ENTRIES_BUFFER];
         var["gHashCacheVoxelDataBuffer"] = mFrameCount % 2 == 0 ? mBuffers[HC_VOXEL_DATA_BUFFER_0] : mBuffers[HC_VOXEL_DATA_BUFFER_1];
         var["gHashCacheVoxelDataBufferPrev"] = mFrameCount % 2 == 1 ? mBuffers[HC_VOXEL_DATA_BUFFER_0] : mBuffers[HC_VOXEL_DATA_BUFFER_1];
         mpPixelDebug->prepareProgram(mPasses[RESOLVE_PASS]->getProgram(), var);
@@ -322,7 +322,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["gSampler"] = mpSamplerBlock;
         if (mHCParams.active)
         {
-            var["gHashEntriesBuffer"] = mBuffers[HASH_ENTRIES_BUFFER];
+            var["gHashCacheHashGridEntriesBuffer"] = mBuffers[HC_HASH_GRID_ENTRIES_BUFFER];
             var["gHashCacheVoxelDataBuffer"] = mFrameCount % 2 == 0 ? mBuffers[HC_VOXEL_DATA_BUFFER_0] : mBuffers[HC_VOXEL_DATA_BUFFER_1];
             var["gHashCacheVoxelDataBufferPrev"] = mFrameCount % 2 == 1 ? mBuffers[HC_VOXEL_DATA_BUFFER_0] : mBuffers[HC_VOXEL_DATA_BUFFER_1];
         }

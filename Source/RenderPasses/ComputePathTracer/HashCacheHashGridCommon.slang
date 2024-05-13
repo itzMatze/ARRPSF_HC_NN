@@ -18,7 +18,7 @@ static const float kHashCacheSceneScale = 30.0f;
 
 typedef uint HashKey;
 
-RWStructuredBuffer<uint> gHashEntriesBuffer;
+RWStructuredBuffer<uint> gHashCacheHashGridEntriesBuffer;
 
 struct GridParameters
 {
@@ -96,7 +96,7 @@ struct HashMapData
 
     void AtomicCompareExchange(in uint dstOffset, in uint compareValue, in uint value, out uint originalValue)
     {
-        InterlockedCompareExchange(gHashEntriesBuffer[dstOffset], compareValue, value, originalValue);
+        InterlockedCompareExchange(gHashCacheHashGridEntriesBuffer[dstOffset], compareValue, value, originalValue);
     }
 
     bool HashMapInsert(const HashKey hashKey, out uint cacheEntry)
@@ -125,7 +125,7 @@ struct HashMapData
         uint slot = hash % capacity;
         for (uint bucketOffset = 0; bucketOffset < kHashGridHashMapBucketSize; ++bucketOffset)
         {
-            HashKey storedHashKey = gHashEntriesBuffer[slot + bucketOffset];
+            HashKey storedHashKey = gHashCacheHashGridEntriesBuffer[slot + bucketOffset];
             if (storedHashKey == hashKey)
             {
                 cacheEntry = slot + bucketOffset;

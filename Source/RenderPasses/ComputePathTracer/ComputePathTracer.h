@@ -69,7 +69,7 @@ private:
 
     enum // Buffer
     {
-        HASH_ENTRIES_BUFFER = 0,
+        HC_HASH_GRID_ENTRIES_BUFFER = 0,
         HC_VOXEL_DATA_BUFFER_0 = 1,
         HC_VOXEL_DATA_BUFFER_1 = 2,
         NN_PRIMAL_BUFFER = 3,
