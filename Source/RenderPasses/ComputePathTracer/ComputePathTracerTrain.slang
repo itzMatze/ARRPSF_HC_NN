@@ -505,7 +505,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
 #if NN_TRAIN
     for (uint i = 0; i < kNNMaxTrainingBounces; i++)
     {
-        HalfFeature<32> feature = computeInterpolatedFeature(nnHitInfoList[i].pos, nnHitInfoList[i].dir);
+        HalfFeature<32> feature = computeFreqEncFeature(nnHitInfoList[i].pos, nnHitInfoList[i].dir);
         HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
         HalfFeature<32>.Differential output_grad;
         float3 target_color = nnHitInfoList[i].radiance;
@@ -524,7 +524,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     // nee training
     for (uint i = 0; i < kNNMaxTrainingBounces; i++)
     {
-        HalfFeature<32> feature = computeInterpolatedFeature(nnNeeHitInfoList[i].pos, nnNeeHitInfoList[i].dir);
+        HalfFeature<32> feature = computeFreqEncFeature(nnNeeHitInfoList[i].pos, nnNeeHitInfoList[i].dir);
         HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
         HalfFeature<32>.Differential output_grad;
         float3 target_color = nnNeeHitInfoList[i].radiance;
@@ -540,7 +540,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         var input_feature_pair = diffPair(feature);
         bwd_diff(MLPModule0.forward)(gMlp0, input_feature_pair, output_grad);
     }
-    HalfFeature<32> feature = computeInterpolatedFeature(gCamPos.xyz, -gViewW[pixel].xyz);
+    HalfFeature<32> feature = computeFreqEncFeature(gCamPos.xyz, -gViewW[pixel].xyz);
     HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
     HalfFeature<32>.Differential output_grad;
     float3 target_color = outputColor;

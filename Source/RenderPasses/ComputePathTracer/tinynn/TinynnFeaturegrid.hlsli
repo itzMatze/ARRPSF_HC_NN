@@ -4,7 +4,7 @@
 #include "TinynnHalfLinear.hlsli"
 
 [Differentiable]
-HalfFeature<32> computeInterpolatedFeature(
+HalfFeature<32> computeFreqEncFeature(
     no_diff float3 pos,
     no_diff float3 dir,
 ) {

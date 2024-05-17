@@ -301,7 +301,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         rayData.luminance_estimate = hcRadiance.x >= 0.0 ? luminance(hcRadiance) : 0.5;
 #elif RR_OPTION_BITS & (1u << 6)
         HalfFeature<32> feature;
-        if (!gDone) feature = computeInterpolatedFeature(sd.posW, rayData.direction);
+        if (!gDone) feature = computeFreqEncFeature(sd.posW, rayData.direction);
         else
         {
             [ForceUnroll]
@@ -379,7 +379,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 #if NN_DEBUG
     // evaluate nn for nee
     HalfFeature<32> feature;
-    if (!gDone) feature = computeInterpolatedFeature(sd.posW, ls.dir);
+    if (!gDone) feature = computeFreqEncFeature(sd.posW, ls.dir);
     else
     {
         [ForceUnroll]
@@ -415,8 +415,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
 #if NN_DEBUG
     // evaluate nn for the bsdf sampled direction
-    //HalfFeature<32> feature = computeInterpolatedFeature(gCamPos.xyz, -gViewW[pixel].xyz);
-    if (!gDone) feature = computeInterpolatedFeature(sd.posW, bsdfSample.wo);
+    if (!gDone) feature = computeFreqEncFeature(sd.posW, bsdfSample.wo);
     else
     {
         [ForceUnroll]
@@ -466,7 +465,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         HalfFeature<32> feature;
         if (!gDone)
         {
-            feature = computeInterpolatedFeature(sd.posW, rayData.direction);
+            feature = computeFreqEncFeature(sd.posW, rayData.direction);
         }
         else
         {
