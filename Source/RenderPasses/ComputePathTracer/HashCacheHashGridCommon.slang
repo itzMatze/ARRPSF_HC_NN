@@ -30,69 +30,69 @@ float LogBase(float x, float base)
     return log(x) / log(base);
 }
 
-// http://burtleburtle.net/bob/hash/integer.html
-uint HashJenkins32(uint a)
-{
-    a = (a + 0x7ed55d16) + (a << 12);
-    a = (a ^ 0xc761c23c) ^ (a >> 19);
-    a = (a + 0x165667b1) + (a << 5);
-    a = (a + 0xd3a2646c) ^ (a << 9);
-    a = (a + 0xfd7046c5) + (a << 3);
-    a = (a ^ 0xb55a4f09) ^ (a >> 16);
-    return a;
-}
-
-uint Hash32(HashKey hashKey)
-{
-    return HashJenkins32(uint((hashKey >> 0) & 0xffffffff))
-         ^ HashJenkins32(uint((hashKey >> 32) & 0xffffffff));
-}
-
-uint GetGridLevel(float3 samplePosition, GridParameters gridParameters)
-{
-    const float distance = length(gridParameters.cameraPosition - samplePosition);
-    return clamp(floor(LogBase(distance, kHashCacheGridLogarithmBase) + kHashGridLevelBias), 1, kHashGridLevelBitMask);
-}
-
-float GetVoxelSize(uint gridLevel, GridParameters gridParameters)
-{
-    return pow(kHashCacheGridLogarithmBase, gridLevel) / (kHashCacheSceneScale * pow(kHashCacheGridLogarithmBase, kHashGridLevelBias));
-}
-
-// Based on logarithmic caching by Johannes Jendersie
-int4 CalculateGridPositionLog(float3 samplePosition, GridParameters gridParameters)
-{
-    samplePosition += kHashGridPositionOffset;
-    uint  gridLevel    = GetGridLevel(samplePosition, gridParameters);
-    float voxelSize    = GetVoxelSize(gridLevel, gridParameters);
-    int3  gridPosition = floor(samplePosition / voxelSize);
-    return int4(gridPosition.xyz, gridLevel);
-}
-
-HashKey ComputeSpatialHash(float3 samplePosition, float3 sampleNormal, GridParameters gridParameters)
-{
-    const float distance = length(gridParameters.cameraPosition - samplePosition);
-    uint4 gridPosition = asuint(CalculateGridPositionLog(samplePosition, gridParameters));
-    HashKey hashKey = (((uint)gridPosition.x & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 0))
-                    | (((uint)gridPosition.y & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 1))
-                    | (((uint)gridPosition.z & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 2))
-                    | (((uint)gridPosition.w & kHashGridLevelBitMask) << (kHashGridPositionBitNum * 3));
-
-    if (kHashGridUseNormals)
-    {
-        uint normalBits =
-            (sampleNormal.x >= 0 ? 1 : 0) +
-            (sampleNormal.y >= 0 ? 2 : 0) +
-            (sampleNormal.z >= 0 ? 4 : 0);
-
-        hashKey |= ((uint)normalBits << (kHashGridPositionBitNum * 3 + kHashGridLevelBitNum));
-    }
-    return hashKey;
-}
-
 struct HashMapData
 {
     uint capacity;
+
+    // http://burtleburtle.net/bob/hash/integer.html
+    uint HashJenkins32(uint a)
+    {
+        a = (a + 0x7ed55d16) + (a << 12);
+        a = (a ^ 0xc761c23c) ^ (a >> 19);
+        a = (a + 0x165667b1) + (a << 5);
+        a = (a + 0xd3a2646c) ^ (a << 9);
+        a = (a + 0xfd7046c5) + (a << 3);
+        a = (a ^ 0xb55a4f09) ^ (a >> 16);
+        return a;
+    }
+
+    uint Hash32(HashKey hashKey)
+    {
+        return HashJenkins32(uint((hashKey >> 0) & 0xffffffff))
+             ^ HashJenkins32(uint((hashKey >> 32) & 0xffffffff));
+    }
+
+    uint GetGridLevel(float3 samplePosition, GridParameters gridParameters)
+    {
+        const float distance = length(gridParameters.cameraPosition - samplePosition);
+        return clamp(floor(LogBase(distance, kHashCacheGridLogarithmBase) + kHashGridLevelBias), 1, kHashGridLevelBitMask);
+    }
+
+    float GetVoxelSize(uint gridLevel, GridParameters gridParameters)
+    {
+        return pow(kHashCacheGridLogarithmBase, gridLevel) / (kHashCacheSceneScale * pow(kHashCacheGridLogarithmBase, kHashGridLevelBias));
+    }
+
+    // Based on logarithmic caching by Johannes Jendersie
+    int4 CalculateGridPositionLog(float3 samplePosition, GridParameters gridParameters)
+    {
+        samplePosition += kHashGridPositionOffset;
+        uint  gridLevel    = GetGridLevel(samplePosition, gridParameters);
+        float voxelSize    = GetVoxelSize(gridLevel, gridParameters);
+        int3  gridPosition = floor(samplePosition / voxelSize);
+        return int4(gridPosition.xyz, gridLevel);
+    }
+
+    HashKey ComputeSpatialHash(float3 samplePosition, float3 sampleNormal, GridParameters gridParameters)
+    {
+        const float distance = length(gridParameters.cameraPosition - samplePosition);
+        uint4 gridPosition = asuint(CalculateGridPositionLog(samplePosition, gridParameters));
+        HashKey hashKey = (((uint)gridPosition.x & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 0))
+                        | (((uint)gridPosition.y & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 1))
+                        | (((uint)gridPosition.z & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 2))
+                        | (((uint)gridPosition.w & kHashGridLevelBitMask) << (kHashGridPositionBitNum * 3));
+
+        if (kHashGridUseNormals)
+        {
+            uint normalBits =
+                (sampleNormal.x >= 0 ? 1 : 0) +
+                (sampleNormal.y >= 0 ? 2 : 0) +
+                (sampleNormal.z >= 0 ? 4 : 0);
+
+            hashKey |= ((uint)normalBits << (kHashGridPositionBitNum * 3 + kHashGridLevelBitNum));
+        }
+        return hashKey;
+    }
 
     void AtomicCompareExchange(in uint dstOffset, in uint compareValue, in uint value, out uint originalValue)
     {
@@ -150,23 +150,23 @@ struct HashMapData
         const bool successful = HashMapFind(hashKey, idx);
         return idx;
     }
+
+    // Debug functions
+    float3 GetColorFromHash32(uint hash)
+    {
+        float3 color;
+        color.x = ((hash >>  0) & 0x3ff) / 1023.0f;
+        color.y = ((hash >> 11) & 0x7ff) / 2047.0f;
+        color.z = ((hash >> 22) & 0x7ff) / 2047.0f;
+        return color;
+    }
+
+    // Debug visualization
+    float3 HashGridDebugColoredHash(float3 samplePosition, GridParameters gridParameters)
+    {
+        HashKey hashKey = ComputeSpatialHash(samplePosition, float3(0, 0, 0), gridParameters);
+        return GetColorFromHash32(Hash32(hashKey));
+    }
 };
-
-// Debug functions
-float3 GetColorFromHash32(uint hash)
-{
-    float3 color;
-    color.x = ((hash >>  0) & 0x3ff) / 1023.0f;
-    color.y = ((hash >> 11) & 0x7ff) / 2047.0f;
-    color.z = ((hash >> 22) & 0x7ff) / 2047.0f;
-    return color;
-}
-
-// Debug visualization
-float3 HashGridDebugColoredHash(float3 samplePosition, GridParameters gridParameters)
-{
-    HashKey hashKey = ComputeSpatialHash(samplePosition, float3(0, 0, 0), gridParameters);
-    return GetColorFromHash32(Hash32(hashKey));
-}
 #endif // HC_UPDATE || HC_QUERY
 

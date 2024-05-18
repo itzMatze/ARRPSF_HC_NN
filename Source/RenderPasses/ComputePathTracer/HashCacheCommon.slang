@@ -104,7 +104,7 @@ bool hashCacheGetCachedRadiance(inout HashCacheState hashCacheState, HashCacheHi
     radiance = 0;
     if (debug)
     {
-        radiance = HashGridDebugColoredHash(hashCacheHitData.positionWorld, hashCacheState.gridParameters);
+        radiance = hashCacheState.hashMapData.HashGridDebugColoredHash(hashCacheHitData.positionWorld, hashCacheState.gridParameters);
         return true;
     }
     uint idx = hashCacheState.hashMapData.FindEntry(hashCacheHitData.positionWorld, hashCacheHitData.normalWorld, hashCacheState.gridParameters);

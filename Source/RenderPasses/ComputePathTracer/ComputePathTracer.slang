@@ -248,7 +248,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         // Construct HashCacheHitData structure needed for creating a query point at this hit location
         hashCacheHitData.positionWorld = sd.posW;
         hashCacheHitData.normalWorld = sd.getOrientedFaceNormal();
-        uint gridLevel = GetGridLevel(sd.posW, rayData.hashCacheState.gridParameters);
+        uint gridLevel = rayData.hashCacheState.hashMapData.GetGridLevel(sd.posW, rayData.hashCacheState.gridParameters);
         if (kHCDebugLevels)
         {
             // the actual max level is 1024 (see clamp in function)
@@ -267,7 +267,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
         if (kHCInjectRadianceSpread)
         {
-            float voxelSize = GetVoxelSize(gridLevel, rayData.hashCacheState.gridParameters);
+            float voxelSize = rayData.hashCacheState.hashMapData.GetVoxelSize(gridLevel, rayData.hashCacheState.gridParameters);
             bool isValidHit = rayData.t > voxelSize * lerp(1.0f, 2.0f, sampleNext1D(rayData.sg));
             float alpha = min(rayData.materialRoughness * rayData.materialRoughness, 0.99);
             rayData.materialRoughness = bsdfProperties.roughness;
