@@ -53,12 +53,14 @@ static const uint kHCDebugVoxels = HC_DEBUG_VOXELS;
 static const uint kHCDebugColor = HC_DEBUG_COLOR;
 static const uint kHCDebugLevels = HC_DEBUG_LEVELS;
 static const uint kNNMaxTrainingBounces = NN_TRAINING_BOUNCES;
+static const uint kFeatureHashGridCapacity = FEATURE_HASH_GRID_CAPACITY;
 
 #if NN_TRAIN
 struct NNHitInfo
 {
     float3 pos;
     float3 dir;
+    float3 normal;
     float3 thp;
     float3 radiance;
 
@@ -107,6 +109,9 @@ struct ScatterRayData
     HashCacheState hashCacheState;
     float materialRoughness;
     float spread;
+#endif
+#if NN_TRAIN
+    FeatureHashGridData featureHashGrid;
 #endif
     float3 radiance;  ///< Accumulated outgoing radiance from path.
     float3 thp;       ///< Current path throughput. This is updated at each path vertex.
@@ -314,6 +319,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         {
             nnNeeHitInfoList[rayData.numBounces].pos = sd.posW;
             nnNeeHitInfoList[rayData.numBounces].dir = ls.dir;
+            nnNeeHitInfoList[rayData.numBounces].normal = sd.getOrientedFaceNormal();
             nnNeeHitInfoList[rayData.numBounces].radiance = ls.Li;
         }
 #endif
@@ -342,8 +348,9 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 #if NN_TRAIN
     if (rayData.numBounces < kNNMaxTrainingBounces)
     {
-        nnHitInfoList[rayData.numBounces].dir = rayData.direction;
         nnHitInfoList[rayData.numBounces].pos = sd.posW;
+        nnHitInfoList[rayData.numBounces].dir = rayData.direction;
+        nnHitInfoList[rayData.numBounces].normal = sd.getOrientedFaceNormal();
         nnHitInfoList[rayData.numBounces].thp = rayData.cur_thp;
     }
     else nnHitInfoList[kNNMaxTrainingBounces - 1].thp *= rayData.cur_thp;
@@ -424,7 +431,7 @@ bool traceScatterRay(inout ScatterRayData rayData)
  * @param[in] frameDim Dimension of the frame in pixels.
  * @return Returns the estimated color (radiance).
  */
-float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
+float3 tracePath(const uint2 pixel, const uint2 frameDim, ScatterRayData rayData)
 {
     float3 outColor = float3(0.f);
     const HitInfo hit = HitInfo(gVBuffer[pixel]);
@@ -438,7 +445,6 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, SampleGenerator sg)
 #endif
         return outColor;
     }
-    ScatterRayData rayData = ScatterRayData(sg);
 
 #if HC_UPDATE
     rayData.hashCacheState.gridParameters.cameraPosition = gCamPos.xyz;
@@ -488,6 +494,8 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     uint2 pixel = dispatchThreadId.xy * 10 + uint2(sampleNext2D(sg) * 10.99);
 
     bool mainThread = (any(pixel >= gFrameDim)) ? false : true;
+    printSetPixel(pixel);
+    ScatterRayData rayData = ScatterRayData(sg);
 #if NN_TRAIN
     [ForceUnroll]
     for (uint i = 0; i < kNNMaxTrainingBounces; i++) nnHitInfoList[i] = NNHitInfo();
@@ -496,16 +504,18 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     const ThreadInfo thread_info = ThreadInfo(groupThreadId.xy, int2(32, 4));
     uint param_offset = 0; uint grad_offset = 0;
     gMlp0 = MLPModule0(param_offset, grad_offset, thread_info);
+    rayData.featureHashGrid = FeatureHashGridData(kFeatureHashGridCapacity);
+    TensorView featureHashGridView = TensorView(param_offset, grad_offset, 32, 32);
 #endif
-    printSetPixel(pixel);
     float3 outputColor = float3(0.0, 1.0, 0.0);
-    if (mainThread) outputColor = tracePath(pixel, gFrameDim, sg);
+    if (mainThread) outputColor = tracePath(pixel, gFrameDim, rayData);
 
 // NN
 #if NN_TRAIN
     for (uint i = 0; i < kNNMaxTrainingBounces; i++)
     {
-        HalfFeature<32> feature = computeFreqEncFeature(nnHitInfoList[i].pos, nnHitInfoList[i].dir);
+        HalfFeature<32> feature = computeHashEncFeature(nnHitInfoList[i].pos, nnHitInfoList[i].dir, nnHitInfoList[i].normal, rayData.featureHashGrid, featureHashGridView);
+        //HalfFeature<32> feature = computeFreqEncFeature(nnHitInfoList[i].pos, nnHitInfoList[i].dir);
         HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
         HalfFeature<32>.Differential output_grad;
         float3 target_color = nnHitInfoList[i].radiance;
@@ -520,11 +530,13 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
         var input_feature_pair = diffPair(feature);
         bwd_diff(MLPModule0.forward)(gMlp0, input_feature_pair, output_grad);
+        bwd_diff(computeHashEncFeature)(nnHitInfoList[i].pos, nnHitInfoList[i].dir, nnHitInfoList[i].normal, rayData.featureHashGrid, featureHashGridView, input_feature_pair.d);
     }
     // nee training
     for (uint i = 0; i < kNNMaxTrainingBounces; i++)
     {
-        HalfFeature<32> feature = computeFreqEncFeature(nnNeeHitInfoList[i].pos, nnNeeHitInfoList[i].dir);
+        HalfFeature<32> feature = computeHashEncFeature(nnNeeHitInfoList[i].pos, nnNeeHitInfoList[i].dir, nnNeeHitInfoList[i].normal, rayData.featureHashGrid, featureHashGridView);
+        //HalfFeature<32> feature = computeFreqEncFeature(nnNeeHitInfoList[i].pos, nnNeeHitInfoList[i].dir);
         HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
         HalfFeature<32>.Differential output_grad;
         float3 target_color = nnNeeHitInfoList[i].radiance;
@@ -539,8 +551,11 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
         var input_feature_pair = diffPair(feature);
         bwd_diff(MLPModule0.forward)(gMlp0, input_feature_pair, output_grad);
+        bwd_diff(computeHashEncFeature)(nnNeeHitInfoList[i].pos, nnNeeHitInfoList[i].dir, nnNeeHitInfoList[i].normal, rayData.featureHashGrid, featureHashGridView, input_feature_pair.d);
     }
-    HalfFeature<32> feature = computeFreqEncFeature(gCamPos.xyz, -gViewW[pixel].xyz);
+    // use dummy normal for camera
+    HalfFeature<32> feature = computeHashEncFeature(gCamPos.xyz, -gViewW[pixel].xyz, float3(1.0), rayData.featureHashGrid, featureHashGridView);
+    //HalfFeature<32> feature = computeFreqEncFeature(gCamPos.xyz, -gViewW[pixel].xyz);
     HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
     HalfFeature<32>.Differential output_grad;
     float3 target_color = outputColor;
@@ -555,6 +570,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
     var input_feature_pair = diffPair(feature);
     bwd_diff(MLPModule0.forward)(gMlp0, input_feature_pair, output_grad);
+    bwd_diff(computeHashEncFeature)(gCamPos.xyz, -gViewW[pixel].xyz, float3(1.0), rayData.featureHashGrid, featureHashGridView, input_feature_pair.d);
 #endif
 }
 

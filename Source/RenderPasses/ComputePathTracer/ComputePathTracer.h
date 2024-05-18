@@ -200,10 +200,11 @@ private:
         int trainingBounces = 4;
         bool debugOutput = false;
         bool keepThreads = false;
+        uint featureHashMapSize = std::pow(2, 22);
 
         void update()
         {
-            nnParamCount = ((nnLayerWidth * nnLayerWidth /*weights*/ + nnLayerWidth /*biases*/) * std::reduce(nnLayerCount.begin(), nnLayerCount.end()) + 120 * 68 * 14 /*feature grid*/);
+            nnParamCount = ((nnLayerWidth * nnLayerWidth /*weights*/ + nnLayerWidth /*biases*/) * std::reduce(nnLayerCount.begin(), nnLayerCount.end()) + featureHashMapSize /*feature hash grid storage*/);
         }
     } mNNParams;
 
