@@ -393,7 +393,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
     }
     HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
-    rayData.cur_radiance += 0.5 * float3(output.vals[0], output.vals[1], output.vals[2]) * weight;
+    MASK_BLOCK rayData.cur_radiance += 0.5 * float3(output.vals[0], output.vals[1], output.vals[2]) * weight;
 #else
     MASK_BLOCK
     {
@@ -430,9 +430,12 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
     }
     output = MLPModule0.forward(gMlp0, feature);
-    if (isnan(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 0.0);
-    else if (isinf(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 1.0);
-    else rayData.cur_radiance += 0.5 * float3(output.vals[0], output.vals[1], output.vals[2]) * bsdfSample.weight;
+    MASK_BLOCK
+    {
+        if (isnan(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 0.0);
+        else if (isinf(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 1.0);
+        else rayData.cur_radiance += 0.5 * float3(output.vals[0], output.vals[1], output.vals[2]) * bsdfSample.weight;
+    }
     TERMINATE_PATH_0;
 #endif
 
