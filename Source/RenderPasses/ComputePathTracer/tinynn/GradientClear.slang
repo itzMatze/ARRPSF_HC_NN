@@ -1,6 +1,7 @@
 import Utils.Debug.PixelDebug;
 
-RWByteAddressBuffer GradientBuffer;
+RWStructuredBuffer<float> GradientBuffer;
+RWStructuredBuffer<float> GradientCountBuffer;
 
 static const uint kParamCount = NN_PARAM_COUNT;
 
@@ -14,6 +15,7 @@ void main(int3 dtid: SV_DispatchThreadID) {
     if (any(dtid.x >= kParamCount)) return;
     printSetPixel(uint2(10000, dtid.x));
     // Clear the parameter gradients
-    GradientBuffer.Store(dtid.x * sizeof(float), 0.0f);
+    GradientBuffer[dtid.x] = 0.0;
+    GradientCountBuffer[dtid.x] = 0.0;
 }
 

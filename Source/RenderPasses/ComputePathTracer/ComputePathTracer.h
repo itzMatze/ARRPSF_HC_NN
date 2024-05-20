@@ -75,8 +75,9 @@ private:
         NN_PRIMAL_BUFFER = 3,
         NN_FILTERED_PRIMAL_BUFFER = 4,
         NN_GRADIENT_BUFFER = 5,
-        NN_GRADIENT_AUX_BUFFER = 6,
-        LOSS_SUM_BUFFER = 7,
+        NN_GRADIENT_COUNT_BUFFER = 6,
+        NN_GRADIENT_AUX_BUFFER = 7,
+        LOSS_SUM_BUFFER = 8,
         BUFFER_COUNT
     };
 

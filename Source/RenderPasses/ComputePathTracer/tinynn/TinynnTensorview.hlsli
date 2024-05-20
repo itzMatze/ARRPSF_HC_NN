@@ -3,6 +3,7 @@
 
 RWStructuredBuffer<float> PrimalBuffer;
 RWByteAddressBuffer GradientBuffer;
+RWByteAddressBuffer GradientCountBuffer;
 
 struct ThreadInfo {
     int2 thread_idx;
@@ -29,7 +30,10 @@ struct TensorView {
     [BackwardDerivative(load_prim_idx3_bwd)]
     float load_prim(int x, int y, int z) { return load_prim(x * stride + y * pitch + z); }
 
-    void interlocked_add_grad(int x, float val) { GradientBuffer.InterlockedAddF32((offset_grad + x) * 4, val); }
+    void interlocked_add_grad(int x, float val) {
+        GradientBuffer.InterlockedAddF32((offset_grad + x) * 4, val);
+        GradientCountBuffer.InterlockedAddF32((offset_grad + x) * 4, 1.0f);
+    }
     void interlocked_add_grad(int x, int y, float val) { interlocked_add_grad(x * stride + y, val); }
     void interlocked_add_grad(int x, int y, int z, float val) { interlocked_add_grad(x * stride + y * pitch + z, val); }
 

@@ -261,7 +261,8 @@ void ComputePathTracer::setupData(RenderContext* pRenderContext)
     std::generate(data.begin(), data.end(), gen);
     if (!mBuffers[NN_PRIMAL_BUFFER]) mBuffers[NN_PRIMAL_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, data.data());
     if (!mBuffers[NN_FILTERED_PRIMAL_BUFFER]) mBuffers[NN_FILTERED_PRIMAL_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, data.data());
-    if (!mBuffers[NN_GRADIENT_BUFFER]) mBuffers[NN_GRADIENT_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, data.data());
+    if (!mBuffers[NN_GRADIENT_BUFFER]) mBuffers[NN_GRADIENT_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
+    if (!mBuffers[NN_GRADIENT_COUNT_BUFFER]) mBuffers[NN_GRADIENT_COUNT_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
     if (!mBuffers[NN_GRADIENT_AUX_BUFFER]) mBuffers[NN_GRADIENT_AUX_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float) * 4);
 }
 
@@ -297,6 +298,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         {
             var["PrimalBuffer"] = mBuffers[NN_PRIMAL_BUFFER];
             var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
+            var["GradientCountBuffer"] = mBuffers[NN_GRADIENT_COUNT_BUFFER];
         }
         var[kInputVBuffer.texname] = renderData.getTexture(kInputVBuffer.name);
         var[kInputViewDir.texname] = renderData.getTexture(kInputViewDir.name);
@@ -331,6 +333,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         {
             var["PrimalBuffer"] = mBuffers[NN_FILTERED_PRIMAL_BUFFER];
             var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
+            var["GradientCountBuffer"] = mBuffers[NN_GRADIENT_COUNT_BUFFER];
         }
         for (auto channel : kInputChannels) var[channel.texname] = renderData.getTexture(channel.name);
         for (auto channel : kOutputChannels) var[channel.texname] = renderData.getTexture(channel.name);
@@ -340,6 +343,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
     {
         auto var = mPasses[NN_GRADIENT_CLEAR_PASS]->getRootVar();
         var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
+        var["GradientCountBuffer"] = mBuffers[NN_GRADIENT_COUNT_BUFFER];
         mpPixelDebug->prepareProgram(mPasses[NN_GRADIENT_CLEAR_PASS]->getProgram(), var);
     }
     if (mNNParams.active)
@@ -349,6 +353,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["PrimalBuffer"] = mBuffers[NN_PRIMAL_BUFFER];
         var["FilteredPrimalBuffer"] = mBuffers[NN_FILTERED_PRIMAL_BUFFER];
         var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
+        var["GradientCountBuffer"] = mBuffers[NN_GRADIENT_COUNT_BUFFER];
         var["GradientAuxBuffer"] = mBuffers[NN_GRADIENT_AUX_BUFFER];
         mpPixelDebug->prepareProgram(mPasses[NN_GRADIENT_DESCENT_PASS]->getProgram(), var);
     }

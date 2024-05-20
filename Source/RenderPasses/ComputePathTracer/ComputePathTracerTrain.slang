@@ -524,7 +524,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         float loss = L2Loss(color, target_color, color);
         bwd_diff(L2Loss)(color_pair, target_color, color, 1);
         // set gradient to zero if current hitInfoList entry is invalid as it was never updated or if current thread is just helper thread
-        const float gradient_scalar = (!mainThread || length(nnHitInfoList[i].dir) < 0.1) ? 0.0 : 1.0 / (gFrameDim.x * gFrameDim.y / 100.0);
+        const float gradient_scalar = (!mainThread || length(nnHitInfoList[i].dir) < 0.1) ? 0.0 : 1.0;
         output_grad.vals[0] = float16_t(color_pair.d.x * gradient_scalar);
         output_grad.vals[1] = float16_t(color_pair.d.y * gradient_scalar);
         output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
@@ -545,7 +545,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         float loss = L2Loss(color, target_color, color);
         bwd_diff(L2Loss)(color_pair, target_color, color, 1);
         // set gradient to zero if current hitInfoList entry is invalid as it was never updated or if current thread is just helper thread
-        const float gradient_scalar = (!mainThread || length(nnNeeHitInfoList[i].dir) < 0.1) ? 0.0 : 1.0 / (gFrameDim.x * gFrameDim.y / 100.0);
+        const float gradient_scalar = (!mainThread || length(nnNeeHitInfoList[i].dir) < 0.1) ? 0.0 : 1.0;
         output_grad.vals[0] = float16_t(color_pair.d.x * gradient_scalar);
         output_grad.vals[1] = float16_t(color_pair.d.y * gradient_scalar);
         output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
@@ -564,7 +564,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     float loss = L2Loss(color, target_color, color);
     bwd_diff(L2Loss)(color_pair, target_color, color, 1);
     // set gradient to zero if current thread is just helper thread
-    const float gradient_scalar = (!mainThread) ? 0.0 : 1.0 / (gFrameDim.x * gFrameDim.y / 100.0);
+    const float gradient_scalar = (!mainThread) ? 0.0 : 1.0;
     output_grad.vals[0] = float16_t(color_pair.d.x * gradient_scalar);
     output_grad.vals[1] = float16_t(color_pair.d.y * gradient_scalar);
     output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);

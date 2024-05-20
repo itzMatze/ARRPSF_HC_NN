@@ -5,6 +5,7 @@ import Utils.Debug.PixelDebug;
 RWStructuredBuffer<float> PrimalBuffer;
 RWStructuredBuffer<float> FilteredPrimalBuffer;
 RWStructuredBuffer<float> GradientBuffer;
+RWStructuredBuffer<float> GradientCountBuffer;
 RWStructuredBuffer<float> GradientAuxBuffer;
 
 static const uint kParamCount = NN_PARAM_COUNT;
@@ -33,23 +34,27 @@ void main(int3 dtid: SV_DispatchThreadID) {
     printSetPixel(uint2(10000, dtid.x));
 
     const float theta = PrimalBuffer[tid];
-    float df_dtheta = GradientBuffer[kGradOffset + tid];
+    float count = GradientCountBuffer[kGradOffset + tid];
+    float df_dtheta = count > 0.01 ? GradientBuffer[kGradOffset + tid] / float(count) : 0.0;
+    if (isnan(df_dtheta) || isinf(df_dtheta)) df_dtheta = 0.0;
+    float theta_new = theta;
 
     if (kOptimizerType == uint32_t(OptimizerType::SGD)) {
         float b_t = GradientAuxBuffer[kGradOffset + tid];
         if (t == 0) b_t = 0.f;
-        const float theta_new = sgd_optimizer(theta, df_dtheta, b_t, t, kLearningRate, kParam0, kParam1);
+        theta_new = sgd_optimizer(theta, df_dtheta, b_t, t, kLearningRate, kParam0, kParam1);
         GradientAuxBuffer[kGradOffset + tid] = b_t;
-        PrimalBuffer[tid] = theta_new;
     } else if (kOptimizerType == uint32_t(OptimizerType::ADAM)) {
         float m_t = GradientAuxBuffer[2 * (kGradOffset + tid) + 0];
+        print("ADAM", m_t);
         float v_t = GradientAuxBuffer[2 * (kGradOffset + tid) + 1];
         if (t == 0) { m_t = 0; v_t = 0; }
-        const float theta_new = adam_optimizer(theta, df_dtheta, m_t, v_t, t, kLearningRate, kParam0, kParam1, kParam2);
+        theta_new = adam_optimizer(theta, df_dtheta, m_t, v_t, t, kLearningRate, kParam0, kParam1, kParam2);
         GradientAuxBuffer[2 * (kGradOffset + tid) + 0] = m_t;
         GradientAuxBuffer[2 * (kGradOffset + tid) + 1] = v_t;
-        PrimalBuffer[tid] = theta_new;
-        FilteredPrimalBuffer[tid] = (1 - kFilterAlpha) * theta_new + kFilterAlpha * FilteredPrimalBuffer[tid];
     }
+    theta_new = clamp(theta_new, -65000.0, 65000.0);
+    PrimalBuffer[tid] = theta_new;
+    FilteredPrimalBuffer[tid] = (1 - kFilterAlpha) * theta_new + kFilterAlpha * FilteredPrimalBuffer[tid];
 }
 
