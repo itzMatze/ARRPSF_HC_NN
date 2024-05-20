@@ -248,7 +248,6 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     // Construct HashCacheHitData structure needed for creating a query point at this hit location
     hashCacheHitData.positionWorld = sd.posW;
     hashCacheHitData.normalWorld = sd.getOrientedFaceNormal();
-    uint gridLevel = rayData.hashCacheState.hashMapData.GetGridLevel(sd.posW, rayData.hashCacheState.gridParameters);
 #endif
 
     BSDFSample bsdfSample;

@@ -214,6 +214,8 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     }
     if (!mPasses[RESOLVE_PASS] && mHCParams.active)
     {
+        defineList["HC_UPDATE"] = "1";
+        defineList["HC_QUERY"] = "1";
         ProgramDesc desc;
         desc.addShaderLibrary(kHCResolveShaderFile).csEntry("hashCacheResolve");
         mPasses[RESOLVE_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
