@@ -117,7 +117,7 @@ private:
         float probReductionFactor = 0.9f;
 
         uint getOptionBits() { return optionsBits; }
-        void update() { optionsBits = survivalProbOption | pathContribEstimateOption | pixelMeasurementEstimateOption; }
+        void update() { optionsBits = survivalProbOption | (requiresPCE() & pathContribEstimateOption) | (requiresPME() & pixelMeasurementEstimateOption); }
         bool requiresReductionParams() { return optionsBits & SP_USE_DEFAULT; }
         bool requiresPCE() { return optionsBits & PCE_REQUIRED_MASK; }
         bool requiresPME() { return optionsBits & PME_REQUIRED_MASK; }
@@ -128,24 +128,24 @@ private:
         // how to determine the survival probability for rr
         enum SurvivalProbOptions
         {
-            SP_USE_DEFAULT = 0u,
-            SP_USE_EXP_CONTRIB = (1u << 0),
-            SP_USE_ADRRS = (1u << 1)
+            SP_USE_DEFAULT = (1u << 0),
+            SP_USE_EXP_CONTRIB = (1u << 1),
+            SP_USE_ADRRS = (1u << 2)
         };
         // how to estimate the expected radiance to come at a vertex on a path
         enum PathContribEstimateOptions
         {
             PCE_REQUIRED_MASK = SP_USE_EXP_CONTRIB | SP_USE_ADRRS,
-            PCE_USE_HC = (1u << 2),
-            PCE_USE_NN = (1u << 3),
+            PCE_USE_HC = (1u << 3),
+            PCE_USE_NN = (1u << 4),
         };
         // how to estimate the pixel measurement value
         enum PixelMeasurementEstimateOptions
         {
             PME_REQUIRED_MASK = SP_USE_ADRRS,
-            PME_USE_REF = (1u << 4),
-            PME_USE_HC = (1u << 5),
-            PME_USE_NN = (1u << 6),
+            PME_USE_REF = (1u << 5),
+            PME_USE_HC = (1u << 6),
+            PME_USE_NN = (1u << 7),
         };
     } mRRParams;
 

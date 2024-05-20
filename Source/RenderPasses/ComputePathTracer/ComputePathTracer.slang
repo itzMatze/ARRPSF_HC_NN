@@ -293,9 +293,9 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     if (rayData.numBounces == 0)
     {
         // set pixel measurement estimate
-#if RR_OPTION_BITS & (1u << 4)
+#if RR_OPTION_BITS & (1u << 5)
         rayData.luminance_estimate = luminance(gRefImage[gPixel].xyz);
-#elif RR_OPTION_BITS & (1u << 5)
+#elif RR_OPTION_BITS & (1u << 6)
         float3 hcRadiance;
         // only use hc for survival prob if the hc is ready at the current position, otherwise signal that the query was not successful
         if (!hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hcRadiance))
@@ -304,7 +304,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         }
         // if hc query was not successful use 0.5 as luminance
         rayData.luminance_estimate = hcRadiance.x >= 0.0 ? luminance(hcRadiance) : 0.5;
-#elif RR_OPTION_BITS & (1u << 6)
+#elif RR_OPTION_BITS & (1u << 7)
         HalfFeature<32> feature;
         if (!gDone) feature = computeHashEncFeature(sd.posW, rayData.direction, sd.getOrientedFaceNormal(), rayData.featureHashGrid, rayData.featureHashGridView);
         //if (!gDone) feature = computeFreqEncFeature(sd.posW, rayData.direction);
@@ -464,15 +464,15 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     {
         // use the parameters as fallback; will be overwritten by the actually used method
         float survival_prob = (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces));;
-#if RR_OPTION_BITS & ((1u << 0) | (1u << 1))
+#if RR_OPTION_BITS & ((1u << 1) | (1u << 2))
         float3 radiance = float3(0.0);
-#if RR_OPTION_BITS & (1u << 2)
+#if RR_OPTION_BITS & (1u << 3)
         // only use hc for survival prob if the hc is ready at the current position, otherwise signal that the query was not successful
         if (!hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, radiance))
         {
             radiance = float3(-1.0);
         }
-#elif RR_OPTION_BITS & (1u << 3)
+#elif RR_OPTION_BITS & (1u << 4)
         HalfFeature<32> feature;
         if (!gDone)
         {
@@ -487,14 +487,14 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
         radiance = float3(output.vals[0], output.vals[1], output.vals[2]);
 #endif
-#if RR_OPTION_BITS & (1u << 0)
+#if RR_OPTION_BITS & (1u << 1)
         if (radiance.x >= 0.0)
         {
             radiance *= rayData.thp;
             survival_prob = luminance(radiance);
             survival_prob = min(survival_prob, (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces)));
         }
-#elif RR_OPTION_BITS & (1u << 1)
+#elif RR_OPTION_BITS & (1u << 2)
         float local_luminance_estimate = luminance(radiance);
         if (local_luminance_estimate < 0.001) local_luminance_estimate = 0.001;
         float center = rayData.luminance_estimate / local_luminance_estimate;
