@@ -64,19 +64,19 @@ struct HashMapData
     }
 
     // Based on logarithmic caching by Johannes Jendersie
-    int4 CalculateGridPositionLog(float3 samplePosition, GridParameters gridParameters)
+    int4 CalculateGridPositionLog(float3 samplePosition, GridParameters gridParameters, int levelOffset)
     {
         samplePosition += kHashGridPositionOffset;
-        uint  gridLevel    = GetGridLevel(samplePosition, gridParameters);
+        uint  gridLevel    = GetGridLevel(samplePosition, gridParameters) + levelOffset;
         float voxelSize    = GetVoxelSize(gridLevel, gridParameters);
         int3  gridPosition = floor(samplePosition / voxelSize);
         return int4(gridPosition.xyz, gridLevel);
     }
 
-    HashKey ComputeSpatialHash(float3 samplePosition, float3 sampleNormal, GridParameters gridParameters)
+    HashKey ComputeSpatialHash(float3 samplePosition, float3 sampleNormal, GridParameters gridParameters, int levelOffset = 0)
     {
         const float distance = length(gridParameters.cameraPosition - samplePosition);
-        uint4 gridPosition = asuint(CalculateGridPositionLog(samplePosition, gridParameters));
+        uint4 gridPosition = asuint(CalculateGridPositionLog(samplePosition, gridParameters, levelOffset));
         HashKey hashKey = (((uint)gridPosition.x & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 0))
                         | (((uint)gridPosition.y & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 1))
                         | (((uint)gridPosition.z & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 2))
@@ -135,10 +135,10 @@ struct HashMapData
         return false;
     }
 
-    uint InsertEntry(float3 samplePosition, float3 sampleNormal, GridParameters gridParameters)
+    uint InsertEntry(float3 samplePosition, float3 sampleNormal, GridParameters gridParameters, int levelOffset = 0)
     {
         uint idx = kHashGridInvalidIdx;
-        const HashKey hashKey = ComputeSpatialHash(samplePosition, sampleNormal, gridParameters);
+        const HashKey hashKey = ComputeSpatialHash(samplePosition, sampleNormal, gridParameters, levelOffset);
         const bool successful = HashMapInsert(hashKey, idx);
         return idx;
     }

@@ -2,6 +2,7 @@ import Utils.Debug.PixelDebug;
 import HashCacheHashGridCommon;
 
 #if HC_UPDATE || HC_QUERY
+static const uint kHashCacheLevelTrainingSpread = 3;
 static const uint kHashCachePropagationDepth = 8;
 static const float kHashCacheRadianceScale = 1e4f;
 
@@ -33,14 +34,17 @@ void hashCacheSetVoxelData(bool usePrev, uint idx, HashCacheVoxelData data)
     else gHashCacheVoxelDataBuffer.Store4(idx * 16, voxelData);
 }
 
-void hashCacheAddVoxelData(uint idx, float3 value, bool newSample)
+void hashCacheAddVoxelData(uint idx[kHashCacheLevelTrainingSpread], float3 value, bool newSample)
 {
-    if (idx == kHashGridInvalidIdx) return;
     uint3 voxelData = uint3(value * kHashCacheRadianceScale);
-    if (value.x > 0.0) gHashCacheVoxelDataBuffer.InterlockedAdd(idx * 16, voxelData.x);
-    if (value.y > 0.0) gHashCacheVoxelDataBuffer.InterlockedAdd(idx * 16 + 4, voxelData.y);
-    if (value.z > 0.0) gHashCacheVoxelDataBuffer.InterlockedAdd(idx * 16 + 8, voxelData.z);
-    if (newSample) gHashCacheVoxelDataBuffer.InterlockedAdd(idx * 16 + 12, 1);
+    for (uint i = 0; i < kHashCacheLevelTrainingSpread; i++)
+    {
+        if (idx[i] == kHashGridInvalidIdx) continue;
+        if (value.x > 0.0) gHashCacheVoxelDataBuffer.InterlockedAdd(idx[i] * 16, voxelData.x);
+        if (value.y > 0.0) gHashCacheVoxelDataBuffer.InterlockedAdd(idx[i] * 16 + 4, voxelData.y);
+        if (value.z > 0.0) gHashCacheVoxelDataBuffer.InterlockedAdd(idx[i] * 16 + 8, voxelData.z);
+        if (newSample) gHashCacheVoxelDataBuffer.InterlockedAdd(idx[i] * 16 + 12, 1);
+    }
 }
 
 struct HashCacheState
@@ -48,7 +52,7 @@ struct HashCacheState
     GridParameters gridParameters;
     HashMapData hashMapData;
 #if HC_UPDATE
-    uint voxelIndices[kHashCachePropagationDepth];
+    uint voxelIndices[kHashCachePropagationDepth][kHashCacheLevelTrainingSpread];
     float3 sampleWeights[kHashCachePropagationDepth];
     uint pathLength;
 #endif // HC_UPDATE
@@ -84,7 +88,10 @@ void hashCacheUpdateHit(inout HashCacheState hashCacheState, HashCacheHitData ha
         hashCacheState.voxelIndices[i] = hashCacheState.voxelIndices[i - 1];
         hashCacheState.sampleWeights[i] = hashCacheState.sampleWeights[i - 1];
     }
-    hashCacheState.voxelIndices[0] = hashCacheState.hashMapData.InsertEntry(hashCacheHitData.positionWorld, hashCacheHitData.normalWorld, hashCacheState.gridParameters);
+    for (int i = 0; i < kHashCacheLevelTrainingSpread; i++)
+    {
+        hashCacheState.voxelIndices[0][i] = hashCacheState.hashMapData.InsertEntry(hashCacheHitData.positionWorld, hashCacheHitData.normalWorld, hashCacheState.gridParameters, i - (kHashCacheLevelTrainingSpread / 2));
+    }
     hashCacheState.pathLength += 1;
     hashCacheState.pathLength = min(hashCacheState.pathLength, kHashCachePropagationDepth - 1);
     hashCacheAddVoxelData(hashCacheState.voxelIndices[0], radiance, true);
@@ -132,7 +139,7 @@ void hashCacheCombine(uint idx)
         voxelData.radiance /= float(newSampleNum);
         if (voxelDataPrev.sampleNum > 0)
         {
-            float weight = min(newSampleNum * 0.002, 0.1);
+            float weight = min(newSampleNum * 0.0005, 0.025);
             voxelData.radiance = (1 - weight) * voxelDataPrev.radiance + weight * voxelData.radiance;
         }
     }
