@@ -60,6 +60,7 @@ struct HashCacheState
 
 struct HashCacheHitData
 {
+    float distance;
     float3 positionWorld;
     float3 normalWorld;
 };
@@ -90,7 +91,7 @@ void hashCacheUpdateHit(inout HashCacheState hashCacheState, HashCacheHitData ha
     }
     for (int i = 0; i < kHashCacheLevelTrainingSpread; i++)
     {
-        hashCacheState.voxelIndices[0][i] = hashCacheState.hashMapData.InsertEntry(hashCacheHitData.positionWorld, hashCacheHitData.normalWorld, hashCacheState.gridParameters, i - (kHashCacheLevelTrainingSpread / 2));
+        hashCacheState.voxelIndices[0][i] = hashCacheState.hashMapData.InsertEntry(hashCacheHitData.distance, hashCacheHitData.positionWorld, hashCacheHitData.normalWorld, hashCacheState.gridParameters, i - (kHashCacheLevelTrainingSpread / 2));
     }
     hashCacheState.pathLength += 1;
     hashCacheState.pathLength = min(hashCacheState.pathLength, kHashCachePropagationDepth - 1);
@@ -111,10 +112,10 @@ bool hashCacheGetCachedRadiance(inout HashCacheState hashCacheState, HashCacheHi
     radiance = 0;
     if (debug)
     {
-        radiance = hashCacheState.hashMapData.HashGridDebugColoredHash(hashCacheHitData.positionWorld, hashCacheState.gridParameters);
+        radiance = hashCacheState.hashMapData.HashGridDebugColoredHash(hashCacheHitData.distance, hashCacheHitData.positionWorld, hashCacheState.gridParameters);
         return true;
     }
-    uint idx = hashCacheState.hashMapData.FindEntry(hashCacheHitData.positionWorld, hashCacheHitData.normalWorld, hashCacheState.gridParameters);
+    uint idx = hashCacheState.hashMapData.FindEntry(hashCacheHitData.distance, hashCacheHitData.positionWorld, hashCacheHitData.normalWorld, hashCacheState.gridParameters);
     if (idx == kHashGridInvalidIdx) return false;
     HashCacheVoxelData voxelData = hashCacheGetVoxelData(false, idx);
     if (voxelData.sampleNum > 0)

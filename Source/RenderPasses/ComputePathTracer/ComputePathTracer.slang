@@ -126,6 +126,7 @@ struct ScatterRayData
     float3 normal;
     float pdf;
     float t;
+    float distance;
     bool lightSampledUpper;
     bool lightSampledLower;
     bool deltaLobe;
@@ -249,11 +250,14 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         sd = loadShadingData(triangleHit, rayData.direction, lod);
         mi = gScene.materials.getMaterialInstance(sd, lod);
         bsdfProperties = mi.getProperties(sd);
+        if (rayData.t == 0.0) rayData.distance = distance(sd.posW, gCamPos);
+        else rayData.distance += rayData.t;
 #if HC_QUERY
         // Construct HashCacheHitData structure needed for creating a query point at this hit location
         hashCacheHitData.positionWorld = sd.posW;
         hashCacheHitData.normalWorld = sd.getOrientedFaceNormal();
-        uint gridLevel = rayData.hashCacheState.hashMapData.GetGridLevel(sd.posW, rayData.hashCacheState.gridParameters);
+        hashCacheHitData.distance = rayData.distance;
+        uint gridLevel = rayData.hashCacheState.hashMapData.GetGridLevel(hashCacheHitData.distance);
         if (kHCDebugLevels)
         {
             // the actual max level is 1024 (see clamp in function)

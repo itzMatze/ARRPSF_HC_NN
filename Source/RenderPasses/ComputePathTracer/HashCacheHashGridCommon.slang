@@ -14,7 +14,7 @@ static const bool kHashGridUseNormals = true;
 static const uint kHashGridLevelBias = 2; // positive bias adds extra levels with content magnification
 static const float3 kHashGridPositionOffset = float3(0.0f, 0.0f, 0.0f);
 static const float kHashCacheGridLogarithmBase = 2.0f;
-static const float kHashCacheSceneScale = 30.0f;
+static const float kHashCacheSceneScale = 60.0f;
 
 typedef uint HashKey;
 
@@ -52,9 +52,8 @@ struct HashMapData
              ^ HashJenkins32(uint((hashKey >> 32) & 0xffffffff));
     }
 
-    uint GetGridLevel(float3 samplePosition, GridParameters gridParameters)
+    uint GetGridLevel(float distance)
     {
-        const float distance = length(gridParameters.cameraPosition - samplePosition);
         return clamp(floor(LogBase(distance, kHashCacheGridLogarithmBase) + kHashGridLevelBias), 1, kHashGridLevelBitMask);
     }
 
@@ -64,19 +63,18 @@ struct HashMapData
     }
 
     // Based on logarithmic caching by Johannes Jendersie
-    int4 CalculateGridPositionLog(float3 samplePosition, GridParameters gridParameters, int levelOffset)
+    int4 CalculateGridPositionLog(float distance, float3 samplePosition, GridParameters gridParameters, int levelOffset)
     {
         samplePosition += kHashGridPositionOffset;
-        uint  gridLevel    = GetGridLevel(samplePosition, gridParameters) + levelOffset;
+        uint  gridLevel    = GetGridLevel(distance) + levelOffset;
         float voxelSize    = GetVoxelSize(gridLevel, gridParameters);
         int3  gridPosition = floor(samplePosition / voxelSize);
         return int4(gridPosition.xyz, gridLevel);
     }
 
-    HashKey ComputeSpatialHash(float3 samplePosition, float3 sampleNormal, GridParameters gridParameters, int levelOffset = 0)
+    HashKey ComputeSpatialHash(float distance, float3 samplePosition, float3 sampleNormal, GridParameters gridParameters, int levelOffset = 0)
     {
-        const float distance = length(gridParameters.cameraPosition - samplePosition);
-        uint4 gridPosition = asuint(CalculateGridPositionLog(samplePosition, gridParameters, levelOffset));
+        uint4 gridPosition = asuint(CalculateGridPositionLog(distance, samplePosition, gridParameters, levelOffset));
         HashKey hashKey = (((uint)gridPosition.x & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 0))
                         | (((uint)gridPosition.y & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 1))
                         | (((uint)gridPosition.z & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 2))
@@ -135,18 +133,18 @@ struct HashMapData
         return false;
     }
 
-    uint InsertEntry(float3 samplePosition, float3 sampleNormal, GridParameters gridParameters, int levelOffset = 0)
+    uint InsertEntry(float distance, float3 samplePosition, float3 sampleNormal, GridParameters gridParameters, int levelOffset = 0)
     {
         uint idx = kHashGridInvalidIdx;
-        const HashKey hashKey = ComputeSpatialHash(samplePosition, sampleNormal, gridParameters, levelOffset);
+        const HashKey hashKey = ComputeSpatialHash(distance, samplePosition, sampleNormal, gridParameters, levelOffset);
         const bool successful = HashMapInsert(hashKey, idx);
         return idx;
     }
 
-    uint FindEntry(float3 samplePosition, float3 sampleNormal, GridParameters gridParameters)
+    uint FindEntry(float distance, float3 samplePosition, float3 sampleNormal, GridParameters gridParameters)
     {
         uint idx = kHashGridInvalidIdx;
-        const HashKey hashKey = ComputeSpatialHash(samplePosition, sampleNormal, gridParameters);
+        const HashKey hashKey = ComputeSpatialHash(distance, samplePosition, sampleNormal, gridParameters);
         const bool successful = HashMapFind(hashKey, idx);
         return idx;
     }
@@ -162,9 +160,9 @@ struct HashMapData
     }
 
     // Debug visualization
-    float3 HashGridDebugColoredHash(float3 samplePosition, GridParameters gridParameters)
+    float3 HashGridDebugColoredHash(float distance, float3 samplePosition, GridParameters gridParameters)
     {
-        HashKey hashKey = ComputeSpatialHash(samplePosition, float3(0, 0, 0), gridParameters);
+        HashKey hashKey = ComputeSpatialHash(distance, samplePosition, float3(0, 0, 0), gridParameters);
         return GetColorFromHash32(Hash32(hashKey));
     }
 };

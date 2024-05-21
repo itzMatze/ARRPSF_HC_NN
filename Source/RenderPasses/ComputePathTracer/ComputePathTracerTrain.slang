@@ -123,6 +123,7 @@ struct ScatterRayData
     float3 normal;
     float pdf;
     float t;
+    float distance;
     bool lightSampledUpper;
     bool lightSampledLower;
     bool deltaLobe;
@@ -244,10 +245,13 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     sd = loadShadingData(triangleHit, rayData.direction, lod);
     mi = gScene.materials.getMaterialInstance(sd, lod);
     bsdfProperties = mi.getProperties(sd);
+    if (rayData.t == 0.0) rayData.distance = distance(sd.posW, gCamPos);
+    else rayData.distance += rayData.t;
 #if HC_UPDATE
     // Construct HashCacheHitData structure needed for creating a query point at this hit location
     hashCacheHitData.positionWorld = sd.posW;
     hashCacheHitData.normalWorld = sd.getOrientedFaceNormal();
+    hashCacheHitData.distance = rayData.distance;
 #endif
 
     BSDFSample bsdfSample;
