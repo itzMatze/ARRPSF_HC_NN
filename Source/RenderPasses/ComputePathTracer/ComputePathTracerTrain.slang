@@ -308,6 +308,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
                 if (!visible)
                 {
                     ls.Li = float3(0.0);
+                    Lr = float3(0.0);
                 }
                 rayData.cur_radiance += Lr;
             }
