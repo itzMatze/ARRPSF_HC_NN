@@ -344,16 +344,6 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     rayData.normal = sd.getOrientedFaceNormal();
     rayData.cur_thp *= bsdfSample.weight;
     rayData.direction = bsdfSample.wo;
-#if NN_TRAIN
-    if (rayData.numBounces < kNNMaxTrainingBounces)
-    {
-        nnHitInfoList[rayData.numBounces].pos = sd.posW;
-        nnHitInfoList[rayData.numBounces].dir = rayData.direction;
-        nnHitInfoList[rayData.numBounces].normal = sd.getOrientedFaceNormal();
-        nnHitInfoList[rayData.numBounces].thp = rayData.cur_thp;
-    }
-    else nnHitInfoList[kNNMaxTrainingBounces - 1].thp *= rayData.cur_thp;
-#endif
     if (kUseRR)
     {
         float survival_prob = (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces));
@@ -365,6 +355,16 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         }
         rayData.cur_thp /= min(survival_prob, 1.0);
     }
+#if NN_TRAIN
+    if (rayData.numBounces < kNNMaxTrainingBounces)
+    {
+        nnHitInfoList[rayData.numBounces].pos = sd.posW;
+        nnHitInfoList[rayData.numBounces].dir = rayData.direction;
+        nnHitInfoList[rayData.numBounces].normal = sd.getOrientedFaceNormal();
+        nnHitInfoList[rayData.numBounces].thp = rayData.cur_thp;
+    }
+    else nnHitInfoList[kNNMaxTrainingBounces - 1].thp *= rayData.cur_thp;
+#endif
 #if HC_UPDATE
     hashCacheSetThroughput(rayData.hashCacheState, rayData.cur_thp);
 #endif // HC_UPDATE
