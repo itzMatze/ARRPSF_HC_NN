@@ -273,7 +273,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             // Note we can assume path.pdf > 0.f since we shouldn't have got here otherwise.
             misWeight = evalMIS(1, rayData.pdf, 1, lightPdf);
         }
-        rayData.cur_radiance += rayData.cur_thp * misWeight * bsdfProperties.emission;
+        rayData.cur_radiance += misWeight * bsdfProperties.emission;
     }
 
     // # NEE
@@ -292,7 +292,6 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         rayData.setLightSampled(sampleUpperHemisphere, sampleLowerHemisphere);
         if (validSample)
         {
-
             // apply BSDF
             float3 weight = mi.eval(sd, ls.dir, rayData.sg);
             float3 Lr = weight * ls.Li;
@@ -310,7 +309,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
                 {
                     ls.Li = float3(0.0);
                 }
-                rayData.cur_radiance += rayData.cur_thp * Lr;
+                rayData.cur_radiance += Lr;
             }
         }
 #if NN_TRAIN
@@ -402,7 +401,7 @@ bool traceScatterRay(inout ScatterRayData rayData)
             }
 
             float3 Le = gSampler.envMapSampler.eval(rayData.direction);
-            rayData.cur_radiance += rayData.cur_thp * misWeight * Le;
+            rayData.cur_radiance += misWeight * Le;
         }
 #if HC_UPDATE
         hashCacheUpdateMiss(rayData.hashCacheState, rayData.cur_radiance);
