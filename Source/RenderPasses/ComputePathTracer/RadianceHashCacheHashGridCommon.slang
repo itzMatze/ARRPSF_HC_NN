@@ -1,24 +1,25 @@
 import Utils.Debug.PixelDebug;
 
 #if R_HC_UPDATE || R_HC_QUERY
-static const uint kHashGridPositionBitNum = 8;
-static const uint kHashGridPositionBitMask = ((1u << kHashGridPositionBitNum) - 1);
-static const uint kHashGridLevelBitNum = 5;
-static const uint kHashGridLevelBitMask = ((1u << kHashGridLevelBitNum) - 1);
-static const uint kHashGridNormalBitNum = 3;
-static const uint kHashGridNormalBitMask = ((1u << kHashGridNormalBitNum) - 1);
-static const uint kHashGridHashMapBucketSize = 32;
-static const uint kHashGridInvalidHashKey = 0;
-static const uint kHashGridInvalidIdx = 0xFFFF;
+typedef uint64_t HashKey;
+static const uint sizeofHashKey = 8;
+
+static const HashKey kHashGridPositionBitNum = 17;
+static const HashKey kHashGridPositionBitMask = ((1u << kHashGridPositionBitNum) - 1);
+static const HashKey kHashGridLevelBitNum = 10;
+static const HashKey kHashGridLevelBitMask = ((1u << kHashGridLevelBitNum) - 1);
+static const HashKey kHashGridNormalBitNum = 3;
+static const HashKey kHashGridNormalBitMask = ((1u << kHashGridNormalBitNum) - 1);
+static const HashKey kHashGridHashMapBucketSize = 32;
+static const HashKey kHashGridInvalidHashKey = 0;
+static const HashKey kHashGridInvalidIdx = 0xffffffff;
 static const bool kHashGridUseNormals = true;
 static const uint kHashGridLevelBias = 2; // positive bias adds extra levels with content magnification
 static const float3 kHashGridPositionOffset = float3(0.0f, 0.0f, 0.0f);
 static const float kHashCacheGridLogarithmBase = 2.0f;
 static const float kHashCacheSceneScale = 60.0f;
 
-typedef uint HashKey;
-
-RWStructuredBuffer<uint> gRHCHashGridEntriesBuffer;
+RWByteAddressBuffer gRHCHashGridEntriesBuffer;
 
 float LogBase(float x, float base)
 {
@@ -70,26 +71,26 @@ struct HashMapData
     HashKey ComputeSpatialHash(float distance, float3 samplePosition, float3 sampleNormal, int levelOffset = 0)
     {
         uint4 gridPosition = asuint(CalculateGridPositionLog(distance, samplePosition, levelOffset));
-        HashKey hashKey = (((uint)gridPosition.x & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 0))
-                        | (((uint)gridPosition.y & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 1))
-                        | (((uint)gridPosition.z & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 2))
-                        | (((uint)gridPosition.w & kHashGridLevelBitMask) << (kHashGridPositionBitNum * 3));
+        HashKey hashKey = (((HashKey)gridPosition.x & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 0))
+                        | (((HashKey)gridPosition.y & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 1))
+                        | (((HashKey)gridPosition.z & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 2))
+                        | (((HashKey)gridPosition.w & kHashGridLevelBitMask) << (kHashGridPositionBitNum * 3));
 
         if (kHashGridUseNormals)
         {
-            uint normalBits =
+            HashKey normalBits =
                 (sampleNormal.x >= 0 ? 1 : 0) +
                 (sampleNormal.y >= 0 ? 2 : 0) +
                 (sampleNormal.z >= 0 ? 4 : 0);
 
-            hashKey |= ((uint)normalBits << (kHashGridPositionBitNum * 3 + kHashGridLevelBitNum));
+            hashKey |= ((HashKey)normalBits << (kHashGridPositionBitNum * 3 + kHashGridLevelBitNum));
         }
         return hashKey;
     }
 
-    void AtomicCompareExchange(in uint dstOffset, in uint compareValue, in uint value, out uint originalValue)
+    void AtomicCompareExchange(in uint dstOffset, in HashKey compareValue, in HashKey value, out HashKey originalValue)
     {
-        InterlockedCompareExchange(gRHCHashGridEntriesBuffer[dstOffset], compareValue, value, originalValue);
+        gRHCHashGridEntriesBuffer.InterlockedCompareExchangeU64(dstOffset * sizeofHashKey, compareValue, value, originalValue);
     }
 
     bool HashMapInsert(const HashKey hashKey, out uint cacheEntry)
@@ -118,7 +119,7 @@ struct HashMapData
         uint slot = hash % capacity;
         for (uint bucketOffset = 0; bucketOffset < kHashGridHashMapBucketSize; ++bucketOffset)
         {
-            HashKey storedHashKey = gRHCHashGridEntriesBuffer[slot + bucketOffset];
+            HashKey storedHashKey = gRHCHashGridEntriesBuffer.Load<HashKey>((slot + bucketOffset) * sizeofHashKey);
             if (storedHashKey == hashKey)
             {
                 cacheEntry = slot + bucketOffset;

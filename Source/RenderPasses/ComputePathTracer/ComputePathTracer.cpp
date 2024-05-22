@@ -251,7 +251,7 @@ void ComputePathTracer::setupData(RenderContext* pRenderContext)
     }
     if (mRHCParams.active)
     {
-        if (!mBuffers[R_HC_HASH_GRID_ENTRIES_BUFFER]) mBuffers[R_HC_HASH_GRID_ENTRIES_BUFFER] = mpDevice->createStructuredBuffer(sizeof(uint32_t), mRHCParams.hashMapSize);
+        if (!mBuffers[R_HC_HASH_GRID_ENTRIES_BUFFER]) mBuffers[R_HC_HASH_GRID_ENTRIES_BUFFER] = mpDevice->createStructuredBuffer(sizeof(uint64_t), mRHCParams.hashMapSize);
         // 128 bits per entry
         if (!mBuffers[R_HC_VOXEL_DATA_BUFFER_0]) mBuffers[R_HC_VOXEL_DATA_BUFFER_0] = mpDevice->createBuffer((128 / 8) * mRHCParams.hashMapSize);
         if (!mBuffers[R_HC_VOXEL_DATA_BUFFER_1]) mBuffers[R_HC_VOXEL_DATA_BUFFER_1] = mpDevice->createBuffer((128 / 8) * mRHCParams.hashMapSize);
