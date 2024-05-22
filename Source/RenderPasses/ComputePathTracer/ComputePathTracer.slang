@@ -276,7 +276,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
         if (kHCInjectRadianceSpread)
         {
-            float voxelSize = rayData.hashCacheState.hashMapData.GetVoxelSize(gridLevel, rayData.hashCacheState.gridParameters);
+            float voxelSize = rayData.hashCacheState.hashMapData.GetVoxelSize(gridLevel);
             bool isValidHit = rayData.t > voxelSize * lerp(1.0f, 2.0f, sampleNext1D(rayData.sg));
             float alpha = min(rayData.materialRoughness * rayData.materialRoughness, 0.99);
             rayData.materialRoughness = bsdfProperties.roughness;
@@ -610,7 +610,6 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, ScatterRayData rayData
     }
 
 #if R_HC_QUERY
-    rayData.hashCacheState.gridParameters.cameraPosition = gCamPos.xyz;
     rayData.hashCacheState.hashMapData.capacity = kHCHashMapSize;
     rayData.materialRoughness = 0.0f;
     rayData.spread = 0.0f;
