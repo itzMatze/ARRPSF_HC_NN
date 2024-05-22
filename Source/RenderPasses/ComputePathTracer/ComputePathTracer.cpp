@@ -80,7 +80,7 @@ ComputePathTracer::ComputePathTracer(ref<Device> pDevice, const Properties& prop
 {
     mpSampleGenerator = SampleGenerator::create(mpDevice, SAMPLE_GENERATOR_UNIFORM);
     mpPixelDebug = std::make_unique<PixelDebug>(mpDevice);
-    //mpPixelDebug->enable();
+    mpPixelDebug->enable();
     parseProperties(props);
 }
 
@@ -309,7 +309,6 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
     if (mRHCParams.active)
     {
         auto var = mPasses[RESOLVE_PASS]->getRootVar();
-        var["CB"]["gCamPos"] = mCamPos;
         var["gRHCHashGridEntriesBuffer"] = mBuffers[R_HC_HASH_GRID_ENTRIES_BUFFER];
         var["gRHCVoxelDataBuffer"] = mFrameCount % 2 == 0 ? mBuffers[R_HC_VOXEL_DATA_BUFFER_0] : mBuffers[R_HC_VOXEL_DATA_BUFFER_1];
         var["gRHCVoxelDataBufferPrev"] = mFrameCount % 2 == 1 ? mBuffers[R_HC_VOXEL_DATA_BUFFER_0] : mBuffers[R_HC_VOXEL_DATA_BUFFER_1];

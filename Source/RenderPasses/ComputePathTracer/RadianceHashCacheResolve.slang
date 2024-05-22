@@ -2,12 +2,6 @@ import RadianceHashCacheCommon;
 import Utils.Debug.PixelDebug;
 
 #if R_HC_UPDATE || R_HC_QUERY
-cbuffer CB
-{
-    float3 gCamPos;
-    float3 gPrevCamPos;
-    float gSceneScale;
-}
 
 static const uint kHashCacheHashMapSize = R_HC_HASHMAP_SIZE;
 
