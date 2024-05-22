@@ -1,6 +1,6 @@
 import Utils.Debug.PixelDebug;
 
-#if HC_UPDATE || HC_QUERY
+#if R_HC_UPDATE || R_HC_QUERY
 static const uint kHashGridPositionBitNum = 8;
 static const uint kHashGridPositionBitMask = ((1u << kHashGridPositionBitNum) - 1);
 static const uint kHashGridLevelBitNum = 5;
@@ -18,7 +18,7 @@ static const float kHashCacheSceneScale = 60.0f;
 
 typedef uint HashKey;
 
-RWStructuredBuffer<uint> gHashCacheHashGridEntriesBuffer;
+RWStructuredBuffer<uint> gRHCHashGridEntriesBuffer;
 
 struct GridParameters
 {
@@ -94,7 +94,7 @@ struct HashMapData
 
     void AtomicCompareExchange(in uint dstOffset, in uint compareValue, in uint value, out uint originalValue)
     {
-        InterlockedCompareExchange(gHashCacheHashGridEntriesBuffer[dstOffset], compareValue, value, originalValue);
+        InterlockedCompareExchange(gRHCHashGridEntriesBuffer[dstOffset], compareValue, value, originalValue);
     }
 
     bool HashMapInsert(const HashKey hashKey, out uint cacheEntry)
@@ -123,7 +123,7 @@ struct HashMapData
         uint slot = hash % capacity;
         for (uint bucketOffset = 0; bucketOffset < kHashGridHashMapBucketSize; ++bucketOffset)
         {
-            HashKey storedHashKey = gHashCacheHashGridEntriesBuffer[slot + bucketOffset];
+            HashKey storedHashKey = gRHCHashGridEntriesBuffer[slot + bucketOffset];
             if (storedHashKey == hashKey)
             {
                 cacheEntry = slot + bucketOffset;
@@ -166,5 +166,5 @@ struct HashMapData
         return GetColorFromHash32(Hash32(hashKey));
     }
 };
-#endif // HC_UPDATE || HC_QUERY
+#endif // R_HC_UPDATE || R_HC_QUERY
 

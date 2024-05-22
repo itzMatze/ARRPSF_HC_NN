@@ -6,9 +6,9 @@ target_sources(ComputePathTracer PRIVATE
     ComputePathTracer.slang
     ComputePathTracerTrain.slang
     LightSampling.slang
-    HashCacheResolve.slang
-    HashCacheHashGridCommon.slang
-    HashCacheCommon.slang
+    RadianceHashCacheResolve.slang
+    RadianceHashCacheHashGridCommon.slang
+    RadianceHashCacheCommon.slang
     tinynn/GradientClear.slang
     tinynn/GradientDescentPrimal.slang
     tinynn/HalfMatmulInclude.hlsli

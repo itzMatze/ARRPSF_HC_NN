@@ -1,7 +1,7 @@
-import HashCacheCommon;
+import RadianceHashCacheCommon;
 import Utils.Debug.PixelDebug;
 
-#if HC_UPDATE || HC_QUERY
+#if R_HC_UPDATE || R_HC_QUERY
 cbuffer CB
 {
     float3 gCamPos;
@@ -9,7 +9,7 @@ cbuffer CB
     float gSceneScale;
 }
 
-static const uint kHashCacheHashMapSize = HC_HASHMAP_SIZE;
+static const uint kHashCacheHashMapSize = R_HC_HASHMAP_SIZE;
 
 [numthreads(128, 1, 1)]
 void hashCacheResolve(uint3 dispatchThreadId: SV_DispatchThreadID)
@@ -17,5 +17,5 @@ void hashCacheResolve(uint3 dispatchThreadId: SV_DispatchThreadID)
     if (dispatchThreadId.x >= kHashCacheHashMapSize) return;
     hashCacheCombine(dispatchThreadId.x);
 }
-#endif // HC_UPDATE || HC_QUERY
+#endif // R_HC_UPDATE || R_HC_QUERY
 

@@ -18,8 +18,8 @@ import Utils.Color.ColorHelpers;
 import Utils.Color.ColorMap;
 import Utils.Debug.PixelDebug;
 
-import HashCacheHashGridCommon;
-import HashCacheCommon;
+import RadianceHashCacheHashGridCommon;
+import RadianceHashCacheCommon;
 import LightSampling;
 
 cbuffer CB
@@ -51,12 +51,12 @@ static const bool kDebugPathLength = DEBUG_PATH_LENGTH;
 static const bool kUseImportanceSampling = USE_IMPORTANCE_SAMPLING;
 static const bool kUseEnvBackground = USE_ENV_BACKGROUND;
 static const float3 kDefaultBackgroundColor = float3(0.0, 0.0, 0.05);
-static const uint kHCHashMapSize = HC_HASHMAP_SIZE;
-static const uint kHCDebugVoxels = HC_DEBUG_VOXELS;
-static const uint kHCDebugColor = HC_DEBUG_COLOR;
-static const uint kHCDebugLevels = HC_DEBUG_LEVELS;
-static const uint kHCInjectRadianceRR = HC_INJECT_RADIANCE_RR;
-static const uint kHCInjectRadianceSpread = HC_INJECT_RADIANCE_SPREAD;
+static const uint kHCHashMapSize = R_HC_HASHMAP_SIZE;
+static const uint kHCDebugVoxels = R_HC_DEBUG_VOXELS;
+static const uint kHCDebugColor = R_HC_DEBUG_COLOR;
+static const uint kHCDebugLevels = R_HC_DEBUG_LEVELS;
+static const uint kHCInjectRadianceRR = R_HC_INJECT_RADIANCE_RR;
+static const uint kHCInjectRadianceSpread = R_HC_INJECT_RADIANCE_SPREAD;
 static const uint kNNMaxTrainingBounces = NN_TRAINING_BOUNCES;
 static const uint kFeatureHashGridCapacity = FEATURE_HASH_GRID_CAPACITY;
 
@@ -106,7 +106,7 @@ static float2 gPixel;
 
 struct ScatterRayData
 {
-#if HC_QUERY
+#if R_HC_QUERY
     HashCacheState hashCacheState;
     float materialRoughness;
     float spread;
@@ -240,7 +240,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     IMaterialInstance mi;
     TriangleHit triangleHit;
     BSDFProperties bsdfProperties;
-#if HC_QUERY
+#if R_HC_QUERY
     HashCacheHitData hashCacheHitData;
 #endif
     MASK_BLOCK
@@ -252,7 +252,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         bsdfProperties = mi.getProperties(sd);
         if (rayData.t == 0.0) rayData.distance = distance(sd.posW, gCamPos);
         else rayData.distance += rayData.t;
-#if HC_QUERY
+#if R_HC_QUERY
         // Construct HashCacheHitData structure needed for creating a query point at this hit location
         hashCacheHitData.positionWorld = sd.posW;
         hashCacheHitData.normalWorld = sd.getOrientedFaceNormal();
@@ -516,7 +516,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             if (sampleNext1D(rayData.sg) > survival_prob)
             {
                 // russian roulette not survived
-#if HC_INJECT_RADIANCE_RR
+#if R_HC_INJECT_RADIANCE_RR
                 float3 hashCacheRadiance;
                 // only actually terminate path if the hc is ready at the current position
                 if (hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
@@ -609,7 +609,7 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, ScatterRayData rayData
         TERMINATE_PATH_1;
     }
 
-#if HC_QUERY
+#if R_HC_QUERY
     rayData.hashCacheState.gridParameters.cameraPosition = gCamPos.xyz;
     rayData.hashCacheState.hashMapData.capacity = kHCHashMapSize;
     rayData.materialRoughness = 0.0f;
