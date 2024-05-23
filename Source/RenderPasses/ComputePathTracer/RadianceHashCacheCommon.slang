@@ -4,7 +4,6 @@ import RadianceHashCacheHashGridCommon;
 #if R_HC_UPDATE || R_HC_QUERY
 static const uint kHashCacheLevelTrainingSpread = 3;
 static const uint kHashCachePropagationDepth = 8;
-static const float kHashCacheRadianceScale = 1e4f;
 
 RWByteAddressBuffer gRHCVoxelDataBufferPrev;
 RWByteAddressBuffer gRHCVoxelDataBuffer;
@@ -14,36 +13,32 @@ struct HashCacheVoxelData
     float3 radiance = float3(0.0);
     uint sampleNum = 0;
 }
+static const uint sizeofHashCacheVoxelData = 16;
 
 HashCacheVoxelData hashCacheGetVoxelData(bool usePrev, uint idx)
 {
-    if (idx == kHashGridInvalidIdx) return HashCacheVoxelData();
-    uint4 data;
-    if (usePrev) data = gRHCVoxelDataBufferPrev.Load4(idx * 16);
-    else data = gRHCVoxelDataBuffer.Load4(idx * 16);
     HashCacheVoxelData voxelData;
-    voxelData.radiance = data.xyz / kHashCacheRadianceScale;
-    voxelData.sampleNum = data.w;
+    if (idx == kHashGridInvalidIdx) return HashCacheVoxelData();
+    if (usePrev) voxelData = gRHCVoxelDataBufferPrev.Load<HashCacheVoxelData>(idx * sizeofHashCacheVoxelData);
+    else voxelData = gRHCVoxelDataBuffer.Load<HashCacheVoxelData>(idx * sizeofHashCacheVoxelData);
     return voxelData;
 }
 
 void hashCacheSetVoxelData(bool usePrev, uint idx, HashCacheVoxelData data)
 {
-    uint4 voxelData = uint4(data.radiance * kHashCacheRadianceScale, data.sampleNum);
-    if (usePrev) gRHCVoxelDataBufferPrev.Store4(idx * 16, voxelData);
-    else gRHCVoxelDataBuffer.Store4(idx * 16, voxelData);
+    if (usePrev) gRHCVoxelDataBufferPrev.Store(idx * sizeofHashCacheVoxelData, data);
+    else gRHCVoxelDataBuffer.Store(idx * sizeofHashCacheVoxelData, data);
 }
 
 void hashCacheAddVoxelData(uint idx[kHashCacheLevelTrainingSpread], float3 value, bool newSample)
 {
-    uint3 voxelData = uint3(value * kHashCacheRadianceScale);
     for (uint i = 0; i < kHashCacheLevelTrainingSpread; i++)
     {
         if (idx[i] == kHashGridInvalidIdx) continue;
-        if (value.x > 0.0) gRHCVoxelDataBuffer.InterlockedAdd(idx[i] * 16, voxelData.x);
-        if (value.y > 0.0) gRHCVoxelDataBuffer.InterlockedAdd(idx[i] * 16 + 4, voxelData.y);
-        if (value.z > 0.0) gRHCVoxelDataBuffer.InterlockedAdd(idx[i] * 16 + 8, voxelData.z);
-        if (newSample) gRHCVoxelDataBuffer.InterlockedAdd(idx[i] * 16 + 12, 1);
+        if (value.x > 0.0) gRHCVoxelDataBuffer.InterlockedAddF32(idx[i] * sizeofHashCacheVoxelData, value.x);
+        if (value.y > 0.0) gRHCVoxelDataBuffer.InterlockedAddF32(idx[i] * sizeofHashCacheVoxelData + 4, value.y);
+        if (value.z > 0.0) gRHCVoxelDataBuffer.InterlockedAddF32(idx[i] * sizeofHashCacheVoxelData + 8, value.z);
+        if (newSample) gRHCVoxelDataBuffer.InterlockedAdd(idx[i] * sizeofHashCacheVoxelData + 12, 1);
     }
 }
 
