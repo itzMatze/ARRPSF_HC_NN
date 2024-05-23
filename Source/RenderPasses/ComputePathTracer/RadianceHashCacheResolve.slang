@@ -9,7 +9,7 @@ static const uint kHashCacheHashMapSize = R_HC_HASHMAP_SIZE;
 void hashCacheResolve(uint3 dispatchThreadId: SV_DispatchThreadID)
 {
     if (dispatchThreadId.x >= kHashCacheHashMapSize) return;
-    hashCacheCombine(dispatchThreadId.x);
+    rhc::hashCacheCombine(dispatchThreadId.x);
 }
 #endif // R_HC_UPDATE || R_HC_QUERY
 

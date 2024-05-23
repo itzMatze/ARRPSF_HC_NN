@@ -106,7 +106,7 @@ void updateNNHitInfoRadiance(float3 radiance, int bounce)
 struct ScatterRayData
 {
 #if R_HC_UPDATE
-    HashCacheState hashCacheState;
+    rhc::HashCacheState hashCacheState;
     float materialRoughness;
     float spread;
 #endif
@@ -238,7 +238,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     TriangleHit triangleHit;
     BSDFProperties bsdfProperties;
 #if R_HC_UPDATE
-    HashCacheHitData hashCacheHitData;
+    rhc::HashCacheHitData hashCacheHitData;
 #endif
     triangleHit = hit.getTriangleHit();
     let lod = ExplicitLodTextureSampler(0.f);
@@ -329,7 +329,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     }
 
 #if R_HC_UPDATE
-    hashCacheUpdateHit(rayData.hashCacheState, hashCacheHitData, rayData.cur_radiance);
+    rhc::hashCacheUpdateHit(rayData.hashCacheState, hashCacheHitData, rayData.cur_radiance);
 #endif
 #if NN_TRAIN
     updateNNHitInfoRadiance(rayData.cur_radiance, rayData.numBounces);
@@ -370,7 +370,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     else nnHitInfoList[kNNMaxTrainingBounces - 1].thp *= rayData.cur_thp;
 #endif
 #if R_HC_UPDATE
-    hashCacheSetThroughput(rayData.hashCacheState, rayData.cur_thp);
+    rhc::hashCacheSetThroughput(rayData.hashCacheState, rayData.cur_thp);
 #endif // R_HC_UPDATE
     return any(rayData.cur_thp > 0.f);
 }
@@ -409,7 +409,7 @@ bool traceScatterRay(inout ScatterRayData rayData)
             rayData.cur_radiance += misWeight * Le;
         }
 #if R_HC_UPDATE
-        hashCacheUpdateMiss(rayData.hashCacheState, rayData.cur_radiance);
+        rhc::hashCacheUpdateMiss(rayData.hashCacheState, rayData.cur_radiance);
 #endif // R_HC_UPDATE
 #if NN_TRAIN
         updateNNHitInfoRadiance(rayData.cur_radiance, rayData.numBounces);

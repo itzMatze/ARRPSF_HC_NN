@@ -2,6 +2,8 @@ import Utils.Debug.PixelDebug;
 import RadianceHashCacheHashGridCommon;
 
 #if R_HC_UPDATE || R_HC_QUERY
+namespace rhc
+{
 static const uint kHashCacheLevelTrainingSpread = 3;
 static const uint kHashCachePropagationDepth = 8;
 // prevent overflow by only counting samples to this limit
@@ -147,6 +149,7 @@ void hashCacheCombine(uint idx)
         voxelData.radiance = float3(0.0);
         hashCacheSetVoxelData(true, idx, voxelData);
     }
+}
 }
 #endif // R_HC_UPDATE || R_HC_QUERY
 

@@ -1,6 +1,8 @@
 import Utils.Debug.PixelDebug;
 
 #if R_HC_UPDATE || R_HC_QUERY
+namespace rhc
+{
 typedef uint64_t HashKey;
 static const uint sizeofHashKey = 8;
 
@@ -161,6 +163,7 @@ struct HashMapData
         HashKey hashKey = ComputeSpatialHash(distance, samplePosition, float3(0, 0, 0));
         return GetColorFromHash32(Hash32(hashKey));
     }
+}
 }
 #endif // R_HC_UPDATE || R_HC_QUERY
 

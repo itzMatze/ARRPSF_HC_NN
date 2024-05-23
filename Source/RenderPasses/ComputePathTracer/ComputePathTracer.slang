@@ -107,7 +107,7 @@ static float2 gPixel;
 struct ScatterRayData
 {
 #if R_HC_QUERY
-    HashCacheState hashCacheState;
+    rhc::HashCacheState hashCacheState;
     float materialRoughness;
     float spread;
 #endif
@@ -241,7 +241,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     TriangleHit triangleHit;
     BSDFProperties bsdfProperties;
 #if R_HC_QUERY
-    HashCacheHitData hashCacheHitData;
+    rhc::HashCacheHitData hashCacheHitData;
 #endif
     MASK_BLOCK
     {
@@ -269,7 +269,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         {
             // debug active; voxel debug will fetch voxel visualization values, otherwise just get color
             float3 debugColor;
-            hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, debugColor, kHCDebugVoxels);
+            rhc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, debugColor, kHCDebugVoxels);
             rayData.cur_radiance = debugColor;
             return false;
         }
@@ -286,7 +286,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             isValidHit &= rayData.numBounces > 0;
 
             float3 hashCacheRadiance;
-            if (isValidHit && hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
+            if (isValidHit && rhc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
             {
                 rayData.cur_radiance += hashCacheRadiance;
                 TERMINATE_PATH_0; // Terminate the path once we've looked up into the cache
@@ -302,7 +302,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 #elif RR_OPTION_BITS & (1u << 6)
         float3 hcRadiance;
         // only use hc for survival prob if the hc is ready at the current position, otherwise signal that the query was not successful
-        if (!hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hcRadiance))
+        if (!rhc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hcRadiance))
         {
             hcRadiance = float3(-1.0);
         }
@@ -472,7 +472,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         float3 radiance = float3(0.0);
 #if RR_OPTION_BITS & (1u << 3)
         // only use hc for survival prob if the hc is ready at the current position, otherwise signal that the query was not successful
-        if (!hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, radiance))
+        if (!rhc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, radiance))
         {
             radiance = float3(-1.0);
         }
@@ -519,7 +519,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 #if R_HC_INJECT_RADIANCE_RR
                 float3 hashCacheRadiance;
                 // only actually terminate path if the hc is ready at the current position
-                if (hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
+                if (rhc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
                 {
                     rayData.cur_radiance += hashCacheRadiance * rayData.cur_thp;
                     TERMINATE_PATH_0;
