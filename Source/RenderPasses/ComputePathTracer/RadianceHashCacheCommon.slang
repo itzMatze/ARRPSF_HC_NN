@@ -4,6 +4,8 @@ import RadianceHashCacheHashGridCommon;
 #if R_HC_UPDATE || R_HC_QUERY
 static const uint kHashCacheLevelTrainingSpread = 3;
 static const uint kHashCachePropagationDepth = 8;
+// prevent overflow by only counting samples to this limit
+static const uint kMaxSampleCount = 65536;
 
 RWByteAddressBuffer gRHCVoxelDataBufferPrev;
 RWByteAddressBuffer gRHCVoxelDataBuffer;
@@ -140,6 +142,7 @@ void hashCacheCombine(uint idx)
     }
     if (voxelData.sampleNum > 0 || voxelDataPrev.sampleNum > 0)
     {
+        voxelData.sampleNum = min(kMaxSampleCount, voxelData.sampleNum);
         hashCacheSetVoxelData(false, idx, voxelData);
         voxelData.radiance = float3(0.0);
         hashCacheSetVoxelData(true, idx, voxelData);
