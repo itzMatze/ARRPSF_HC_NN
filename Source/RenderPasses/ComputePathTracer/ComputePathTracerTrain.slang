@@ -71,7 +71,7 @@ struct NNHitInfo
         thp = float3(0.0);
         radiance = float3(0.0);
     }
-};
+}
 
 static NNHitInfo nnHitInfoList[kNNMaxTrainingBounces];
 static NNHitInfo nnNeeHitInfoList[kNNMaxTrainingBounces];
@@ -161,7 +161,7 @@ struct ScatterRayData
         lightSampledLower = lower;
     }
     [mutating] void setDeltaLobe(bool delta) { deltaLobe = delta; }
-};
+}
 
 /** Evaluates the currently configured heuristic for multiple importance sampling (MIS).
     \param[in] n0 Number of samples taken from the first sampling strategy.

@@ -42,7 +42,7 @@ struct LightSample
     uint    lightType;  ///< Light type this sample comes from (LightType casted to uint).
 
     Ray getVisibilityRay() { return Ray(origin, dir, 0.f, distance); }
-};
+}
 
 /** Describes a path vertex.
 */
@@ -82,7 +82,7 @@ struct PathVertex
     {
         return frontFacing ? faceNormal : -faceNormal;
     }
-};
+}
 
 /** Generates a light sample on the environment map.
     \param[in] vertex Path vertex.

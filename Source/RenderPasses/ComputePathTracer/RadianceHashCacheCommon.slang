@@ -50,14 +50,14 @@ struct HashCacheState
     float3 sampleWeights[kHashCachePropagationDepth];
     uint pathLength;
 #endif // R_HC_UPDATE
-};
+}
 
 struct HashCacheHitData
 {
     float distance;
     float3 positionWorld;
     float3 normalWorld;
-};
+}
 
 void hashCacheUpdateCache(inout HashCacheState hashCacheState, float3 radiance, uint startIdx)
 {

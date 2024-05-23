@@ -15,7 +15,7 @@ struct ThreadInfo {
     __init(int2 thread_idx, int2 block_dim) {
         this.thread_idx = thread_idx;
         this.block_dim = block_dim; }
-};
+}
 
 struct TensorView {
     uint offset_prim;
@@ -52,12 +52,12 @@ struct TensorView {
         this.offset_grad = offset_grad;
         this.stride = stride;
         this.pitch = pitch; }
-};
+}
 
 // All half linear layers use the half precision,
 // Thus the input and output are also half precision.
 struct HalfFeature<let C : int> : IDifferentiable {
     float16_t vals[C];
-};
+}
 
 #endif // !_SRENDERER_ADDON_TINYNN_COMMON_HLSLI_HEADER_

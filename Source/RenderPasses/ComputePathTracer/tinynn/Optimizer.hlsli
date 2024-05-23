@@ -1,9 +1,6 @@
 #ifndef _SRENDERER_ADDON_DIFFERENTIABLE_OPTIMIZER_HEADER_
 #define _SRENDERER_ADDON_DIFFERENTIABLE_OPTIMIZER_HEADER_
 
-struct OptimizerParam {
-};
-
 float sgd_optimizer(
     float theta,
     float df_dtheta,

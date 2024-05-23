@@ -49,7 +49,7 @@ struct LinearHalf<let C : int> {
         [ForceUnroll] for (int i = 0; i < N; i++)
             outputs[i] = outputs[i] + float16_t(bias_view.load_prim(i));
     }
-};
+}
 
 struct LinearHalf16X16 : LinearHalf<16> {
     __init(inout uint offset_prim, inout uint offset_grad, ThreadInfo threadInfo) {
@@ -134,7 +134,7 @@ struct LinearHalf16X16 : LinearHalf<16> {
         inout DifferentialPair<Input> in_feature_pair,
         Output.Differential d_output) {
         return layer._eval_bwd(in_feature_pair, d_output); }
-};
+}
 
 struct LinearHalf32X32 : LinearHalf<32> {
     __init(inout uint offset_prim, inout uint offset_grad, ThreadInfo threadInfo) {
@@ -223,6 +223,6 @@ struct LinearHalf32X32 : LinearHalf<32> {
         inout DifferentialPair<Input> in_feature_pair,
         Output.Differential d_output) {
         return layer._eval_bwd(in_feature_pair, d_output); }
-};
+}
 
 #endif // !_SRENDERER_ADDON_HALF_TINYNN_LINEAR_HLSLI_HEADER_

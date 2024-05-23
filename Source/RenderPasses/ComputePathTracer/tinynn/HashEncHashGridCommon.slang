@@ -97,5 +97,5 @@ struct FeatureHashGridData
         HashKey hashKey = ComputeSpatialHash(pos, normal, level);
         return GetColorFromHash32(Hash32(hashKey));
     }
-};
+}
 

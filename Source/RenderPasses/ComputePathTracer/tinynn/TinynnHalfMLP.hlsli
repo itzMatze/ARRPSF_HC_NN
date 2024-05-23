@@ -25,7 +25,7 @@ struct MLPHalf16X16<let N:int, Act:IActivationFn> {
     [Differentiable]
     static Output forward(no_diff MLPHalf16X16<N, Act> mlp, Input input) {
         return mlp._forward(input); }
-};
+}
 
 struct MLPHalf32X32<let N:int, Act:IActivationFn> {
     typedef HalfFeature<32> Input;
@@ -48,6 +48,6 @@ struct MLPHalf32X32<let N:int, Act:IActivationFn> {
     [Differentiable]
     static Output forward(no_diff MLPHalf32X32<N, Act> mlp, Input input) {
         return mlp._forward(input); }
-};
+}
 
 #endif // !_SRENDERER_ADDON_HALF_TINYNN_LINEAR_HLSLI_HEADER_
