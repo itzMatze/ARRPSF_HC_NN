@@ -63,6 +63,7 @@ static const uint kNNMaxTrainingBounces = NN_TRAINING_BOUNCES;
 struct NNHitInfo
 {
     float3 pos;
+    float3 normal;
     float3 dir;
     float3 thp;
     float3 radiance;
@@ -70,6 +71,7 @@ struct NNHitInfo
     __init()
     {
         pos = float3(0.0);
+        normal = float3(0.0);
         dir = float3(0.0);
         thp = float3(0.0);
         radiance = float3(0.0);
@@ -384,19 +386,6 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         }
     }
 
-#if NN_DEBUG
-    // evaluate nn for nee
-    HalfFeature<32> feature;
-    if (!gDone) feature = computeHashEncFeature(sd.posW, ls.dir, sd.getOrientedFaceNormal(), rayData.featureHashGrid);
-    //if (!gDone) feature = computeFreqEncFeature(sd.posW, ls.dir);
-    else
-    {
-        [ForceUnroll]
-        for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
-    }
-    HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
-    MASK_BLOCK rayData.cur_radiance += 0.5 * float3(output.vals[0], output.vals[1], output.vals[2]) * weight;
-#else
     MASK_BLOCK
     {
         if (applyNEE && validSample)
@@ -412,7 +401,6 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             }
         }
     }
-#endif
 
     BSDFSample bsdfSample;
     MASK_BLOCK
@@ -421,25 +409,6 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         // Sample material.
         if (!mi.sample(sd, rayData.sg, bsdfSample, kUseImportanceSampling)) TERMINATE_PATH_0;
     }
-
-#if NN_DEBUG
-    // evaluate nn for the bsdf sampled direction
-    if (!gDone) feature = computeHashEncFeature(sd.posW, bsdfSample.wo, sd.getOrientedFaceNormal(), rayData.featureHashGrid);
-    //if (!gDone) feature = computeFreqEncFeature(sd.posW, bsdfSample.wo);
-    else
-    {
-        [ForceUnroll]
-        for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
-    }
-    output = MLPModule0.forward(gMlp0, feature);
-    MASK_BLOCK
-    {
-        if (isnan(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 0.0);
-        else if (isinf(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 1.0);
-        else rayData.cur_radiance += 0.5 * float3(output.vals[0], output.vals[1], output.vals[2]) * bsdfSample.weight;
-    }
-    TERMINATE_PATH_0;
-#endif
 
     MASK_BLOCK
     {
@@ -451,16 +420,17 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         rayData.pdf = bsdfSample.pdf;
         rayData.normal = sd.getOrientedFaceNormal();
         rayData.cur_thp *= bsdfSample.weight;
-        rayData.direction = bsdfSample.wo;
 #if NN_QUERY
         if (rayData.numBounces < kNNMaxTrainingBounces)
         {
             nnHitInfoList[rayData.numBounces].dir = rayData.direction;
             nnHitInfoList[rayData.numBounces].pos = sd.posW;
+            nnHitInfoList[rayData.numBounces].normal = rayData.normal;;
             nnHitInfoList[rayData.numBounces].thp = rayData.cur_thp;
         }
         else nnHitInfoList[kNNMaxTrainingBounces - 1].thp *= rayData.cur_thp;
 #endif
+        rayData.direction = bsdfSample.wo;
     }
     if (kUseRR)
     {
@@ -508,7 +478,6 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         else survival_prob = 1.0;
 #endif
 #endif
-        print("survival_prob", survival_prob);
         MASK_BLOCK
         {
             if (sampleNext1D(rayData.sg) > survival_prob)
@@ -648,7 +617,11 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     int3 groupId: SV_GroupID)
 {
     uint2 gPixel = dispatchThreadId.xy;
+#if NN_QUERY
+    if (any(gPixel >= gFrameDim)) gDone = true;
+#else
     if (any(gPixel >= gFrameDim)) return;
+#endif
     printSetPixel(gPixel);
     SampleGenerator sg = SampleGenerator(gPixel, gFrameCount);
     ScatterRayData rayData = ScatterRayData(sg);
@@ -662,6 +635,14 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
 #endif
     float3 outputColor = float3(0.0, 1.0, 0.0);
     outputColor = tracePath(gPixel, gFrameDim, rayData);
+#if NN_DEBUG
+    HalfFeature<32> feature = computeHashEncFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir, nnHitInfoList[0].normal, rayData.featureHashGrid);
+    //HalfFeature<32> feature = computeFreqEncFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir);
+    HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
+    if (isnan(output.vals[0])) outputColor = float3(1.0, 0.0, 0.0);
+    else if (isinf(output.vals[0])) outputColor = float3(1.0, 0.0, 1.0);
+    else outputColor = float3(output.vals[0], output.vals[1], output.vals[2]);
+#endif
     gOutputColor[gPixel] = float4(outputColor, 1.0f);
 }
 
