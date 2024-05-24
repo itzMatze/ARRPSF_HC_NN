@@ -2,6 +2,7 @@
 #include "tinynn/TinynnHalfMLP.hlsli"
 #include "tinynn/TinynnFeaturegrid.hlsli"
 #endif
+#if 0
 #include "Scene/SceneDefines.slangh"
 #include "Utils/Math/MathConstants.slangh"
 
@@ -21,6 +22,7 @@ import Utils.Debug.PixelDebug;
 import RadianceHashCacheHashGridCommon;
 import RadianceHashCacheCommon;
 import LightSampling;
+#endif
 
 cbuffer CB
 {
@@ -29,10 +31,12 @@ cbuffer CB
     float3 gCamPos;
 }
 
+#if 0
 // Inputs
 Texture2D<PackedHitInfo> gVBuffer;
 Texture2D<float4> gViewW;
 Texture2D<float4> gRefImage;
+#endif
 
 // Outputs
 RWTexture2D<float4> gOutputColor;
@@ -104,6 +108,7 @@ static bool gDone = false;
 
 static float2 gPixel;
 
+#if 0
 struct ScatterRayData
 {
 #if R_HC_QUERY
@@ -643,11 +648,7 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, ScatterRayData rayData
     }
     return outColor;
 }
-
-[Differentiable]
-float L2Loss(float3 value, no_diff float3 target, no_diff float3 normValue) {
-    return dot((value - target), (value - target)) / (dot(normValue, normValue) + 0.01);
-}
+#endif
 
 [numthreads(32, 4, 1)]
 void main(uint3 dispatchThreadId: SV_DispatchThreadID,
@@ -657,19 +658,23 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     uint2 gPixel = dispatchThreadId.xy;
     if (any(gPixel >= gFrameDim)) return;
     printSetPixel(gPixel);
-    SampleGenerator sg = SampleGenerator(gPixel, gFrameCount);
-    ScatterRayData rayData = ScatterRayData(sg);
+    //SampleGenerator sg = SampleGenerator(gPixel, gFrameCount);
+    //ScatterRayData rayData = ScatterRayData(sg);
 #if NN_QUERY
     [ForceUnroll]
     for (uint i = 0; i < kNNMaxTrainingBounces; i++) nnHitInfoList[i] = NNHitInfo();
     const ThreadInfo thread_info = ThreadInfo(groupThreadId.xy, int2(32, 4));
     uint param_offset = 0; uint grad_offset = 0;
     gMlp0 = MLPModule0(param_offset, grad_offset, thread_info);
-    rayData.featureHashGrid = FeatureHashGridData(kFeatureHashGridCapacity);
-    rayData.featureHashGridView = TensorView(param_offset, grad_offset, 32, 32);
+    //rayData.featureHashGrid = FeatureHashGridData(kFeatureHashGridCapacity);
+    //rayData.featureHashGridView = TensorView(param_offset, grad_offset, 32, 32);
+    HalfFeature<32> feature;
+    [ForceUnroll]
+    for (uint i = 0; i < 32; i++) feature.vals[i] = 1.0h;
+    HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
 #endif
-    float3 outputColor = float3(0.0, 1.0, 0.0);
-    outputColor = tracePath(gPixel, gFrameDim, rayData);
+    float3 outputColor = float3(0.0, 1.0, output.vals[0]);
+    //outputColor = tracePath(gPixel, gFrameDim, rayData);
     gOutputColor[gPixel] = float4(outputColor, 1.0f);
 }
 

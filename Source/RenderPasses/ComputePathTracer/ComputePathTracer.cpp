@@ -241,13 +241,13 @@ void ComputePathTracer::setupData(RenderContext* pRenderContext)
     {
         if (!mpEnvMapSampler)
         {
-            mpEnvMapSampler = std::make_unique<EnvMapSampler>(mpDevice, mpScene->getEnvMap());
+            //mpEnvMapSampler = std::make_unique<EnvMapSampler>(mpDevice, mpScene->getEnvMap());
         }
     }
     if (!mpEmissiveSampler && mpScene->getRenderSettings().useEmissiveLights)
     {
         const auto& pLights = mpScene->getLightCollection(pRenderContext);
-        mpEmissiveSampler = std::make_unique<LightBVHSampler>(pRenderContext, mpScene, mLightBVHOptions);
+        //mpEmissiveSampler = std::make_unique<LightBVHSampler>(pRenderContext, mpScene, mLightBVHOptions);
     }
     if (mRHCParams.active)
     {
@@ -272,7 +272,7 @@ void ComputePathTracer::setupBuffers()
 {
     if (!mpSamplerBlock)
     {
-        mpSamplerBlock = ParameterBlock::create(mpDevice, mPasses[PATH_TRACING_PASS]->getProgram()->getReflector()->getParameterBlock("gSampler"));
+        //mpSamplerBlock = ParameterBlock::create(mpDevice, mPasses[PATH_TRACING_PASS]->getProgram()->getReflector()->getParameterBlock("gSampler"));
     }
 }
 
@@ -319,11 +319,11 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["CB"]["gFrameDim"] = frameDim;
         var["CB"]["gFrameCount"] = mFrameCount;
         var["CB"]["gCamPos"] = mCamPos;
-        mpScene->bindShaderData(var["gScene"]);
-        mpSampleGenerator->bindShaderData(var);
-        if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
-        if (mpEmissiveSampler) mpEmissiveSampler->bindShaderData(mpSamplerBlock->getRootVar()["emissiveSampler"]);
-        var["gSampler"] = mpSamplerBlock;
+        // mpScene->bindShaderData(var["gScene"]);
+        // mpSampleGenerator->bindShaderData(var);
+        // if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
+        // if (mpEmissiveSampler) mpEmissiveSampler->bindShaderData(mpSamplerBlock->getRootVar()["emissiveSampler"]);
+        // var["gSampler"] = mpSamplerBlock;
         if (mRHCParams.active)
         {
             var["gRHCHashGridEntriesBuffer"] = mBuffers[R_HC_HASH_GRID_ENTRIES_BUFFER];
@@ -336,7 +336,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
             var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
             var["GradientCountBuffer"] = mBuffers[NN_GRADIENT_COUNT_BUFFER];
         }
-        for (auto channel : kInputChannels) var[channel.texname] = renderData.getTexture(channel.name);
+        //for (auto channel : kInputChannels) var[channel.texname] = renderData.getTexture(channel.name);
         for (auto channel : kOutputChannels) var[channel.texname] = renderData.getTexture(channel.name);
         mpPixelDebug->prepareProgram(mPasses[PATH_TRACING_PASS]->getProgram(), var);
     }
@@ -411,13 +411,13 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
     for (uint32_t i = 0; i < 4; i++)
     {
-        if (mNNParams.active) mPasses[NN_GRADIENT_CLEAR_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
-        if (mRHCParams.active || mNNParams.active)
-        {
-            mPasses[TRAIN_NN_FILL_CACHE_PASS]->getRootVar()["CB"]["gTrainIteration"] = i;
-            mPasses[TRAIN_NN_FILL_CACHE_PASS]->execute(pRenderContext, frameDim.x / 10, frameDim.y / 10);
-        }
-        if (mNNParams.active) mPasses[NN_GRADIENT_DESCENT_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
+        // if (mNNParams.active) mPasses[NN_GRADIENT_CLEAR_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
+        // if (mRHCParams.active || mNNParams.active)
+        // {
+        //     mPasses[TRAIN_NN_FILL_CACHE_PASS]->getRootVar()["CB"]["gTrainIteration"] = i;
+        //     mPasses[TRAIN_NN_FILL_CACHE_PASS]->execute(pRenderContext, frameDim.x / 10, frameDim.y / 10);
+        // }
+        // if (mNNParams.active) mPasses[NN_GRADIENT_DESCENT_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
     }
     if (mRHCParams.active) mPasses[RESOLVE_PASS]->execute(pRenderContext, mRHCParams.hashMapSize, 1);
     mPasses[PATH_TRACING_PASS]->execute(pRenderContext, frameDim.x, frameDim.y);
