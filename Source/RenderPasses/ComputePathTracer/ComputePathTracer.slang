@@ -644,11 +644,6 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, ScatterRayData rayData
     return outColor;
 }
 
-[Differentiable]
-float L2Loss(float3 value, no_diff float3 target, no_diff float3 normValue) {
-    return dot((value - target), (value - target)) / (dot(normValue, normValue) + 0.01);
-}
-
 [numthreads(32, 4, 1)]
 void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     int3 groupThreadId: SV_GroupThreadID,

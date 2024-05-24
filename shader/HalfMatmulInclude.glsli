@@ -37,7 +37,7 @@ void glsl_wmma_128_16_16() {
     fcoopmatNV<16, gl_ScopeSubgroup, 16, 16> weights_frag;
     fcoopmatNV<16, gl_ScopeSubgroup, 16, 16> result_frag[2];
     const uint li = gl_SubgroupInvocationID; // index in warp ("lane index")
-    const uint wi = gl_SubgroupID ;          // index in block ("warp index")
+    const uint wi = gl_SubgroupID;          // index in block ("warp index")
     // load the activations from shared memory
     coopMatLoadNV(act_frag[0], glsl_half_shared_buffer, wi*512 +   0, 16, false);
     coopMatLoadNV(act_frag[1], glsl_half_shared_buffer, wi*512 + 256, 16, false);
@@ -76,7 +76,7 @@ void glsl_wmma_16_128_16() {
     fcoopmatNV<16, gl_ScopeSubgroup, 16, 16> weights_frag[2];
     fcoopmatNV<16, gl_ScopeSubgroup, 16, 16> result_frag;
     const uint li = gl_SubgroupInvocationID; // index in warp ("lane index")
-    const uint wi = gl_SubgroupID ;          // index in block ("warp index")
+    const uint wi = gl_SubgroupID;          // index in block ("warp index")
     // load the activations from shared memory
     coopMatLoadNV(act_frag[0], glsl_half_shared_buffer, wi*512 +  0, 32, false);
     coopMatLoadNV(act_frag[1], glsl_half_shared_buffer, wi*512 + 16, 32, false);
@@ -116,7 +116,7 @@ void glsl_wmma_128_32_32() {
     fcoopmatNV<16, gl_ScopeSubgroup, 16, 16> weights_frag[2];
     fcoopmatNV<16, gl_ScopeSubgroup, 16, 16> result_frag[2];
     const uint li = gl_SubgroupInvocationID; // index in warp ("lane index")
-    const uint wi = gl_SubgroupID ;          // index in block ("warp index")
+    const uint wi = gl_SubgroupID;          // index in block ("warp index")
     // load the activations from shared memory
     coopMatLoadNV(act_frag[0], glsl_half_shared_buffer, 32*32*wi +   0, 32, false);
     coopMatLoadNV(act_frag[1], glsl_half_shared_buffer, 32*32*wi +  16, 32, false);
@@ -178,7 +178,7 @@ void glsl_wmma_32_128_32() {
     fcoopmatNV<16, gl_ScopeSubgroup, 16, 16> weights_frag[4];
     fcoopmatNV<16, gl_ScopeSubgroup, 16, 16> result_frag[4];
     const uint li = gl_SubgroupInvocationID; // index in warp ("lane index")
-    const uint wi = gl_SubgroupID ;          // index in block ("warp index")
+    const uint wi = gl_SubgroupID;          // index in block ("warp index")
     // load the activations from shared memory
     coopMatLoadNV(act_frag[0], glsl_half_shared_buffer, 32*32*wi +   0, 32, false);
     coopMatLoadNV(act_frag[1], glsl_half_shared_buffer, 32*32*wi +  16, 32, false);
