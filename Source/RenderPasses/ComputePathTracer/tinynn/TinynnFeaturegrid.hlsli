@@ -43,7 +43,6 @@ HalfFeature<32> computeHashEncFeature(
     no_diff float3 dir,
     no_diff float3 normal,
     no_diff FeatureHashGridData featureHashGrid,
-    no_diff TensorView featureHashGridView
 ) {
     HalfFeature<32> feature;
     [ForceUnroll]
@@ -52,8 +51,8 @@ HalfFeature<32> computeHashEncFeature(
     for (uint i = 0; i < 8; i++)
     {
         uint idx = no_diff featureHashGrid.FindEntry(pos, normal, i);
-        feature.vals[i * 2] = float16_t(featureHashGridView.load_prim(idx * 2));
-        feature.vals[i * 2 + 1] = float16_t(featureHashGridView.load_prim(idx * 2 + 1));
+        feature.vals[i * 2] = float16_t(featureHashGrid.dataView.load_prim(idx));
+        feature.vals[i * 2 + 1] = float16_t(featureHashGrid.dataView.load_prim(idx + 1));
     }
     feature.vals[16] = float16_t(dir.x);
     feature.vals[17] = float16_t(dir.y);
@@ -77,6 +76,5 @@ HalfFeature<32> computeHashEncFeature(
     }
     return feature;
 }
-
 #endif // !_SRENDERER_ADDON_HALF_TINYNN_FEATUREGRID_HLSLI_HEADER_
 

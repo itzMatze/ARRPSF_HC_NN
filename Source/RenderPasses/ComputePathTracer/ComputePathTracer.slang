@@ -58,7 +58,6 @@ static const uint kHCDebugLevels = R_HC_DEBUG_LEVELS;
 static const uint kHCInjectRadianceRR = R_HC_INJECT_RADIANCE_RR;
 static const uint kHCInjectRadianceSpread = R_HC_INJECT_RADIANCE_SPREAD;
 static const uint kNNMaxTrainingBounces = NN_TRAINING_BOUNCES;
-static const uint kFeatureHashGridCapacity = FEATURE_HASH_GRID_CAPACITY;
 
 #if NN_QUERY
 struct NNHitInfo
@@ -113,7 +112,6 @@ struct ScatterRayData
 #endif
 #if NN_QUERY
     FeatureHashGridData featureHashGrid;
-    TensorView featureHashGridView;
 #endif
     float3 radiance;  ///< Accumulated outgoing radiance from path.
     float3 thp;       ///< Current path throughput. This is updated at each path vertex.
@@ -310,7 +308,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         rayData.luminance_estimate = hcRadiance.x >= 0.0 ? luminance(hcRadiance) : 0.5;
 #elif RR_OPTION_BITS & (1u << 7)
         HalfFeature<32> feature;
-        if (!gDone) feature = computeHashEncFeature(sd.posW, rayData.direction, sd.getOrientedFaceNormal(), rayData.featureHashGrid, rayData.featureHashGridView);
+        if (!gDone) feature = computeHashEncFeature(sd.posW, rayData.direction, sd.getOrientedFaceNormal(), rayData.featureHashGrid);
         //if (!gDone) feature = computeFreqEncFeature(sd.posW, rayData.direction);
         else
         {
@@ -389,7 +387,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 #if NN_DEBUG
     // evaluate nn for nee
     HalfFeature<32> feature;
-    if (!gDone) feature = computeHashEncFeature(sd.posW, ls.dir, sd.getOrientedFaceNormal(), rayData.featureHashGrid, rayData.featureHashGridView);
+    if (!gDone) feature = computeHashEncFeature(sd.posW, ls.dir, sd.getOrientedFaceNormal(), rayData.featureHashGrid);
     //if (!gDone) feature = computeFreqEncFeature(sd.posW, ls.dir);
     else
     {
@@ -426,7 +424,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
 #if NN_DEBUG
     // evaluate nn for the bsdf sampled direction
-    if (!gDone) feature = computeHashEncFeature(sd.posW, bsdfSample.wo, sd.getOrientedFaceNormal(), rayData.featureHashGrid, rayData.featureHashGridView);
+    if (!gDone) feature = computeHashEncFeature(sd.posW, bsdfSample.wo, sd.getOrientedFaceNormal(), rayData.featureHashGrid);
     //if (!gDone) feature = computeFreqEncFeature(sd.posW, bsdfSample.wo);
     else
     {
@@ -660,8 +658,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     const ThreadInfo thread_info = ThreadInfo(groupThreadId.xy, int2(32, 4));
     uint param_offset = 0; uint grad_offset = 0;
     gMlp0 = MLPModule0(param_offset, grad_offset, thread_info);
-    rayData.featureHashGrid = FeatureHashGridData(kFeatureHashGridCapacity);
-    rayData.featureHashGridView = TensorView(param_offset, grad_offset, 32, 32);
+    rayData.featureHashGrid = FeatureHashGridData(param_offset, grad_offset);
 #endif
     float3 outputColor = float3(0.0, 1.0, 0.0);
     outputColor = tracePath(gPixel, gFrameDim, rayData);

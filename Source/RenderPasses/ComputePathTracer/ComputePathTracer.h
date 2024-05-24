@@ -202,6 +202,8 @@ private:
         bool debugOutput = false;
         bool keepThreads = false;
         uint featureHashMapSize = std::pow(2, 22);
+        // how many numbers one element in the hash map contains
+        uint featureHashMapPlacesPerElement = 2;
 
         void update()
         {

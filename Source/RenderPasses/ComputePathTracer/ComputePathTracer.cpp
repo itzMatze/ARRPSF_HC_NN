@@ -177,7 +177,8 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["MLP_COUNT"] = std::to_string(mNNParams.nnLayerCount.size());
     for (uint i = 0; i < mNNParams.nnLayerCount.size(); i++) defineList[std::string("NN_LAYER_COUNT") + std::to_string(i)] = std::to_string(mNNParams.nnLayerCount[i]);
     defineList["NN_TRAINING_BOUNCES"] = std::to_string(mNNParams.trainingBounces);
-    defineList["FEATURE_HASH_GRID_CAPACITY"] = std::to_string(mNNParams.featureHashMapSize / 2);
+    defineList["FEATURE_HASH_GRID_SIZE"] = std::to_string(mNNParams.featureHashMapSize);
+    defineList["FEATURE_HASH_GRID_PLACES_PER_ELEMENT"] = std::to_string(mNNParams.featureHashMapPlacesPerElement);
 
     if (!mPasses[TRAIN_NN_FILL_CACHE_PASS] && (mRHCParams.active || mNNParams.active))
     {
