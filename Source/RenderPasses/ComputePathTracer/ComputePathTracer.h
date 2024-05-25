@@ -84,10 +84,12 @@ private:
     enum // Passes
     {
         TRAIN_NN_FILL_CACHE_PASS = 0,
-        RESOLVE_PASS = 1,
-        PATH_TRACING_PASS = 2,
-        NN_GRADIENT_CLEAR_PASS = 3,
-        NN_GRADIENT_DESCENT_PASS = 4,
+        RHC_RESOLVE_PASS = 1,
+        RHC_RESET_PASS = 2,
+        PATH_TRACING_PASS = 3,
+        NN_GRADIENT_CLEAR_PASS = 4,
+        NN_GRADIENT_DESCENT_PASS = 5,
+        NN_RESET_PASS = 6,
         PASS_COUNT
     };
 
@@ -104,7 +106,7 @@ private:
     bool mMISUsePowerHeuristic = true;
     struct RRParams
     {
-        bool active = true;
+        bool active = false;
         Gui::DropdownList survivalProbOptionList{Gui::DropdownValue{SP_USE_DEFAULT, "default"}, Gui::DropdownValue{SP_USE_EXP_CONTRIB, "exp contrib"}, Gui::DropdownValue{SP_USE_ADRRS, "adrrs"}};
         uint survivalProbOption = SP_USE_DEFAULT;
         Gui::DropdownList pathContribEstimateOptionList{Gui::DropdownValue{PCE_USE_R_HC, "rhc"}, Gui::DropdownValue{PCE_USE_NN, "nn"}};
@@ -163,6 +165,7 @@ private:
     struct RHCParams
     {
         bool active = false;
+        bool reset = true;
         uint hashMapSizeExp = 22;
         uint hashMapSize = std::pow(2u, hashMapSizeExp);
         // inject radiance estimate of RHC on rr termination of path instead of using rr weight
@@ -172,12 +175,18 @@ private:
         bool debugVoxels = false;
         bool debugColor = false;
         bool debugLevels = false;
+        void update()
+        {
+            reset = true;
+            hashMapSize = std::pow(2, hashMapSizeExp);
+        }
     } mRHCParams;
 
 // NN
     struct NNParams
     {
         bool active = false;
+        bool reset = true;
         enum OptimizerType {
             SGD = 0,
             ADAM = 1,
@@ -195,6 +204,7 @@ private:
         Gui::DropdownList nnLayerWidthList{Gui::DropdownValue{16, "16"}, Gui::DropdownValue{32, "32"}};
         uint nnLayerWidth = 32;
         uint nnParamCount = 0;
+        uint gradientAuxElements = 0;
         int gradOffset = 0;
         float2 weightInitBound = float2(0.001, 0.02);
         float filterAlpha = 0.99;
@@ -207,6 +217,7 @@ private:
 
         void update()
         {
+            reset = true;
             nnParamCount = ((nnLayerWidth * nnLayerWidth /*weights*/ + nnLayerWidth /*biases*/) * std::reduce(nnLayerCount.begin(), nnLayerCount.end()) + featureHashMapSize /*feature hash grid storage*/);
         }
     } mNNParams;

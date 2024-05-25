@@ -28,6 +28,11 @@ float LogBase(float x, float base)
     return log(x) / log(base);
 }
 
+void HashMapReset(const uint idx)
+{
+    gRHCHashGridEntriesBuffer.Store(idx * sizeofHashKey, HashKey(0));
+}
+
 struct HashMapData
 {
     uint capacity;

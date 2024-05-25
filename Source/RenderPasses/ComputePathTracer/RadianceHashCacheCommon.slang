@@ -28,6 +28,13 @@ HashCacheVoxelData hashCacheGetVoxelData(bool usePrev, uint idx)
     return voxelData;
 }
 
+void hashCacheResetVoxelData(uint idx)
+{
+    HashCacheVoxelData data = HashCacheVoxelData();
+    gRHCVoxelDataBuffer.Store(idx * sizeofHashCacheVoxelData, data);
+    gRHCVoxelDataBufferPrev.Store(idx * sizeofHashCacheVoxelData, data);
+}
+
 void hashCacheSetVoxelData(bool usePrev, uint idx, HashCacheVoxelData data)
 {
     if (usePrev) gRHCVoxelDataBufferPrev.Store(idx * sizeofHashCacheVoxelData, data);

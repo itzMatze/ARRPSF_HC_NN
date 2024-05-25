@@ -11,8 +11,10 @@ namespace
 const std::string kPTShaderFile("RenderPasses/ComputePathTracer/ComputePathTracer.slang");
 const std::string kPTTrainShaderFile("RenderPasses/ComputePathTracer/ComputePathTracerTrain.slang");
 const std::string kRHCResolveShaderFile("RenderPasses/ComputePathTracer/RadianceHashCacheResolve.slang");
+const std::string kRHCResetShaderFile("RenderPasses/ComputePathTracer/RadianceHashCacheReset.slang");
 const std::string kGradientClearShaderFile("RenderPasses/ComputePathTracer/tinynn/GradientClear.slang");
 const std::string kGradientDescentShaderFile("RenderPasses/ComputePathTracer/tinynn/GradientDescentPrimal.slang");
+const std::string kNNResetShaderFile("RenderPasses/ComputePathTracer/tinynn/NNReset.slang");
 
 // inputs
 const ChannelDesc kInputVBuffer{"vbuffer", "gVBuffer", "Visibility buffer in packed format"};
@@ -167,7 +169,10 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["USE_ENV_BACKGROUND"] = mpScene->useEnvBackground() ? "1" : "0";
     defineList["NN_DEBUG"] = mNNParams.debugOutput ? "1" : "0";
     defineList["NN_PARAM_COUNT"] = std::to_string(mNNParams.nnParamCount);
+    defineList["NN_WEIGHT_INIT_LOWER_BOUND"] = fmt::format("{:.12f}", mNNParams.weightInitBound.x);
+    defineList["NN_WEIGHT_INIT_UPPER_BOUND"] = fmt::format("{:.12f}", mNNParams.weightInitBound.y);
     defineList["NN_GRAD_OFFSET"] = std::to_string(mNNParams.gradOffset);
+    defineList["NN_GRADIENT_AUX_ELEMENTS"] = std::to_string(mNNParams.gradientAuxElements);
     defineList["NN_OPTIMIZER_TYPE"] = std::to_string(mNNParams.optimizerParams.type);
     defineList["NN_LEARNING_RATE"] = fmt::format("{:.12f}", mNNParams.optimizerParams.learn_r);
     defineList["NN_PARAM_0"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_0);
@@ -213,13 +218,21 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         desc.addTypeConformances(mpScene->getTypeConformances());
         mPasses[PATH_TRACING_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
     }
-    if (!mPasses[RESOLVE_PASS] && mRHCParams.active)
+    if (!mPasses[RHC_RESOLVE_PASS] && mRHCParams.active)
     {
         defineList["R_HC_UPDATE"] = "1";
         defineList["R_HC_QUERY"] = "1";
         ProgramDesc desc;
         desc.addShaderLibrary(kRHCResolveShaderFile).csEntry("hashCacheResolve");
-        mPasses[RESOLVE_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
+        mPasses[RHC_RESOLVE_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
+    }
+    if (!mPasses[RHC_RESET_PASS] && mRHCParams.active)
+    {
+        defineList["R_HC_UPDATE"] = "1";
+        defineList["R_HC_QUERY"] = "1";
+        ProgramDesc desc;
+        desc.addShaderLibrary(kRHCResetShaderFile).csEntry("main");
+        mPasses[RHC_RESET_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
     }
     if (!mPasses[NN_GRADIENT_CLEAR_PASS] && mNNParams.active)
     {
@@ -233,6 +246,12 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         ProgramDesc desc;
         desc.addShaderLibrary(kGradientDescentShaderFile).csEntry("main");
         mPasses[NN_GRADIENT_DESCENT_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
+    }
+    if (!mPasses[NN_RESET_PASS] && mNNParams.active)
+    {
+        ProgramDesc desc;
+        desc.addShaderLibrary(kNNResetShaderFile).csEntry("main");
+        mPasses[NN_RESET_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
     }
 }
 
@@ -254,19 +273,15 @@ void ComputePathTracer::setupData(RenderContext* pRenderContext)
     {
         if (!mBuffers[R_HC_HASH_GRID_ENTRIES_BUFFER]) mBuffers[R_HC_HASH_GRID_ENTRIES_BUFFER] = mpDevice->createStructuredBuffer(sizeof(uint64_t), mRHCParams.hashMapSize);
         // 128 bits per entry
-        if (!mBuffers[R_HC_VOXEL_DATA_BUFFER_0]) mBuffers[R_HC_VOXEL_DATA_BUFFER_0] = mpDevice->createBuffer((128 / 8) * mRHCParams.hashMapSize);
-        if (!mBuffers[R_HC_VOXEL_DATA_BUFFER_1]) mBuffers[R_HC_VOXEL_DATA_BUFFER_1] = mpDevice->createBuffer((128 / 8) * mRHCParams.hashMapSize);
+        if (!mBuffers[R_HC_VOXEL_DATA_BUFFER_0]) mBuffers[R_HC_VOXEL_DATA_BUFFER_0] = mpDevice->createBuffer(16 * mRHCParams.hashMapSize);
+        if (!mBuffers[R_HC_VOXEL_DATA_BUFFER_1]) mBuffers[R_HC_VOXEL_DATA_BUFFER_1] = mpDevice->createBuffer(16 * mRHCParams.hashMapSize);
     }
-    std::mt19937 rnd(0);  // Generates random integers
-    std::uniform_real_distribution<float> dis(mNNParams.weightInitBound.x, mNNParams.weightInitBound.y);
-    auto gen = [&dis, &rnd](){ return dis(rnd); };
-    std::vector<float> data(mNNParams.nnParamCount);
-    std::generate(data.begin(), data.end(), gen);
-    if (!mBuffers[NN_PRIMAL_BUFFER]) mBuffers[NN_PRIMAL_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, data.data());
-    if (!mBuffers[NN_FILTERED_PRIMAL_BUFFER]) mBuffers[NN_FILTERED_PRIMAL_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess, MemoryType::DeviceLocal, data.data());
+    if (!mBuffers[NN_PRIMAL_BUFFER]) mBuffers[NN_PRIMAL_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
+    if (!mBuffers[NN_FILTERED_PRIMAL_BUFFER]) mBuffers[NN_FILTERED_PRIMAL_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
     if (!mBuffers[NN_GRADIENT_BUFFER]) mBuffers[NN_GRADIENT_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
     if (!mBuffers[NN_GRADIENT_COUNT_BUFFER]) mBuffers[NN_GRADIENT_COUNT_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
-    if (!mBuffers[NN_GRADIENT_AUX_BUFFER]) mBuffers[NN_GRADIENT_AUX_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float) * 4);
+    mNNParams.gradientAuxElements = mNNParams.nnParamCount * 4;
+    if (!mBuffers[NN_GRADIENT_AUX_BUFFER]) mBuffers[NN_GRADIENT_AUX_BUFFER] = mpDevice->createBuffer(mNNParams.gradientAuxElements * sizeof(float));
 }
 
 void ComputePathTracer::setupBuffers()
@@ -309,11 +324,19 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
     }
     if (mRHCParams.active)
     {
-        auto var = mPasses[RESOLVE_PASS]->getRootVar();
+        auto var = mPasses[RHC_RESOLVE_PASS]->getRootVar();
         var["gRHCHashGridEntriesBuffer"] = mBuffers[R_HC_HASH_GRID_ENTRIES_BUFFER];
         var["gRHCVoxelDataBuffer"] = mFrameCount % 2 == 0 ? mBuffers[R_HC_VOXEL_DATA_BUFFER_0] : mBuffers[R_HC_VOXEL_DATA_BUFFER_1];
         var["gRHCVoxelDataBufferPrev"] = mFrameCount % 2 == 1 ? mBuffers[R_HC_VOXEL_DATA_BUFFER_0] : mBuffers[R_HC_VOXEL_DATA_BUFFER_1];
-        mpPixelDebug->prepareProgram(mPasses[RESOLVE_PASS]->getProgram(), var);
+        mpPixelDebug->prepareProgram(mPasses[RHC_RESOLVE_PASS]->getProgram(), var);
+    }
+    if (mRHCParams.active && mRHCParams.reset)
+    {
+        auto var = mPasses[RHC_RESET_PASS]->getRootVar();
+        var["gRHCHashGridEntriesBuffer"] = mBuffers[R_HC_HASH_GRID_ENTRIES_BUFFER];
+        var["gRHCVoxelDataBuffer"] = mBuffers[R_HC_VOXEL_DATA_BUFFER_0];
+        var["gRHCVoxelDataBufferPrev"] = mBuffers[R_HC_VOXEL_DATA_BUFFER_1];
+        mpPixelDebug->prepareProgram(mPasses[RHC_RESET_PASS]->getProgram(), var);
     }
     {
         auto var = mPasses[PATH_TRACING_PASS]->getRootVar();
@@ -358,6 +381,15 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["GradientCountBuffer"] = mBuffers[NN_GRADIENT_COUNT_BUFFER];
         var["GradientAuxBuffer"] = mBuffers[NN_GRADIENT_AUX_BUFFER];
         mpPixelDebug->prepareProgram(mPasses[NN_GRADIENT_DESCENT_PASS]->getProgram(), var);
+    }
+    if (mNNParams.active && mNNParams.reset)
+    {
+        auto var = mPasses[NN_RESET_PASS]->getRootVar();
+        mpSampleGenerator->bindShaderData(var);
+        var["PrimalBuffer"] = mBuffers[NN_PRIMAL_BUFFER];
+        var["FilteredPrimalBuffer"] = mBuffers[NN_FILTERED_PRIMAL_BUFFER];
+        var["GradientAuxBuffer"] = mBuffers[NN_GRADIENT_AUX_BUFFER];
+        mpPixelDebug->prepareProgram(mPasses[NN_RESET_PASS]->getProgram(), var);
     }
 }
 
@@ -410,6 +442,16 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
 
     const uint2 targetDim = renderData.getDefaultTextureDims();
     FALCOR_ASSERT(targetDim.x > 0 && targetDim.y > 0);
+    if (mRHCParams.active && mRHCParams.reset)
+    {
+        mRHCParams.reset = false;
+        mPasses[RHC_RESET_PASS]->execute(pRenderContext, mRHCParams.hashMapSize, 1);
+    }
+    if (mNNParams.active && mNNParams.reset)
+    {
+        mNNParams.reset = false;
+        mPasses[NN_RESET_PASS]->execute(pRenderContext, std::max(mNNParams.gradientAuxElements, mNNParams.nnParamCount), 1);
+    }
     for (uint32_t i = 0; i < 4; i++)
     {
         if (mNNParams.active) mPasses[NN_GRADIENT_CLEAR_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
@@ -420,7 +462,7 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         }
         if (mNNParams.active) mPasses[NN_GRADIENT_DESCENT_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
     }
-    if (mRHCParams.active) mPasses[RESOLVE_PASS]->execute(pRenderContext, mRHCParams.hashMapSize, 1);
+    if (mRHCParams.active) mPasses[RHC_RESOLVE_PASS]->execute(pRenderContext, mRHCParams.hashMapSize, 1);
     mPasses[PATH_TRACING_PASS]->execute(pRenderContext, frameDim.x, frameDim.y);
     mpPixelDebug->endFrame(pRenderContext);
     mFrameCount++;
@@ -497,6 +539,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         rhc_group.checkbox("debug voxels", mRHCParams.debugVoxels);
         rhc_group.checkbox("debug color", mRHCParams.debugColor);
         rhc_group.checkbox("debug levels", mRHCParams.debugLevels);
+        mRHCParams.reset |= widget.button("Reset rhc");
     }
     // neural network
     if (Gui::Group nn_group = widget.group("NN"))
@@ -532,6 +575,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         ImGui::InputFloat("max", &mNNParams.weightInitBound.y, 0.0f, 0.0f, "%.6f");
         ImGui::InputInt("training bounces", &mNNParams.trainingBounces);
         ImGui::PopItemWidth();
+        mNNParams.reset |= widget.button("Reset nn");
         ImGui::Separator();
     }
     if (Gui::Group debug_group = widget.group("Debug"))
@@ -544,7 +588,6 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     // In execute() we will pass the flag to other passes for reset of temporal data etc.
     if (widget.button("Reload shader"))
     {
-        mRHCParams.hashMapSize = std::pow(2, mRHCParams.hashMapSizeExp);
         mOptionsChanged = true;
         reset();
     }
