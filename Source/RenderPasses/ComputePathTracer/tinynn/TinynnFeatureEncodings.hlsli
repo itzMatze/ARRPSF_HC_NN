@@ -50,7 +50,7 @@ HalfFeature<32> computeHashEncFeature(
     [ForceUnroll]
     for (uint i = 0; i < 8; i++)
     {
-        uint idx = no_diff featureHashGrid.FindEntry(pos, normal, i);
+        uint idx = no_diff featureHashGrid.FindEntry(pos, dir, normal, i);
         feature.vals[i * 2] = float16_t(featureHashGrid.dataView.load_prim(idx));
         feature.vals[i * 2 + 1] = float16_t(featureHashGrid.dataView.load_prim(idx + 1));
     }

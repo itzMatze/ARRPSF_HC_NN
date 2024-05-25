@@ -5,6 +5,8 @@ typedef uint64_t HashKey;
 
 static const uint kHashGridPositionBitNum = 17;
 static const uint kHashGridPositionBitMask = ((1u << kHashGridPositionBitNum) - 1);
+static const uint kHashGridDirectionBitNum = 0;
+static const uint kHashGridDirectionBitMask = ((1u << kHashGridDirectionBitNum) - 1);
 static const uint kHashGridLevelBitNum = 10;
 static const uint kHashGridLevelBitMask = ((1u << kHashGridLevelBitNum) - 1);
 static const uint kHashGridNormalBitNum = 3;
@@ -63,26 +65,37 @@ struct FeatureHashGridData
         return int4(gridPosition.xyz, level);
     }
 
-    HashKey ComputeSpatialHash(float3 samplePosition, float3 sampleNormal, uint level)
+    uint3 quantizeToBitRange(float3 input, uint max)
+    {
+        return uint3(input * float((max + 1) - 0.001));
+    }
+
+    HashKey ComputeSpatialHash(float3 samplePosition, float3 sampleDirection, float3 sampleNormal, uint level)
     {
         uint4 gridPosition = asuint(CalculateGridPositionLog(samplePosition, level));
-        HashKey hashKey = (((HashKey)gridPosition.x & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 0))
-                        | (((HashKey)gridPosition.y & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 1))
-                        | (((HashKey)gridPosition.z & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 2))
-                        | (((HashKey)gridPosition.w & kHashGridLevelBitMask) << (kHashGridPositionBitNum * 3));
-
-        HashKey normalBits =
-            (sampleNormal.x >= 0 ? 1 : 0) +
-            (sampleNormal.y >= 0 ? 2 : 0) +
-            (sampleNormal.z >= 0 ? 4 : 0);
-
-        hashKey |= ((HashKey)normalBits << (kHashGridPositionBitNum * 3 + kHashGridLevelBitNum));
+        uint3 quantizedDir = quantizeToBitRange(sampleDirection, kHashGridDirectionBitMask);
+        // | normal bits | level | pos.z | pos.y | pos.x | dir.z | dir.y | dir.x |
+        HashKey hashKey = (sampleNormal.x >= 0 ? 1 : 0) + (sampleNormal.y >= 0 ? 2 : 0) + (sampleNormal.z >= 0 ? 4 : 0);
+        hashKey <<= kHashGridLevelBitNum;
+        hashKey |= ((HashKey)gridPosition.w & kHashGridLevelBitMask);
+        hashKey <<= kHashGridPositionBitNum;
+        hashKey |= ((HashKey)gridPosition.z & kHashGridPositionBitMask);
+        hashKey <<= kHashGridPositionBitNum;
+        hashKey |= ((HashKey)gridPosition.y & kHashGridPositionBitMask);
+        hashKey <<= kHashGridPositionBitNum;
+        hashKey |= ((HashKey)gridPosition.x & kHashGridPositionBitMask);
+        hashKey <<= kHashGridDirectionBitNum;
+        hashKey |= ((HashKey)quantizedDir.z);
+        hashKey <<= kHashGridDirectionBitNum;
+        hashKey |= ((HashKey)quantizedDir.y);
+        hashKey <<= kHashGridDirectionBitNum;
+        hashKey |= ((HashKey)quantizedDir.x);
         return hashKey;
     }
 
-    uint FindEntry(float3 samplePosition, float3 sampleNormal, uint level)
+    uint FindEntry(float3 samplePosition, float3 sampleDirection, float3 sampleNormal, uint level)
     {
-        const HashKey hashKey = ComputeSpatialHash(samplePosition, sampleNormal, level);
+        const HashKey hashKey = ComputeSpatialHash(samplePosition, sampleDirection, sampleNormal, level);
         uint hash = Hash32(hashKey);
         uint slot = (hash % capacity) * kFeatureHashGridPlacesPerElement;
         return slot;
@@ -99,9 +112,9 @@ struct FeatureHashGridData
     }
 
     // Debug visualization
-    float3 DebugColoredHash(float3 pos, float3 normal, uint level)
+    float3 DebugColoredHash(float3 pos, float3 dir, float3 normal, uint level)
     {
-        HashKey hashKey = ComputeSpatialHash(pos, normal, level);
+        HashKey hashKey = ComputeSpatialHash(pos, dir, normal, level);
         return GetColorFromHash32(Hash32(hashKey));
     }
 }
