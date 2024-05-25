@@ -91,6 +91,8 @@ static MLPModule2 gMlp2;
 #if NN_TRAIN
 void updateNNHitInfoRadiance(float3 radiance, int bounce)
 {
+    // in nirc emitted radiance is applied as incident radiance to the previous position
+    bounce -= 1;
     // found light, propagate it through the path
     for (int i = min(kNNMaxTrainingBounces - 1, bounce); i >= 0; i--)
     {
@@ -314,16 +316,16 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
                 }
                 rayData.cur_radiance += Lr;
             }
-        }
 #if NN_TRAIN
-        if (rayData.numBounces < kNNMaxTrainingBounces)
-        {
-            nnNeeHitInfoList[rayData.numBounces].pos = sd.posW;
-            nnNeeHitInfoList[rayData.numBounces].dir = ls.dir;
-            nnNeeHitInfoList[rayData.numBounces].normal = sd.getOrientedFaceNormal();
-            nnNeeHitInfoList[rayData.numBounces].radiance = ls.Li;
-        }
+            if (rayData.numBounces < kNNMaxTrainingBounces)
+            {
+                nnNeeHitInfoList[rayData.numBounces].pos = sd.posW;
+                nnNeeHitInfoList[rayData.numBounces].dir = ls.dir;
+                nnNeeHitInfoList[rayData.numBounces].normal = sd.getOrientedFaceNormal();
+                nnNeeHitInfoList[rayData.numBounces].radiance = ls.Li;
+            }
 #endif
+        }
     }
 
 #if R_HC_UPDATE
@@ -343,6 +345,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     rayData.origin = sd.computeRayOrigin(!bsdfSample.isLobe(LobeType::Transmission));
     // update rayData
     rayData.pdf = bsdfSample.pdf;
+    rayData.direction = bsdfSample.wo;
     rayData.normal = sd.getOrientedFaceNormal();
     rayData.cur_thp *= bsdfSample.weight;
     if (kUseRR)
@@ -365,7 +368,6 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     }
     else nnHitInfoList[kNNMaxTrainingBounces - 1].thp *= rayData.cur_thp;
 #endif
-    rayData.direction = bsdfSample.wo;
 #if R_HC_UPDATE
     rhc::hashCacheSetThroughput(rayData.hashCacheState, rayData.cur_thp);
 #endif // R_HC_UPDATE
@@ -530,7 +532,6 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         bwd_diff(MLPModule0.forward)(gMlp0, input_feature_pair, output_grad);
         bwd_diff(computeHashEncFeature)(nnHitInfoList[i].pos, nnHitInfoList[i].dir, nnHitInfoList[i].normal, rayData.featureHashGrid, input_feature_pair.d);
     }
-#if 0
     // nee training
     for (uint i = 0; i < kNNMaxTrainingBounces; i++)
     {
@@ -570,7 +571,6 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     var input_feature_pair = diffPair(feature);
     bwd_diff(MLPModule0.forward)(gMlp0, input_feature_pair, output_grad);
     bwd_diff(computeHashEncFeature)(gCamPos.xyz, -gViewW[pixel].xyz, float3(1.0), rayData.featureHashGrid, input_feature_pair.d);
-#endif
 #endif
 }
 
