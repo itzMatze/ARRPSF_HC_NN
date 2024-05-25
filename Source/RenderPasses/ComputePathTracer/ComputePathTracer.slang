@@ -1,6 +1,6 @@
 #if NN_QUERY
 #include "tinynn/TinynnHalfMLP.hlsli"
-#include "tinynn/TinynnFeaturegrid.hlsli"
+#include "tinynn/TinynnFeatureEncodings.hlsli"
 #endif
 #include "Scene/SceneDefines.slangh"
 #include "Utils/Math/MathConstants.slangh"

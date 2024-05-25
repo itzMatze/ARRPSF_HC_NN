@@ -14,7 +14,7 @@ target_sources(ComputePathTracer PRIVATE
     tinynn/HalfMatmulInclude.hlsli
     tinynn/Optimizer.hlsli
     tinynn/TinynnActivations.hlsli
-    tinynn/TinynnFeaturegrid.hlsli
+    tinynn/TinynnFeatureEncodings.hlsli
     tinynn/TinynnHalfLinear.hlsli
     tinynn/TinynnHalfMLP.hlsli
     tinynn/TinynnTensorview.hlsli
