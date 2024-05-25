@@ -1,18 +1,18 @@
 #include "TinynnTensorview.hlsli"
 import Utils.Debug.PixelDebug;
 
-static const uint kHashGridPositionBitNum = 8;
+typedef uint64_t HashKey;
+
+static const uint kHashGridPositionBitNum = 17;
 static const uint kHashGridPositionBitMask = ((1u << kHashGridPositionBitNum) - 1);
-static const uint kHashGridLevelBitNum = 5;
+static const uint kHashGridLevelBitNum = 10;
 static const uint kHashGridLevelBitMask = ((1u << kHashGridLevelBitNum) - 1);
 static const uint kHashGridNormalBitNum = 3;
 static const uint kHashGridNormalBitMask = ((1u << kHashGridNormalBitNum) - 1);
 static const float kHashCacheGridLogarithmBase = 2.0f;
-static const float kHashCacheSceneScale = 30.0f;
+static const float kHashCacheSceneScale = 60.0f;
 static const uint kFeatureHashGridSize = FEATURE_HASH_GRID_SIZE;
 static const uint kFeatureHashGridPlacesPerElement = FEATURE_HASH_GRID_PLACES_PER_ELEMENT;
-
-typedef uint HashKey;
 
 struct FeatureHashGridData
 {
@@ -66,17 +66,17 @@ struct FeatureHashGridData
     HashKey ComputeSpatialHash(float3 samplePosition, float3 sampleNormal, uint level)
     {
         uint4 gridPosition = asuint(CalculateGridPositionLog(samplePosition, level));
-        HashKey hashKey = (((uint)gridPosition.x & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 0))
-                        | (((uint)gridPosition.y & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 1))
-                        | (((uint)gridPosition.z & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 2))
-                        | (((uint)gridPosition.w & kHashGridLevelBitMask) << (kHashGridPositionBitNum * 3));
+        HashKey hashKey = (((HashKey)gridPosition.x & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 0))
+                        | (((HashKey)gridPosition.y & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 1))
+                        | (((HashKey)gridPosition.z & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 2))
+                        | (((HashKey)gridPosition.w & kHashGridLevelBitMask) << (kHashGridPositionBitNum * 3));
 
-        uint normalBits =
+        HashKey normalBits =
             (sampleNormal.x >= 0 ? 1 : 0) +
             (sampleNormal.y >= 0 ? 2 : 0) +
             (sampleNormal.z >= 0 ? 4 : 0);
 
-        hashKey |= ((uint)normalBits << (kHashGridPositionBitNum * 3 + kHashGridLevelBitNum));
+        hashKey |= ((HashKey)normalBits << (kHashGridPositionBitNum * 3 + kHashGridLevelBitNum));
         return hashKey;
     }
 
