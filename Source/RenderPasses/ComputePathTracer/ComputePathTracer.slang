@@ -51,12 +51,12 @@ static const bool kDebugPathLength = DEBUG_PATH_LENGTH;
 static const bool kUseImportanceSampling = USE_IMPORTANCE_SAMPLING;
 static const bool kUseEnvBackground = USE_ENV_BACKGROUND;
 static const float3 kDefaultBackgroundColor = float3(0.0, 0.0, 0.05);
-static const uint kHCHashMapSize = R_HC_HASHMAP_SIZE;
-static const uint kHCDebugVoxels = R_HC_DEBUG_VOXELS;
-static const uint kHCDebugColor = R_HC_DEBUG_COLOR;
-static const uint kHCDebugLevels = R_HC_DEBUG_LEVELS;
-static const uint kHCInjectRadianceRR = R_HC_INJECT_RADIANCE_RR;
-static const uint kHCInjectRadianceSpread = R_HC_INJECT_RADIANCE_SPREAD;
+static const uint kRHCHashMapSize = R_HC_HASHMAP_SIZE;
+static const uint kRHCDebugVoxels = R_HC_DEBUG_VOXELS;
+static const uint kRHCDebugColor = R_HC_DEBUG_COLOR;
+static const uint kRHCDebugLevels = R_HC_DEBUG_LEVELS;
+static const uint kRHCInjectRadianceRR = R_HC_INJECT_RADIANCE_RR;
+static const uint kRHCInjectRadianceSpread = R_HC_INJECT_RADIANCE_SPREAD;
 static const uint kNNMaxTrainingBounces = NN_TRAINING_BOUNCES;
 
 #if NN_QUERY
@@ -258,23 +258,23 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         hashCacheHitData.normalWorld = sd.getOrientedFaceNormal();
         hashCacheHitData.distance = rayData.distance;
         uint gridLevel = rayData.hashCacheState.hashMapData.GetGridLevel(hashCacheHitData.distance);
-        if (kHCDebugLevels)
+        if (kRHCDebugLevels)
         {
             // the actual max level is 1024 (see clamp in function)
             // however, the upper levels are never really used, thus use 8 to get meaningful visualization
             rayData.cur_radiance = colormapViridis(float(gridLevel) / 8.0f);
             return false;
         }
-        if (kHCDebugVoxels || kHCDebugColor)
+        if (kRHCDebugVoxels || kRHCDebugColor)
         {
             // debug active; voxel debug will fetch voxel visualization values, otherwise just get color
             float3 debugColor;
-            rhc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, debugColor, kHCDebugVoxels);
+            rhc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, debugColor, kRHCDebugVoxels);
             rayData.cur_radiance = debugColor;
             return false;
         }
 
-        if (kHCInjectRadianceSpread)
+        if (kRHCInjectRadianceSpread)
         {
             float voxelSize = rayData.hashCacheState.hashMapData.GetVoxelSize(gridLevel);
             bool isValidHit = rayData.t > voxelSize * lerp(1.0f, 2.0f, sampleNext1D(rayData.sg));
@@ -577,7 +577,7 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, ScatterRayData rayData
     }
 
 #if R_HC_QUERY
-    rayData.hashCacheState.hashMapData.capacity = kHCHashMapSize;
+    rayData.hashCacheState.hashMapData.capacity = kRHCHashMapSize;
     rayData.materialRoughness = 0.0f;
     rayData.spread = 0.0f;
 #endif
