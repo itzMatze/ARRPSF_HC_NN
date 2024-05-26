@@ -1,4 +1,5 @@
 #include "ComputePathTracer.h"
+#include "Core/API/Formats.h"
 #include "RenderGraph/RenderPassHelpers.h"
 #include "RenderGraph/RenderPassStandardFlags.h"
 #include "imgui.h"
@@ -15,6 +16,7 @@ const std::string kRHCResetShaderFile("RenderPasses/ComputePathTracer/RadianceHa
 const std::string kGradientClearShaderFile("RenderPasses/ComputePathTracer/tinynn/GradientClear.slang");
 const std::string kGradientDescentShaderFile("RenderPasses/ComputePathTracer/tinynn/GradientDescentPrimal.slang");
 const std::string kNNResetShaderFile("RenderPasses/ComputePathTracer/tinynn/NNReset.slang");
+const std::string kNIRCDebugVisShaderFile("RenderPasses/ComputePathTracer/NIRCDebugVis.slang");
 
 // inputs
 const ChannelDesc kInputVBuffer{"vbuffer", "gVBuffer", "Visibility buffer in packed format"};
@@ -23,11 +25,11 @@ const ChannelDesc kInputRefImage{"refImage", "gRefImage", "Reference image for t
 const ChannelList kInputChannels = {kInputVBuffer, kInputViewDir, kInputRefImage};
 
 // outputs
-const ChannelList kOutputChannels = {
-    // clang-format off
-    { "color",          "gOutputColor", "Output color (sum of direct and indirect)", false, ResourceFormat::RGBA32Float },
-    // clang-format on
-};
+const ChannelDesc kOutputColor = { "color", "gOutputColor", "Output color (sum of direct and indirect)", false, ResourceFormat::RGBA32Float };
+constexpr uint2 kNIRCDebugOutputDim(1000, 1000);
+const ChannelDesc kNIRCDebugOutputColor = { "nirc_debug", "gNIRCDebugOutputColor", "Output color of NIRC debug visualization", false, ResourceFormat::RGBA32Float };
+const ChannelDesc kNIRCDebugOutputColorRef = { "nirc_debug_ref", "gNIRCDebugOutputColorRef", "Output color of the path traced NIRC debug visualization for reference", false, ResourceFormat::RGBA32Float };
+const ChannelList kOutputChannels = {kOutputColor, kNIRCDebugOutputColor};
 
 const std::string kLowerBounceCount = "lowerBounceCount";
 const std::string kUpperBounceCount = "upperBounceCount";
@@ -136,7 +138,9 @@ RenderPassReflection ComputePathTracer::reflect(const CompileData& compileData)
     RenderPassReflection reflector;
     // Define our input/output channels.
     addRenderPassInputs(reflector, kInputChannels);
-    addRenderPassOutputs(reflector, kOutputChannels);
+    addRenderPassOutputs(reflector, {kOutputColor});
+    addRenderPassOutputs(reflector, {kNIRCDebugOutputColor}, ResourceBindFlags::UnorderedAccess, kNIRCDebugOutputDim);
+    addRenderPassOutputs(reflector, {kNIRCDebugOutputColorRef}, ResourceBindFlags::UnorderedAccess, kNIRCDebugOutputDim);
     return reflector;
 }
 
@@ -168,6 +172,8 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["USE_ENV_LIGHT"] = mpScene->useEnvLight() ? "1" : "0";
     defineList["USE_ENV_BACKGROUND"] = mpScene->useEnvBackground() ? "1" : "0";
     defineList["NN_DEBUG"] = mNNParams.debugOutput ? "1" : "0";
+    defineList["NIRC_DEBUG_OUTPUT_WIDTH"] = std::to_string(kNIRCDebugOutputDim.x);
+    defineList["NIRC_DEBUG_OUTPUT_HEIGHT"] = std::to_string(kNIRCDebugOutputDim.y);
     defineList["NN_PARAM_COUNT"] = std::to_string(mNNParams.nnParamCount);
     defineList["NN_WEIGHT_INIT_LOWER_BOUND"] = fmt::format("{:.12f}", mNNParams.weightInitBound.x);
     defineList["NN_WEIGHT_INIT_UPPER_BOUND"] = fmt::format("{:.12f}", mNNParams.weightInitBound.y);
@@ -252,6 +258,14 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         ProgramDesc desc;
         desc.addShaderLibrary(kNNResetShaderFile).csEntry("main");
         mPasses[NN_RESET_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
+    }
+    if (!mPasses[NIRC_DEBUG_PASS] && mNNParams.active)
+    {
+        ProgramDesc desc;
+        desc.addShaderModules(mpScene->getShaderModules());
+        desc.addShaderLibrary(kNIRCDebugVisShaderFile).csEntry("main");
+        desc.addTypeConformances(mpScene->getTypeConformances());
+        mPasses[NIRC_DEBUG_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
     }
 }
 
@@ -361,7 +375,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
             var["GradientCountBuffer"] = mBuffers[NN_GRADIENT_COUNT_BUFFER];
         }
         for (auto channel : kInputChannels) var[channel.texname] = renderData.getTexture(channel.name);
-        for (auto channel : kOutputChannels) var[channel.texname] = renderData.getTexture(channel.name);
+        var[kOutputColor.texname] = renderData.getTexture(kOutputColor.name);
         mpPixelDebug->prepareProgram(mPasses[PATH_TRACING_PASS]->getProgram(), var);
     }
     if (mNNParams.active)
@@ -390,6 +404,23 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["FilteredPrimalBuffer"] = mBuffers[NN_FILTERED_PRIMAL_BUFFER];
         var["GradientAuxBuffer"] = mBuffers[NN_GRADIENT_AUX_BUFFER];
         mpPixelDebug->prepareProgram(mPasses[NN_RESET_PASS]->getProgram(), var);
+    }
+    if (mNNParams.active && mNNParams.nircDebug)
+    {
+        auto var = mPasses[NIRC_DEBUG_PASS]->getRootVar();
+        var["CB"]["gDebugPixel"] = mpPixelDebug->getSelectedPixel();
+        var["CB"]["gFrameCount"] = mFrameCount;
+        if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
+        if (mpEmissiveSampler) mpEmissiveSampler->bindShaderData(mpSamplerBlock->getRootVar()["emissiveSampler"]);
+        var["gSampler"] = mpSamplerBlock;
+        mpScene->bindShaderData(var["gScene"]);
+        mpSampleGenerator->bindShaderData(var);
+        var["PrimalBuffer"] = mBuffers[NN_FILTERED_PRIMAL_BUFFER];
+        var[kInputVBuffer.texname] = renderData.getTexture(kInputVBuffer.name);
+        var[kInputViewDir.texname] = renderData.getTexture(kInputViewDir.name);
+        var[kNIRCDebugOutputColor.texname] = renderData.getTexture(kNIRCDebugOutputColor.name);
+        var[kNIRCDebugOutputColorRef.texname] = renderData.getTexture(kNIRCDebugOutputColorRef.name);
+        mpPixelDebug->prepareProgram(mPasses[NIRC_DEBUG_PASS]->getProgram(), var);
     }
 }
 
@@ -431,7 +462,7 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         // activate rhc if it is used somewhere
         mRHCParams.active = mRRParams.requiresRHC() | mRHCParams.injectRadianceRR | mRHCParams.injectRadianceSpread | mRHCParams.debugColor | mRHCParams.debugLevels | mRHCParams.debugVoxels;
         // activate nn if it is used somewhere
-        mNNParams.active = mRRParams.requiresNN() | mNNParams.debugOutput;
+        mNNParams.active = mRRParams.requiresNN() | mNNParams.debugOutput | mNNParams.nircDebug;
         mNNParams.keepThreads = mNNParams.active;
         setupData(pRenderContext);
         createPasses(renderData);
@@ -464,6 +495,7 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
     }
     if (mRHCParams.active) mPasses[RHC_RESOLVE_PASS]->execute(pRenderContext, mRHCParams.hashMapSize, 1);
     mPasses[PATH_TRACING_PASS]->execute(pRenderContext, frameDim.x, frameDim.y);
+    if (mNNParams.active && mNNParams.nircDebug) mPasses[NIRC_DEBUG_PASS]->execute(pRenderContext, kNIRCDebugOutputDim.x, kNIRCDebugOutputDim.y);
     mpPixelDebug->endFrame(pRenderContext);
     mFrameCount++;
     mNNParams.optimizerParams.step_count++;
@@ -570,6 +602,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         for (uint i = 0; i < mNNParams.nnLayerCount.size(); i++) ImGui::InputInt(std::string(std::string("MLP ") + std::to_string(i) + std::string(" layer count")).c_str(), &mNNParams.nnLayerCount[i]);
         ImGui::InputFloat("Filter alpha", &mNNParams.filterAlpha, 0.0f, 0.0f, "%.4f");
         nn_group.checkbox("debug NN output", mNNParams.debugOutput);
+        nn_group.checkbox("debug NIRC", mNNParams.nircDebug);
         ImGui::Text("Weight init bounds");
         ImGui::InputFloat("min", &mNNParams.weightInitBound.x, 0.0f, 0.0f, "%.6f");
         ImGui::InputFloat("max", &mNNParams.weightInitBound.y, 0.0f, 0.0f, "%.6f");

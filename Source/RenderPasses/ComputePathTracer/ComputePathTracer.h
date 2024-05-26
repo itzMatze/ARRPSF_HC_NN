@@ -90,6 +90,7 @@ private:
         NN_GRADIENT_CLEAR_PASS = 4,
         NN_GRADIENT_DESCENT_PASS = 5,
         NN_RESET_PASS = 6,
+        NIRC_DEBUG_PASS = 7,
         PASS_COUNT
     };
 
@@ -175,6 +176,7 @@ private:
         bool debugVoxels = false;
         bool debugColor = false;
         bool debugLevels = false;
+
         void update()
         {
             reset = true;
@@ -210,6 +212,7 @@ private:
         float filterAlpha = 0.99;
         int trainingBounces = 4;
         bool debugOutput = false;
+        bool nircDebug = false;
         bool keepThreads = false;
         uint featureHashMapSize = std::pow(2, 22);
         // how many numbers one element in the hash map contains
@@ -218,6 +221,7 @@ private:
         void update()
         {
             reset = true;
+            optimizerParams.step_count = 0;
             nnParamCount = ((nnLayerWidth * nnLayerWidth /*weights*/ + nnLayerWidth /*biases*/) * std::reduce(nnLayerCount.begin(), nnLayerCount.end()) + featureHashMapSize /*feature hash grid storage*/);
         }
     } mNNParams;

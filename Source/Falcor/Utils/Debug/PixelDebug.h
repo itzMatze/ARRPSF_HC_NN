@@ -87,6 +87,7 @@ public:
     bool onMouseEvent(const MouseEvent& mouseEvent);
 
     void enable() { mEnabled = true; }
+    uint2 getSelectedPixel() const { return mSelectedPixel; }
 
 protected:
     bool copyDataToCPU();
