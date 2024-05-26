@@ -3,11 +3,11 @@ import Utils.Debug.PixelDebug;
 
 typedef uint64_t HashKey;
 
-static const uint kHashGridPositionBitNum = 17;
+static const uint kHashGridPositionBitNum = 14;
 static const uint kHashGridPositionBitMask = ((1u << kHashGridPositionBitNum) - 1);
-static const uint kHashGridDirectionBitNum = 0;
+static const uint kHashGridDirectionBitNum = 4;
 static const uint kHashGridDirectionBitMask = ((1u << kHashGridDirectionBitNum) - 1);
-static const uint kHashGridLevelBitNum = 10;
+static const uint kHashGridLevelBitNum = 7;
 static const uint kHashGridLevelBitMask = ((1u << kHashGridLevelBitNum) - 1);
 static const uint kHashGridNormalBitNum = 3;
 static const uint kHashGridNormalBitMask = ((1u << kHashGridNormalBitNum) - 1);
@@ -67,7 +67,7 @@ struct FeatureHashGridData
 
     uint3 quantizeToBitRange(float3 input, uint max)
     {
-        return uint3(input * float((max + 1) - 0.001));
+        return uint3(((input + 1.0) / 2.0) * float((max + 1) - 0.001));
     }
 
     HashKey ComputeSpatialHash(float3 samplePosition, float3 sampleDirection, float3 sampleNormal, uint level)
