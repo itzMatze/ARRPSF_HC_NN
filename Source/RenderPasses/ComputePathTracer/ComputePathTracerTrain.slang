@@ -479,8 +479,6 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, ScatterRayData rayData
     return outColor;
 }
 
-static const int2 gFeatureGridDim = int2(120, 68);
-
 [Differentiable]
 float L2Loss(float3 value, no_diff float3 target, no_diff float3 normValue) {
     return dot((value - target), (value - target)) / (dot(normValue, normValue) + 0.01);
