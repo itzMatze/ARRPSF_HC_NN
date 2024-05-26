@@ -388,16 +388,18 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
 #if NN_DEBUG
     // evaluate nn for nee
-    HalfFeature<32> feature;
-    if (!gDone) feature = computeHashEncFeature(sd.posW, ls.dir, sd.getOrientedFaceNormal(), rayData.featureHashGrid);
-    //if (!gDone) feature = computeFreqEncFeature(sd.posW, ls.dir);
-    else
     {
-        [ForceUnroll]
-        for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
+        HalfFeature<32> feature;
+        if (!gDone) feature = computeHashEncFeature(sd.posW, ls.dir, sd.getOrientedFaceNormal(), rayData.featureHashGrid);
+            //if (!gDone) feature = computeFreqEncFeature(sd.posW, ls.dir);
+        else
+        {
+            [ForceUnroll]
+                for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
+        }
+        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
+        MASK_BLOCK rayData.cur_radiance += (applyNEE && validSample) ? 0.5 * float3(output.vals[0], output.vals[1], output.vals[2]) * weight : 0.0;
     }
-    HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
-    MASK_BLOCK rayData.cur_radiance += (applyNEE && validSample) ? 0.5 * float3(output.vals[0], output.vals[1], output.vals[2]) * weight : 0.0;
 #else
     MASK_BLOCK
     {
@@ -447,24 +449,27 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 #endif
     }
 #if NN_DEBUG
-    bool computeEmissive = (rayData.numBounces + 1) >= kLowerBounceCount && kUseEmissiveLights && (!kUseNEE || kUseMIS || !rayData.isLightSampled() || rayData.isDeltaLobe());
-    float misWeight = 1.0;
-    if (computeEmissive)
     {
-        // only apply MIS when NEE is used and was able to sample the light at the last vertex
-        if (kUseEmissiveLights && kUseNEE && kUseMIS && (rayData.numBounces + 1) > 0 && rayData.isLightSampled() && !rayData.isDeltaLobe()) misWeight = 0.5;
+        HalfFeature<32> feature;
+        bool computeEmissive = (rayData.numBounces + 1) >= kLowerBounceCount && kUseEmissiveLights && (!kUseNEE || kUseMIS || !rayData.isLightSampled() || rayData.isDeltaLobe());
+        float misWeight = 1.0;
+        if (computeEmissive)
+        {
+            // only apply MIS when NEE is used and was able to sample the light at the last vertex
+            if (kUseEmissiveLights && kUseNEE && kUseMIS && (rayData.numBounces + 1) > 0 && rayData.isLightSampled() && !rayData.isDeltaLobe()) misWeight = 0.5;
+        }
+        // evaluate nn for the bsdf sampled direction
+        if (!gDone) feature = computeHashEncFeature(sd.posW, bsdfSample.wo, sd.getOrientedFaceNormal(), rayData.featureHashGrid);
+            //if (!gDone) feature = computeFreqEncFeature(sd.posW, bsdfSample.wo);
+        else
+        {
+            [ForceUnroll]
+                for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
+        }
+        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
+        MASK_BLOCK rayData.cur_radiance += computeEmissive ? misWeight * float3(output.vals[0], output.vals[1], output.vals[2]) * bsdfSample.weight : 0.0;
+        TERMINATE_PATH_0;
     }
-    // evaluate nn for the bsdf sampled direction
-    if (!gDone) feature = computeHashEncFeature(sd.posW, bsdfSample.wo, sd.getOrientedFaceNormal(), rayData.featureHashGrid);
-    //if (!gDone) feature = computeFreqEncFeature(sd.posW, bsdfSample.wo);
-    else
-    {
-        [ForceUnroll]
-        for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
-    }
-    output = MLPModule0.forward(gMlp0, feature);
-    MASK_BLOCK rayData.cur_radiance += computeEmissive ? misWeight * float3(output.vals[0], output.vals[1], output.vals[2]) * bsdfSample.weight : 0.0;
-    TERMINATE_PATH_0;
 #endif
 
     if (kUseRR)
