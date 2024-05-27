@@ -391,11 +391,11 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     {
         HalfFeature<32> feature;
         if (!gDone) feature = computeHashEncFeature(sd.posW, ls.dir, sd.getOrientedFaceNormal(), rayData.featureHashGrid);
-            //if (!gDone) feature = computeFreqEncFeature(sd.posW, ls.dir);
+        //if (!gDone) feature = computeFreqEncFeature(sd.posW, ls.dir);
         else
         {
             [ForceUnroll]
-                for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
+            for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
         }
         HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
         MASK_BLOCK rayData.cur_radiance += (applyNEE && validSample) ? 0.5 * float3(output.vals[0], output.vals[1], output.vals[2]) * weight : 0.0;
@@ -460,11 +460,11 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         }
         // evaluate nn for the bsdf sampled direction
         if (!gDone) feature = computeHashEncFeature(sd.posW, bsdfSample.wo, sd.getOrientedFaceNormal(), rayData.featureHashGrid);
-            //if (!gDone) feature = computeFreqEncFeature(sd.posW, bsdfSample.wo);
+        //if (!gDone) feature = computeFreqEncFeature(sd.posW, bsdfSample.wo);
         else
         {
             [ForceUnroll]
-                for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
+            for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
         }
         HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
         MASK_BLOCK rayData.cur_radiance += computeEmissive ? misWeight * float3(output.vals[0], output.vals[1], output.vals[2]) * bsdfSample.weight : 0.0;

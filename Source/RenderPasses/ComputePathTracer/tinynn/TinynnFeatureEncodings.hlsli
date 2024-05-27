@@ -94,27 +94,28 @@ HalfFeature<32> computeFreqEncFeature(
     no_diff float3 dir,
 ) {
     HalfFeature<32> feature;
+    uint offset = 0;
     [ForceUnroll]
     for (uint i = 0; i < 32; i++) feature.vals[i] = 1.0h;
-    feature.vals[0] = float16_t(pos.x);
-    feature.vals[1] = float16_t(pos.y);
-    feature.vals[2] = float16_t(pos.z);
+    feature.vals[offset++] = float16_t(pos.x);
+    feature.vals[offset++] = float16_t(pos.y);
+    feature.vals[offset++] = float16_t(pos.z);
     [ForceUnroll]
     for (uint i = 0; i < 4; i++)
     {
-        feature.vals[(i * 3) + 3] = sin(float16_t(pos.x) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
-        feature.vals[(i * 3) + 4] = sin(float16_t(pos.y) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
-        feature.vals[(i * 3) + 5] = sin(float16_t(pos.z) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
+        feature.vals[offset++] = sin(float16_t(pos.x) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
+        feature.vals[offset++] = sin(float16_t(pos.y) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
+        feature.vals[offset++] = sin(float16_t(pos.z) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
     }
-    feature.vals[15] = float16_t(dir.x);
-    feature.vals[16] = float16_t(dir.y);
-    feature.vals[17] = float16_t(dir.z);
+    feature.vals[offset++] = float16_t(dir.x);
+    feature.vals[offset++] = float16_t(dir.y);
+    feature.vals[offset++] = float16_t(dir.z);
     [ForceUnroll]
     for (uint i = 0; i < 3; i++)
     {
-        feature.vals[(i * 3) + 18] = sin(float16_t(dir.x) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
-        feature.vals[(i * 3) + 19] = sin(float16_t(dir.y) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
-        feature.vals[(i * 3) + 20] = sin(float16_t(dir.z) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
+        feature.vals[offset++] = sin(float16_t(dir.x) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
+        feature.vals[offset++] = sin(float16_t(dir.y) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
+        feature.vals[offset++] = sin(float16_t(dir.z) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
     }
     return feature;
 }
@@ -127,29 +128,30 @@ HalfFeature<32> computeHashEncFeature(
     no_diff FeatureHashGridData featureHashGrid,
 ) {
     HalfFeature<32> feature;
+    uint offset = 0;
     [ForceUnroll]
     for (uint i = 0; i < 32; i++) feature.vals[i] = 1.0h;
     [ForceUnroll]
     for (uint i = 0; i < 8; i++)
     {
         uint idx = no_diff featureHashGrid.FindEntry(pos, dir, normal, i);
-        feature.vals[i * 2] = float16_t(featureHashGrid.dataView.load_prim(idx));
-        feature.vals[i * 2 + 1] = float16_t(featureHashGrid.dataView.load_prim(idx + 1));
+        feature.vals[offset++] = float16_t(featureHashGrid.dataView.load_prim(idx));
+        feature.vals[offset++] = float16_t(featureHashGrid.dataView.load_prim(idx + 1));
     }
     // shDegree^2 values
     float16_t shVals[9];
     shEnc<3, 9>(dir, shVals);
     [ForceUnroll]
-    for (uint i = 0; i < 9; i++) feature.vals[i + 16] = shVals[i];
-    feature.vals[25] = float16_t(pos.x);
-    feature.vals[26] = float16_t(pos.y);
-    feature.vals[27] = float16_t(pos.z);
+    for (uint i = 0; i < 9; i++) feature.vals[offset++] = shVals[i];
+    feature.vals[offset++] = float16_t(pos.x);
+    feature.vals[offset++] = float16_t(pos.y);
+    feature.vals[offset++] = float16_t(pos.z);
     [ForceUnroll]
     for (uint i = 0; i < 1; i++)
     {
-        feature.vals[(i * 3) + 28] = sin(float16_t(pos.x) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
-        feature.vals[(i * 3) + 29] = sin(float16_t(pos.y) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
-        feature.vals[(i * 3) + 30] = sin(float16_t(pos.z) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
+        feature.vals[offset++] = sin(float16_t(pos.x) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
+        feature.vals[offset++] = sin(float16_t(pos.y) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
+        feature.vals[offset++] = sin(float16_t(pos.z) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
     }
     return feature;
 }
