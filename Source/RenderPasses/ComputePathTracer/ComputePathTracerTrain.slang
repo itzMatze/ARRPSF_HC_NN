@@ -94,10 +94,10 @@ void updateNNHitInfoRadiance(float3 radiance, int bounce)
     // in nirc emitted radiance is applied as incident radiance to the previous position
     bounce -= 1;
     // found light, propagate it through the path
-    for (int i = min(kNNMaxTrainingBounces - 1, bounce); i >= 0; i--)
+    for (int i = min(kNNMaxTrainingBounces - 2, bounce); i >= 0; i--)
     {
         // light is emitted at current vertex; so, its not reflected by the bsdf
-        if (i != bounce) radiance *= nnHitInfoList[i].thp;
+        if (i != bounce) radiance *= nnHitInfoList[i + 1].thp;
         nnHitInfoList[i].radiance += radiance;
     }
 }
@@ -510,7 +510,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
 
 // NN
 #if NN_TRAIN
-    for (uint i = 0; i < kNNMaxTrainingBounces; i++)
+    for (uint i = 0; i < kNNMaxTrainingBounces - 1; i++)
     {
         HalfFeature<32> feature = computeHashEncFeature(nnHitInfoList[i].pos, nnHitInfoList[i].dir, nnHitInfoList[i].normal, rayData.featureHashGrid);
         //HalfFeature<32> feature = computeFreqEncFeature(nnHitInfoList[i].pos, nnHitInfoList[i].dir);
