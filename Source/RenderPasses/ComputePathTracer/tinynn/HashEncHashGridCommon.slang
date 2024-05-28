@@ -16,11 +16,15 @@ static const float kHashCacheSceneScale = 60.0f;
 static const uint kFeatureHashGridProbingSize = FEATURE_HASH_GRID_PROBING_SIZE;
 static const HashKey kHashGridInvalidHashKey = 0;
 
+#if FEATURE_HASH_GRID_PROBING_SIZE > 0
 RWByteAddressBuffer gFeatureHashGridEntriesBuffer;
+#endif
 
 void FeatureHashMapReset(const uint idx)
 {
+#if FEATURE_HASH_GRID_PROBING_SIZE > 0
     gFeatureHashGridEntriesBuffer.Store(idx * sizeofHashKey, HashKey(0));
+#endif
 }
 
 struct FeatureHashGridData
@@ -101,6 +105,7 @@ struct FeatureHashGridData
         const HashKey hashKey = ComputeSpatialHash(samplePosition, sampleDirection, sampleNormal, level);
         uint hash = Hash32(hashKey);
         uint slot = (hash % capacity);
+#if FEATURE_HASH_GRID_PROBING_SIZE > 0
         HashKey prevHashKey = kHashGridInvalidHashKey;
         // search for slot that is empty or occupied with the same hash
         // if no such slot is found, produce collision on the first slot
@@ -113,6 +118,7 @@ struct FeatureHashGridData
                 break;
             }
         }
+#endif
         return slot;
     }
 

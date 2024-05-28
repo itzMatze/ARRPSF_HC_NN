@@ -297,7 +297,7 @@ void ComputePathTracer::setupData(RenderContext* pRenderContext)
     if (!mBuffers[NN_GRADIENT_COUNT_BUFFER]) mBuffers[NN_GRADIENT_COUNT_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
     mNNParams.gradientAuxElements = mNNParams.nnParamCount * 4;
     if (!mBuffers[NN_GRADIENT_AUX_BUFFER]) mBuffers[NN_GRADIENT_AUX_BUFFER] = mpDevice->createBuffer(mNNParams.gradientAuxElements * sizeof(float));
-    if (!mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER]) mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER] = mpDevice->createStructuredBuffer(sizeof(uint64_t), mNNParams.featureHashMapSize / mNNParams.featureHashMapPlacesPerElement);
+    if (mNNParams.featureHashMapProbingSize > 0 && !mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER]) mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER] = mpDevice->createStructuredBuffer(sizeof(uint64_t), mNNParams.featureHashMapSize / mNNParams.featureHashMapPlacesPerElement);
 }
 
 void ComputePathTracer::setupBuffers()
@@ -333,7 +333,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
             var["PrimalBuffer"] = mBuffers[NN_PRIMAL_BUFFER];
             var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
             var["GradientCountBuffer"] = mBuffers[NN_GRADIENT_COUNT_BUFFER];
-            var["gFeatureHashGridEntriesBuffer"] = mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER];
+            if (mNNParams.featureHashMapProbingSize > 0 && mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER]) var["gFeatureHashGridEntriesBuffer"] = mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER];
         }
         var[kInputVBuffer.texname] = renderData.getTexture(kInputVBuffer.name);
         var[kInputViewDir.texname] = renderData.getTexture(kInputViewDir.name);
@@ -376,7 +376,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
             var["PrimalBuffer"] = mBuffers[NN_FILTERED_PRIMAL_BUFFER];
             var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
             var["GradientCountBuffer"] = mBuffers[NN_GRADIENT_COUNT_BUFFER];
-            var["gFeatureHashGridEntriesBuffer"] = mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER];
+            if (mNNParams.featureHashMapProbingSize > 0 && mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER]) var["gFeatureHashGridEntriesBuffer"] = mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER];
         }
         for (auto channel : kInputChannels) var[channel.texname] = renderData.getTexture(channel.name);
         var[kOutputColor.texname] = renderData.getTexture(kOutputColor.name);
@@ -407,7 +407,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["PrimalBuffer"] = mBuffers[NN_PRIMAL_BUFFER];
         var["FilteredPrimalBuffer"] = mBuffers[NN_FILTERED_PRIMAL_BUFFER];
         var["GradientAuxBuffer"] = mBuffers[NN_GRADIENT_AUX_BUFFER];
-        var["gFeatureHashGridEntriesBuffer"] = mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER];
+        if (mNNParams.featureHashMapProbingSize > 0 && mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER]) var["gFeatureHashGridEntriesBuffer"] = mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER];
         mpPixelDebug->prepareProgram(mPasses[NN_RESET_PASS]->getProgram(), var);
     }
     if (mNNParams.active && mNNParams.nircDebug)
@@ -421,7 +421,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         mpScene->bindShaderData(var["gScene"]);
         mpSampleGenerator->bindShaderData(var);
         var["PrimalBuffer"] = mBuffers[NN_FILTERED_PRIMAL_BUFFER];
-        var["gFeatureHashGridEntriesBuffer"] = mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER];
+        if (mNNParams.featureHashMapProbingSize > 0 && mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER]) var["gFeatureHashGridEntriesBuffer"] = mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER];
         var[kInputVBuffer.texname] = renderData.getTexture(kInputVBuffer.name);
         var[kInputViewDir.texname] = renderData.getTexture(kInputViewDir.name);
         var[kNIRCDebugOutputColor.texname] = renderData.getTexture(kNIRCDebugOutputColor.name);
