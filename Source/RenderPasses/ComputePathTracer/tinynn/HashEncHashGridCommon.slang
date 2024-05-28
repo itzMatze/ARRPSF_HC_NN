@@ -13,6 +13,15 @@ static const HashKey kHashGridNormalBitNum = 3;
 static const HashKey kHashGridNormalBitMask = ((1u << kHashGridNormalBitNum) - 1);
 static const float kHashCacheGridLogarithmBase = 2.0f;
 static const float kHashCacheSceneScale = 60.0f;
+static const uint kFeatureHashGridProbingSize = FEATURE_HASH_GRID_PROBING_SIZE;
+static const HashKey kHashGridInvalidHashKey = 0;
+
+RWByteAddressBuffer gFeatureHashGridEntriesBuffer;
+
+void FeatureHashMapReset(const uint idx)
+{
+    gFeatureHashGridEntriesBuffer.Store(idx * sizeofHashKey, HashKey(0));
+}
 
 struct FeatureHashGridData
 {
@@ -92,6 +101,18 @@ struct FeatureHashGridData
         const HashKey hashKey = ComputeSpatialHash(samplePosition, sampleDirection, sampleNormal, level);
         uint hash = Hash32(hashKey);
         uint slot = (hash % capacity);
+        HashKey prevHashKey = kHashGridInvalidHashKey;
+        // search for slot that is empty or occupied with the same hash
+        // if no such slot is found, produce collision on the first slot
+        for (uint bucketOffset = 0; (bucketOffset <= kFeatureHashGridProbingSize) && (slot + bucketOffset < capacity); ++bucketOffset)
+        {
+            gFeatureHashGridEntriesBuffer.InterlockedCompareExchangeU64(slot + bucketOffset, kHashGridInvalidHashKey, hashKey, prevHashKey);
+            if (prevHashKey == kHashGridInvalidHashKey || prevHashKey == hashKey)
+            {
+                slot += bucketOffset;
+                break;
+            }
+        }
         return slot;
     }
 

@@ -190,6 +190,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["NN_TRAINING_BOUNCES"] = std::to_string(mNNParams.trainingBounces);
     defineList["FEATURE_HASH_GRID_SIZE"] = std::to_string(mNNParams.featureHashMapSize);
     defineList["FEATURE_HASH_GRID_PLACES_PER_ELEMENT"] = std::to_string(mNNParams.featureHashMapPlacesPerElement);
+    defineList["FEATURE_HASH_GRID_PROBING_SIZE"] = std::to_string(mNNParams.featureHashMapProbingSize);
 
     if (!mPasses[TRAIN_NN_FILL_CACHE_PASS] && (mRHCParams.active || mNNParams.active))
     {
@@ -296,6 +297,7 @@ void ComputePathTracer::setupData(RenderContext* pRenderContext)
     if (!mBuffers[NN_GRADIENT_COUNT_BUFFER]) mBuffers[NN_GRADIENT_COUNT_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
     mNNParams.gradientAuxElements = mNNParams.nnParamCount * 4;
     if (!mBuffers[NN_GRADIENT_AUX_BUFFER]) mBuffers[NN_GRADIENT_AUX_BUFFER] = mpDevice->createBuffer(mNNParams.gradientAuxElements * sizeof(float));
+    if (!mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER]) mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER] = mpDevice->createStructuredBuffer(sizeof(uint64_t), mNNParams.featureHashMapSize / mNNParams.featureHashMapPlacesPerElement);
 }
 
 void ComputePathTracer::setupBuffers()
@@ -331,6 +333,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
             var["PrimalBuffer"] = mBuffers[NN_PRIMAL_BUFFER];
             var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
             var["GradientCountBuffer"] = mBuffers[NN_GRADIENT_COUNT_BUFFER];
+            var["gFeatureHashGridEntriesBuffer"] = mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER];
         }
         var[kInputVBuffer.texname] = renderData.getTexture(kInputVBuffer.name);
         var[kInputViewDir.texname] = renderData.getTexture(kInputViewDir.name);
@@ -373,6 +376,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
             var["PrimalBuffer"] = mBuffers[NN_FILTERED_PRIMAL_BUFFER];
             var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
             var["GradientCountBuffer"] = mBuffers[NN_GRADIENT_COUNT_BUFFER];
+            var["gFeatureHashGridEntriesBuffer"] = mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER];
         }
         for (auto channel : kInputChannels) var[channel.texname] = renderData.getTexture(channel.name);
         var[kOutputColor.texname] = renderData.getTexture(kOutputColor.name);
@@ -403,6 +407,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["PrimalBuffer"] = mBuffers[NN_PRIMAL_BUFFER];
         var["FilteredPrimalBuffer"] = mBuffers[NN_FILTERED_PRIMAL_BUFFER];
         var["GradientAuxBuffer"] = mBuffers[NN_GRADIENT_AUX_BUFFER];
+        var["gFeatureHashGridEntriesBuffer"] = mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER];
         mpPixelDebug->prepareProgram(mPasses[NN_RESET_PASS]->getProgram(), var);
     }
     if (mNNParams.active && mNNParams.nircDebug)
@@ -416,6 +421,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         mpScene->bindShaderData(var["gScene"]);
         mpSampleGenerator->bindShaderData(var);
         var["PrimalBuffer"] = mBuffers[NN_FILTERED_PRIMAL_BUFFER];
+        var["gFeatureHashGridEntriesBuffer"] = mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER];
         var[kInputVBuffer.texname] = renderData.getTexture(kInputVBuffer.name);
         var[kInputViewDir.texname] = renderData.getTexture(kInputViewDir.name);
         var[kNIRCDebugOutputColor.texname] = renderData.getTexture(kNIRCDebugOutputColor.name);
@@ -607,6 +613,10 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         ImGui::InputFloat("min", &mNNParams.weightInitBound.x, 0.0f, 0.0f, "%.6f");
         ImGui::InputFloat("max", &mNNParams.weightInitBound.y, 0.0f, 0.0f, "%.6f");
         ImGui::InputInt("training bounces", &mNNParams.trainingBounces);
+        ImGui::Separator();
+        ImGui::Text("input encoding");
+        ImGui::InputInt("hash enc probing size", &mNNParams.featureHashMapProbingSize);
+        nn_group.tooltip("The number of slots that are tested when the current slot is occupied.", true);
         ImGui::PopItemWidth();
         mNNParams.reset |= widget.button("Reset nn");
         ImGui::Separator();

@@ -78,6 +78,7 @@ private:
         NN_GRADIENT_COUNT_BUFFER = 6,
         NN_GRADIENT_AUX_BUFFER = 7,
         LOSS_SUM_BUFFER = 8,
+        FEATURE_HASH_GRID_ENTRIES_BUFFER = 9,
         BUFFER_COUNT
     };
 
@@ -214,9 +215,10 @@ private:
         bool debugOutput = false;
         bool nircDebug = false;
         bool keepThreads = false;
-        uint featureHashMapSize = std::pow(2, 22);
-        // how many numbers one element in the hash map contains
-        uint featureHashMapPlacesPerElement = 2;
+        const uint featureHashMapSize = std::pow(2, 22);
+        // how many numbers one element in the hash map contains (how many feature values for each level)
+        const uint featureHashMapPlacesPerElement = 2;
+        int featureHashMapProbingSize = 0;
 
         void update()
         {
