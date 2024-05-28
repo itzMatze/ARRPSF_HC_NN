@@ -411,7 +411,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     const ThreadInfo thread_info = ThreadInfo(groupThreadId.xy, int2(32, 4));
     uint param_offset = 0; uint grad_offset = 0;
     gMlp0 = MLPModule0(param_offset, grad_offset, thread_info);
-    FeatureHashGridData featureHashGrid = FeatureHashGridData(param_offset, grad_offset);
+    FeatureHashGrid featureHashGrid = FeatureHashGrid(param_offset, grad_offset);
     const HitInfo hit = HitInfo(gVBuffer[gDebugPixel]);
     if (hit.getType() != HitType::Triangle) mainThread = false;
     float3 normal = float3(1.0);

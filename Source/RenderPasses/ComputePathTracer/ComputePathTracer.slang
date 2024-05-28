@@ -113,7 +113,7 @@ struct ScatterRayData
     float spread;
 #endif
 #if NN_QUERY
-    FeatureHashGridData featureHashGrid;
+    FeatureHashGrid featureHashGrid;
 #endif
     float3 radiance;  ///< Accumulated outgoing radiance from path.
     float3 thp;       ///< Current path throughput. This is updated at each path vertex.
@@ -671,7 +671,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     const ThreadInfo thread_info = ThreadInfo(groupThreadId.xy, int2(32, 4));
     uint param_offset = 0; uint grad_offset = 0;
     gMlp0 = MLPModule0(param_offset, grad_offset, thread_info);
-    rayData.featureHashGrid = FeatureHashGridData(param_offset, grad_offset);
+    rayData.featureHashGrid = FeatureHashGrid(param_offset, grad_offset);
 #endif
     float3 outputColor = float3(0.0, 1.0, 0.0);
     outputColor = tracePath(gPixel, gFrameDim, rayData);

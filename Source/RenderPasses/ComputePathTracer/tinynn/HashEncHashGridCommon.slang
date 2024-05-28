@@ -1,7 +1,7 @@
-#include "TinynnTensorview.hlsli"
 import Utils.Debug.PixelDebug;
 
 typedef uint64_t HashKey;
+static const uint sizeofHashKey = 8;
 
 static const uint kHashGridPositionBitNum = 14;
 static const uint kHashGridPositionBitMask = ((1u << kHashGridPositionBitNum) - 1);
@@ -13,20 +13,14 @@ static const uint kHashGridNormalBitNum = 3;
 static const uint kHashGridNormalBitMask = ((1u << kHashGridNormalBitNum) - 1);
 static const float kHashCacheGridLogarithmBase = 2.0f;
 static const float kHashCacheSceneScale = 60.0f;
-static const uint kFeatureHashGridSize = FEATURE_HASH_GRID_SIZE;
-static const uint kFeatureHashGridPlacesPerElement = FEATURE_HASH_GRID_PLACES_PER_ELEMENT;
 
 struct FeatureHashGridData
 {
     uint capacity;
-    TensorView dataView;
 
-    __init(inout uint param_offset, inout uint grad_offset)
+    __init(uint capacity)
     {
-        this.capacity = kFeatureHashGridSize / kFeatureHashGridPlacesPerElement;
-        dataView = TensorView(param_offset, grad_offset, 32, 32);
-        param_offset += kFeatureHashGridSize * kFeatureHashGridPlacesPerElement;
-        grad_offset += kFeatureHashGridSize * kFeatureHashGridPlacesPerElement;
+        this.capacity = capacity;
     }
 
     float LogBase(float x, float base)
@@ -97,7 +91,7 @@ struct FeatureHashGridData
     {
         const HashKey hashKey = ComputeSpatialHash(samplePosition, sampleDirection, sampleNormal, level);
         uint hash = Hash32(hashKey);
-        uint slot = (hash % capacity) * kFeatureHashGridPlacesPerElement;
+        uint slot = (hash % capacity);
         return slot;
     }
 

@@ -4,7 +4,7 @@
 import Utils.Debug.PixelDebug;
 
 #include "TinynnHalfLinear.hlsli"
-#include "HashEncHashGridCommon.slang"
+#include "HashEncCommon.slang"
 
 [Differentiable]
 void shEnc<let KDegree : int, let N : int>(float3 dir, out float16_t[N] vals)
@@ -125,7 +125,7 @@ HalfFeature<32> computeHashEncFeature(
     no_diff float3 pos,
     no_diff float3 dir,
     no_diff float3 normal,
-    no_diff FeatureHashGridData featureHashGrid,
+    no_diff FeatureHashGrid featureHashGrid,
 ) {
     HalfFeature<32> feature;
     uint offset = 0;
