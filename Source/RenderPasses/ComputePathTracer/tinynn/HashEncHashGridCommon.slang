@@ -100,6 +100,28 @@ struct FeatureHashGridData
         return hashKey;
     }
 
+    uint InsertEntry(float3 samplePosition, float3 sampleDirection, float3 sampleNormal, uint level)
+    {
+        const HashKey hashKey = ComputeSpatialHash(samplePosition, sampleDirection, sampleNormal, level);
+        uint hash = Hash32(hashKey);
+        uint slot = (hash % capacity);
+#if FEATURE_HASH_GRID_PROBING_SIZE > 0
+        HashKey prevHashKey = kHashGridInvalidHashKey;
+        // search for slot that is empty or occupied with the same hash
+        // if no such slot is found, produce collision on the first slot
+        for (uint bucketOffset = 0; (bucketOffset <= kFeatureHashGridProbingSize) && (slot + bucketOffset < capacity); ++bucketOffset)
+        {
+            gFeatureHashGridEntriesBuffer.InterlockedCompareExchangeU64((slot + bucketOffset) * sizeofHashKey, kHashGridInvalidHashKey, hashKey, prevHashKey);
+            if (prevHashKey == kHashGridInvalidHashKey || prevHashKey == hashKey)
+            {
+                slot += bucketOffset;
+                break;
+            }
+        }
+#endif
+        return slot;
+    }
+
     uint FindEntry(float3 samplePosition, float3 sampleDirection, float3 sampleNormal, uint level)
     {
         const HashKey hashKey = ComputeSpatialHash(samplePosition, sampleDirection, sampleNormal, level);
@@ -111,8 +133,8 @@ struct FeatureHashGridData
         // if no such slot is found, produce collision on the first slot
         for (uint bucketOffset = 0; (bucketOffset <= kFeatureHashGridProbingSize) && (slot + bucketOffset < capacity); ++bucketOffset)
         {
-            gFeatureHashGridEntriesBuffer.InterlockedCompareExchangeU64(slot + bucketOffset, kHashGridInvalidHashKey, hashKey, prevHashKey);
-            if (prevHashKey == kHashGridInvalidHashKey || prevHashKey == hashKey)
+            HashKey storedHashKey = gFeatureHashGridEntriesBuffer.Load<HashKey>((slot + bucketOffset) * sizeofHashKey);
+            if (storedHashKey == hashKey)
             {
                 slot += bucketOffset;
                 break;

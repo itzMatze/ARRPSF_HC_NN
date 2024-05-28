@@ -6,7 +6,9 @@ import Utils.Debug.PixelDebug;
 #include "TinynnHalfLinear.hlsli"
 #include "HashEncCommon.slang"
 
+#if NN_TRAIN
 [Differentiable]
+#endif
 void shEnc<let KDegree : int, let N : int>(float3 dir, out float16_t[N] vals)
 {
     // https://github.com/nvlabs/tiny-cuda-nn
@@ -88,7 +90,9 @@ void shEnc<let KDegree : int, let N : int>(float3 dir, out float16_t[N] vals)
 	vals[63] = float16_t(0.70716273252459627f*dir.x*(-35.0f*x2*y4 + 21.0f*x4*y2 - x6 + 7.0f*y6));                              // 3*sqrt(715)*x*(-35*x2*y4 + 21*x4*y2 - x6 + 7*y6)/(64*sqrt(pi))
 }
 
+#if NN_TRAIN
 [Differentiable]
+#endif
 HalfFeature<32> computeFreqEncFeature(
     no_diff float3 pos,
     no_diff float3 dir,
@@ -120,7 +124,9 @@ HalfFeature<32> computeFreqEncFeature(
     return feature;
 }
 
+#if NN_TRAIN
 [Differentiable]
+#endif
 HalfFeature<32> computeHashEncFeature(
     no_diff float3 pos,
     no_diff float3 dir,
@@ -134,7 +140,11 @@ HalfFeature<32> computeHashEncFeature(
     [ForceUnroll]
     for (uint i = 0; i < 8; i++)
     {
-        uint idx = no_diff featureHashGrid.FindEntry(pos, dir, normal, i);
+#if NN_TRAIN
+        uint idx = no_diff featureHashGrid.InsertEntry(pos, dir, normal, i);
+#else
+        uint idx = featureHashGrid.FindEntry(pos, dir, normal, i);
+#endif
         feature.vals[offset++] = float16_t(featureHashGrid.dataView.load_prim(idx));
         feature.vals[offset++] = float16_t(featureHashGrid.dataView.load_prim(idx + 1));
     }
