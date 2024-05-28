@@ -291,13 +291,16 @@ void ComputePathTracer::setupData(RenderContext* pRenderContext)
         if (!mBuffers[R_HC_VOXEL_DATA_BUFFER_0]) mBuffers[R_HC_VOXEL_DATA_BUFFER_0] = mpDevice->createBuffer(16 * mRHCParams.hashMapSize);
         if (!mBuffers[R_HC_VOXEL_DATA_BUFFER_1]) mBuffers[R_HC_VOXEL_DATA_BUFFER_1] = mpDevice->createBuffer(16 * mRHCParams.hashMapSize);
     }
-    if (!mBuffers[NN_PRIMAL_BUFFER]) mBuffers[NN_PRIMAL_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
-    if (!mBuffers[NN_FILTERED_PRIMAL_BUFFER]) mBuffers[NN_FILTERED_PRIMAL_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
-    if (!mBuffers[NN_GRADIENT_BUFFER]) mBuffers[NN_GRADIENT_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
-    if (!mBuffers[NN_GRADIENT_COUNT_BUFFER]) mBuffers[NN_GRADIENT_COUNT_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
-    mNNParams.gradientAuxElements = mNNParams.nnParamCount * 4;
-    if (!mBuffers[NN_GRADIENT_AUX_BUFFER]) mBuffers[NN_GRADIENT_AUX_BUFFER] = mpDevice->createBuffer(mNNParams.gradientAuxElements * sizeof(float));
-    if (mNNParams.featureHashMapProbingSize > 0 && !mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER]) mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER] = mpDevice->createStructuredBuffer(sizeof(uint64_t), mNNParams.featureHashMapSize / mNNParams.featureHashMapPlacesPerElement);
+    if (mNNParams.active)
+    {
+        if (!mBuffers[NN_PRIMAL_BUFFER]) mBuffers[NN_PRIMAL_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
+        if (!mBuffers[NN_FILTERED_PRIMAL_BUFFER]) mBuffers[NN_FILTERED_PRIMAL_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
+        if (!mBuffers[NN_GRADIENT_BUFFER]) mBuffers[NN_GRADIENT_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
+        if (!mBuffers[NN_GRADIENT_COUNT_BUFFER]) mBuffers[NN_GRADIENT_COUNT_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
+        mNNParams.gradientAuxElements = mNNParams.nnParamCount * 4;
+        if (!mBuffers[NN_GRADIENT_AUX_BUFFER]) mBuffers[NN_GRADIENT_AUX_BUFFER] = mpDevice->createBuffer(mNNParams.gradientAuxElements * sizeof(float));
+        if (mNNParams.featureHashMapProbingSize > 0 && !mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER]) mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER] = mpDevice->createStructuredBuffer(sizeof(uint64_t), mNNParams.featureHashMapSize / mNNParams.featureHashMapPlacesPerElement);
+    }
 }
 
 void ComputePathTracer::setupBuffers()
