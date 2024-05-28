@@ -15,7 +15,6 @@ static const HashKey kHashGridNormalBitMask = ((1u << kHashGridNormalBitNum) - 1
 static const HashKey kHashGridHashMapBucketSize = 32;
 static const HashKey kHashGridInvalidHashKey = 0;
 static const HashKey kHashGridInvalidIdx = 0xffffffff;
-static const bool kHashGridUseNormals = true;
 static const uint kHashGridLevelBias = 2; // positive bias adds extra levels with content magnification
 static const float3 kHashGridPositionOffset = float3(0.0f, 0.0f, 0.0f);
 static const float kHashCacheGridLogarithmBase = 2.0f;
@@ -69,87 +68,59 @@ struct HashMapData
     int4 CalculateGridPositionLog(float distance, float3 samplePosition, int levelOffset)
     {
         samplePosition += kHashGridPositionOffset;
-        uint  gridLevel    = GetGridLevel(distance) + levelOffset;
-        float voxelSize    = GetVoxelSize(gridLevel);
-        int3  gridPosition = floor(samplePosition / voxelSize);
+        uint gridLevel = GetGridLevel(distance) + levelOffset;
+        float voxelSize = GetVoxelSize(gridLevel);
+        int3 gridPosition = floor(samplePosition / voxelSize);
         return int4(gridPosition.xyz, gridLevel);
     }
 
     HashKey ComputeSpatialHash(float distance, float3 samplePosition, float3 sampleNormal, int levelOffset = 0)
     {
         uint4 gridPosition = asuint(CalculateGridPositionLog(distance, samplePosition, levelOffset));
-        HashKey hashKey = (((HashKey)gridPosition.x & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 0))
-                        | (((HashKey)gridPosition.y & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 1))
-                        | (((HashKey)gridPosition.z & kHashGridPositionBitMask) << (kHashGridPositionBitNum * 2))
-                        | (((HashKey)gridPosition.w & kHashGridLevelBitMask) << (kHashGridPositionBitNum * 3));
-
-        if (kHashGridUseNormals)
-        {
-            HashKey normalBits =
-                (sampleNormal.x >= 0 ? 1 : 0) +
-                (sampleNormal.y >= 0 ? 2 : 0) +
-                (sampleNormal.z >= 0 ? 4 : 0);
-
-            hashKey |= ((HashKey)normalBits << (kHashGridPositionBitNum * 3 + kHashGridLevelBitNum));
-        }
+        // | normal bits | level | pos.z | pos.y | pos.x |
+        HashKey hashKey = (sampleNormal.x >= 0 ? 1 : 0) + (sampleNormal.y >= 0 ? 2 : 0) + (sampleNormal.z >= 0 ? 4 : 0);
+        hashKey <<= kHashGridLevelBitNum;
+        hashKey |= ((HashKey)gridPosition.w & kHashGridLevelBitMask);
+        hashKey <<= kHashGridPositionBitNum;
+        hashKey |= ((HashKey)gridPosition.z & kHashGridPositionBitMask);
+        hashKey <<= kHashGridPositionBitNum;
+        hashKey |= ((HashKey)gridPosition.y & kHashGridPositionBitMask);
+        hashKey <<= kHashGridPositionBitNum;
+        hashKey |= ((HashKey)gridPosition.x & kHashGridPositionBitMask);
         return hashKey;
     }
 
-    void AtomicCompareExchange(in uint dstOffset, in HashKey compareValue, in HashKey value, out HashKey originalValue)
+    uint InsertEntry(float distance, float3 samplePosition, float3 sampleNormal, int levelOffset = 0)
     {
-        gRHCHashGridEntriesBuffer.InterlockedCompareExchangeU64(dstOffset * sizeofHashKey, compareValue, value, originalValue);
-    }
-
-    bool HashMapInsert(const HashKey hashKey, out uint cacheEntry)
-    {
-        uint    hash        = Hash32(hashKey);
-        uint    slot        = hash % capacity;
-        uint    initSlot    = slot;
+        const HashKey hashKey = ComputeSpatialHash(distance, samplePosition, sampleNormal, levelOffset);
+        const uint hash = Hash32(hashKey);
+        const uint slot = hash % capacity;
         HashKey prevHashKey = kHashGridInvalidHashKey;
         for (uint bucketOffset = 0; bucketOffset < kHashGridHashMapBucketSize && slot < capacity; ++bucketOffset)
         {
-            AtomicCompareExchange(slot + bucketOffset, kHashGridInvalidHashKey, hashKey, prevHashKey);
-
+            gRHCHashGridEntriesBuffer.InterlockedCompareExchangeU64((slot + bucketOffset) * sizeofHashKey, kHashGridInvalidHashKey, hashKey, prevHashKey);
             if (prevHashKey == kHashGridInvalidHashKey || prevHashKey == hashKey)
             {
-                cacheEntry = slot + bucketOffset;
-                return true;
+                return slot + bucketOffset;
             }
         }
-        cacheEntry = 0;
-        return false;
+        return kHashGridInvalidIdx;
     }
 
-    bool HashMapFind(const HashKey hashKey, inout uint cacheEntry)
+    uint FindEntry(float distance, float3 samplePosition, float3 sampleNormal)
     {
-        uint hash = Hash32(hashKey);
-        uint slot = hash % capacity;
+        const HashKey hashKey = ComputeSpatialHash(distance, samplePosition, sampleNormal);
+        const uint hash = Hash32(hashKey);
+        const uint slot = hash % capacity;
         for (uint bucketOffset = 0; bucketOffset < kHashGridHashMapBucketSize; ++bucketOffset)
         {
             HashKey storedHashKey = gRHCHashGridEntriesBuffer.Load<HashKey>((slot + bucketOffset) * sizeofHashKey);
             if (storedHashKey == hashKey)
             {
-                cacheEntry = slot + bucketOffset;
-                return true;
+                return slot + bucketOffset;
             }
         }
-        return false;
-    }
-
-    uint InsertEntry(float distance, float3 samplePosition, float3 sampleNormal, int levelOffset = 0)
-    {
-        uint idx = kHashGridInvalidIdx;
-        const HashKey hashKey = ComputeSpatialHash(distance, samplePosition, sampleNormal, levelOffset);
-        const bool successful = HashMapInsert(hashKey, idx);
-        return idx;
-    }
-
-    uint FindEntry(float distance, float3 samplePosition, float3 sampleNormal)
-    {
-        uint idx = kHashGridInvalidIdx;
-        const HashKey hashKey = ComputeSpatialHash(distance, samplePosition, sampleNormal);
-        const bool successful = HashMapFind(hashKey, idx);
-        return idx;
+        return kHashGridInvalidIdx;
     }
 
     // Debug functions
