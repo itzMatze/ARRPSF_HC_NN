@@ -25,6 +25,7 @@ cbuffer CB
     uint2 gDebugPixel;
     uint gFrameCount;
     bool gShowTransmission;
+    bool gApplyBSDF;
 }
 
 // Inputs
@@ -418,12 +419,15 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     float3 normal = float3(1.0);
     float3 pos = float3(1.0);
     float3 dir = float3(1.0);
+    ShadingData sd;
+    IMaterialInstance mi;
+    float3 outputColor;
     if (mainThread)
     {
         TriangleHit triangleHit = hit.getTriangleHit();
         let lod = ExplicitLodTextureSampler(0.f);
-        ShadingData sd = loadShadingData(triangleHit, -gViewW[gDebugPixel].xyz, lod);
-        IMaterialInstance mi = gScene.materials.getMaterialInstance(sd, lod);
+        sd = loadShadingData(triangleHit, -gViewW[gDebugPixel].xyz, lod);
+        mi = gScene.materials.getMaterialInstance(sd, lod);
         BSDFProperties bsdfProperties = mi.getProperties(sd);
         pos = sd.posW;
         normal = gShowTransmission ? -sd.getOrientedFaceNormal() : sd.getOrientedFaceNormal();
@@ -435,17 +439,33 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         ScatterRayData rayData = ScatterRayData(sg);
         rayData.origin = sd.computeRayOrigin(!gShowTransmission);
         rayData.direction = dir;
-        float3 outputColor = tracePath(uint2(width, height), rayData);
-        gNIRCDebugOutputColorRef[pixel] = float4(outputColor, 1.0f);
-        print("normal", normal);
+        outputColor = tracePath(uint2(width, height), rayData);
     }
-    float3 outputColor = float3(0.0, 1.0, 0.0);
+    float3 outputColorNIRC = float3(0.0, 1.0, 0.0);
     HalfFeature<32> feature = computeHashEncFeature(pos, dir, normal, featureHashGrid);
     //HalfFeature<32> feature = computeFreqEncFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir);
     HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
-    if (isnan(output.vals[0])) outputColor = float3(1.0, 0.0, 0.0);
-    else if (isinf(output.vals[0])) outputColor = float3(1.0, 0.0, 1.0);
-    else outputColor = float3(output.vals[0], output.vals[1], output.vals[2]);
-    if (mainThread) gNIRCDebugOutputColor[pixel] = float4(outputColor, 1.0f);
+    if (isnan(output.vals[0])) outputColorNIRC = float3(1.0, 0.0, 0.0);
+    else if (isinf(output.vals[0])) outputColorNIRC = float3(1.0, 0.0, 1.0);
+    else outputColorNIRC = float3(output.vals[0], output.vals[1], output.vals[2]);
+    if (mainThread && gApplyBSDF)
+    {
+        BSDFSample bsdfSample;
+        float3 weight;
+        // make delta lobes visible by manually setting the weight if current material uses delta lobe
+        if (mi.sample(sd, sg, bsdfSample, kUseImportanceSampling) && bsdfSample.isLobe(LobeType::Delta))
+        {
+            if (dot(dir, bsdfSample.wo) > 0.999) weight = float3(1.0);
+            else weight = float3(0.0);
+        }
+        else weight = mi.eval(sd, dir, sg);
+        outputColorNIRC *= weight;
+        outputColor *= weight;
+    }
+    if (mainThread)
+    {
+        gNIRCDebugOutputColor[pixel] = float4(outputColorNIRC, 1.0f);
+        gNIRCDebugOutputColorRef[pixel] = float4(outputColor, 1.0f);
+    }
 }
 

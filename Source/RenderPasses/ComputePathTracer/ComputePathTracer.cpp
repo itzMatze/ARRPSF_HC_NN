@@ -419,6 +419,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["CB"]["gDebugPixel"] = mpPixelDebug->getSelectedPixel();
         var["CB"]["gFrameCount"] = mFrameCount;
         var["CB"]["gShowTransmission"] = mNNParams.nircDebugShowTransmission;
+        var["CB"]["gApplyBSDF"] = mNNParams.nircDebugApplyBSDF;
         if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
         if (mpEmissiveSampler) mpEmissiveSampler->bindShaderData(mpSamplerBlock->getRootVar()["emissiveSampler"]);
         var["gSampler"] = mpSamplerBlock;
@@ -614,6 +615,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         nn_group.checkbox("debug NN output", mNNParams.debugOutput);
         nn_group.checkbox("debug NIRC", mNNParams.nircDebug);
         nn_group.checkbox("NIRC debug show transmission", mNNParams.nircDebugShowTransmission);
+        nn_group.checkbox("NIRC debug apply bsdf", mNNParams.nircDebugApplyBSDF);
         ImGui::Text("Weight init bounds");
         ImGui::InputFloat("min", &mNNParams.weightInitBound.x, 0.0f, 0.0f, "%.6f");
         ImGui::InputFloat("max", &mNNParams.weightInitBound.y, 0.0f, 0.0f, "%.6f");
