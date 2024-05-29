@@ -214,6 +214,7 @@ private:
         int trainingBounces = 4;
         bool debugOutput = false;
         bool nircDebug = false;
+        bool nircDebugShowTransmission = false;
         bool keepThreads = false;
         const uint featureHashMapSize = std::pow(2, 22);
         // how many numbers one element in the hash map contains (how many feature values for each level)

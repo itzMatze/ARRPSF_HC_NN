@@ -24,6 +24,7 @@ cbuffer CB
 {
     uint2 gDebugPixel;
     uint gFrameCount;
+    bool gShowTransmission;
 }
 
 // Inputs
@@ -425,14 +426,14 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         IMaterialInstance mi = gScene.materials.getMaterialInstance(sd, lod);
         BSDFProperties bsdfProperties = mi.getProperties(sd);
         pos = sd.posW;
-        normal = sd.getOrientedFaceNormal();
+        normal = gShowTransmission ? -sd.getOrientedFaceNormal() : sd.getOrientedFaceNormal();
         float pitch = -M_PI_2 + (float(pixel.x) / float(height)) * M_PI;
         float yaw = -M_PI_2 + (float(pixel.y) / float(width)) * M_PI;
         dir = float3(cos(yaw) * cos(pitch), sin(yaw) * cos(pitch), sin(pitch));
         const matrix<float, 3, 3> rot = rotateAlign(float3(1.0, 0.0, 0.0), normal);
         dir = mul(rot, dir);
         ScatterRayData rayData = ScatterRayData(sg);
-        rayData.origin = sd.computeRayOrigin(true);
+        rayData.origin = sd.computeRayOrigin(!gShowTransmission);
         rayData.direction = dir;
         float3 outputColor = tracePath(uint2(width, height), rayData);
         gNIRCDebugOutputColorRef[pixel] = float4(outputColor, 1.0f);
