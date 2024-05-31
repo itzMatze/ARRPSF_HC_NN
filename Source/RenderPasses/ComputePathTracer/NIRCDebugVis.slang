@@ -24,6 +24,7 @@ cbuffer CB
 {
     uint2 gDebugPixel;
     uint gFrameCount;
+    uint gMLPIndex;
     bool gShowTransmission;
     bool gApplyBSDF;
 }
@@ -413,7 +414,11 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     const ThreadInfo thread_info = ThreadInfo(groupThreadId.xy, int2(32, 4));
     uint param_offset = 0; uint grad_offset = 0;
     gMlp0 = MLPModule0(param_offset, grad_offset, thread_info);
-    FeatureHashGrid featureHashGrid = FeatureHashGrid(param_offset, grad_offset);
+    FeatureHashGrid featureHashGrid0 = FeatureHashGrid(param_offset, grad_offset);
+#if MLP_COUNT > 1
+    gMlp1 = MLPModule1(param_offset, grad_offset, thread_info);
+    FeatureHashGrid featureHashGrid1 = FeatureHashGrid(param_offset, grad_offset);
+#endif
     const HitInfo hit = HitInfo(gVBuffer[gDebugPixel]);
     if (hit.getType() != HitType::Triangle) mainThread = false;
     float3 normal = float3(1.0);
@@ -442,9 +447,18 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         outputColor = tracePath(uint2(width, height), rayData);
     }
     float3 outputColorNIRC = float3(0.0, 1.0, 0.0);
-    HalfFeature<32> feature = computeHashEncFeature(pos, dir, normal, featureHashGrid);
-    //HalfFeature<32> feature = computeFreqEncFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir);
-    HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
+    HalfFeature<32> output;
+    if (gMLPIndex == 0)
+    {
+        HalfFeature<32> feature = computeHashEncFeature(pos, dir, normal, featureHashGrid0);
+        //HalfFeature<32> feature = computeFreqEncFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir);
+        output = MLPModule0.forward(gMlp0, feature);
+    }
+    else if (gMLPIndex == 1)
+    {
+        HalfFeature<32> feature = computeHashEncFeature(pos, dir, normal, featureHashGrid1);
+        output = MLPModule1.forward(gMlp1, feature);
+    }
     if (isnan(output.vals[0])) outputColorNIRC = float3(1.0, 0.0, 0.0);
     else if (isinf(output.vals[0])) outputColorNIRC = float3(1.0, 0.0, 1.0);
     else outputColorNIRC = float3(output.vals[0], output.vals[1], output.vals[2]);
