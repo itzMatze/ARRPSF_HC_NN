@@ -202,7 +202,7 @@ private:
             float param_1 = 0.999;
             float param_2 = 1e-08;
         } optimizerParams;
-        std::vector<int> nnLayerCount = {4};
+        std::vector<int> nnLayerCount = {1, 1};
         int mlpCount = nnLayerCount.size();
         Gui::DropdownList nnLayerWidthList{Gui::DropdownValue{16, "16"}, Gui::DropdownValue{32, "32"}};
         uint nnLayerWidth = 32;
@@ -211,9 +211,9 @@ private:
         int gradOffset = 0;
         float2 weightInitBound = float2(0.001, 0.02);
         float filterAlpha = 0.99;
-        int trainingBounces = 4;
         bool debugOutput = false;
         bool nircDebug = false;
+        int trainingBounces = 8;
         bool nircDebugShowTransmission = false;
         bool nircDebugApplyBSDF = false;
         int nircMLPIndex = 0;
@@ -227,7 +227,7 @@ private:
         {
             reset = true;
             optimizerParams.step_count = 0;
-            nnParamCount = ((nnLayerWidth * nnLayerWidth /*weights*/ + nnLayerWidth /*biases*/) * std::reduce(nnLayerCount.begin(), nnLayerCount.end()) + featureHashMapSize /*feature hash grid storage*/);
+            nnParamCount = ((nnLayerWidth * nnLayerWidth /*weights*/ + nnLayerWidth /*biases*/) * std::reduce(nnLayerCount.begin(), nnLayerCount.end()) + featureHashMapSize /*feature hash grid storage*/ * nnLayerCount.size() /*one feature hashmap per nn*/);
         }
     } mNNParams;
 

@@ -113,7 +113,10 @@ struct ScatterRayData
     float spread;
 #endif
 #if NN_QUERY
-    FeatureHashGrid featureHashGrid;
+    FeatureHashGrid featureHashGrid0;
+#if MLP_COUNT > 1
+    FeatureHashGrid featureHashGrid1;
+#endif
 #endif
     float3 radiance;  ///< Accumulated outgoing radiance from path.
     float3 thp;       ///< Current path throughput. This is updated at each path vertex.
@@ -310,7 +313,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         rayData.luminance_estimate = hcRadiance.x >= 0.0 ? luminance(hcRadiance) : 0.5;
 #elif RR_OPTION_BITS & (1u << 7)
         HalfFeature<32> feature;
-        if (!gDone) feature = computeHashEncFeature(sd.posW, rayData.direction, sd.getOrientedFaceNormal(), rayData.featureHashGrid);
+        if (!gDone) feature = computeHashEncFeature(sd.posW, rayData.direction, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
         //if (!gDone) feature = computeFreqEncFeature(sd.posW, rayData.direction);
         else
         {
@@ -390,14 +393,14 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     // evaluate nn for nee
     {
         HalfFeature<32> feature;
-        if (!gDone) feature = computeHashEncFeature(sd.posW, ls.dir, sd.getOrientedFaceNormal(), rayData.featureHashGrid);
+        if (!gDone) feature = computeHashEncFeature(sd.posW, ls.dir, sd.getOrientedFaceNormal(), rayData.featureHashGrid1);
         //if (!gDone) feature = computeFreqEncFeature(sd.posW, ls.dir);
         else
         {
             [ForceUnroll]
             for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
         }
-        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
+        HalfFeature<32> output = MLPModule1.forward(gMlp1, feature);
         MASK_BLOCK rayData.cur_radiance += (applyNEE && validSample) ? 0.5 * float3(output.vals[0], output.vals[1], output.vals[2]) * weight : 0.0;
     }
 #else
@@ -459,7 +462,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             if (kUseEmissiveLights && kUseNEE && kUseMIS && (rayData.numBounces + 1) > 0 && rayData.isLightSampled() && !rayData.isDeltaLobe()) misWeight = 0.5;
         }
         // evaluate nn for the bsdf sampled direction
-        if (!gDone) feature = computeHashEncFeature(sd.posW, bsdfSample.wo, sd.getOrientedFaceNormal(), rayData.featureHashGrid);
+        if (!gDone) feature = computeHashEncFeature(sd.posW, bsdfSample.wo, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
         //if (!gDone) feature = computeFreqEncFeature(sd.posW, bsdfSample.wo);
         else
         {
@@ -467,7 +470,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
         }
         HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
-        MASK_BLOCK rayData.cur_radiance += computeEmissive ? misWeight * float3(output.vals[0], output.vals[1], output.vals[2]) * bsdfSample.weight : 0.0;
+        MASK_BLOCK rayData.cur_radiance += computeEmissive ? float3(output.vals[0], output.vals[1], output.vals[2]) * bsdfSample.weight : 0.0;
         TERMINATE_PATH_0;
     }
 #endif
@@ -671,12 +674,16 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     const ThreadInfo thread_info = ThreadInfo(groupThreadId.xy, int2(32, 4));
     uint param_offset = 0; uint grad_offset = 0;
     gMlp0 = MLPModule0(param_offset, grad_offset, thread_info);
-    rayData.featureHashGrid = FeatureHashGrid(param_offset, grad_offset);
+    rayData.featureHashGrid0 = FeatureHashGrid(param_offset, grad_offset);
+#if MLP_COUNT > 1
+    gMlp1 = MLPModule1(param_offset, grad_offset, thread_info);
+    rayData.featureHashGrid1 = FeatureHashGrid(param_offset, grad_offset);
+#endif
 #endif
     float3 outputColor = float3(0.0, 1.0, 0.0);
     outputColor = tracePath(gPixel, gFrameDim, rayData);
 #if 0 //NN_DEBUG
-    HalfFeature<32> feature = computeHashEncFeature(gCamPos.xyz, -gViewW[gPixel].xyz, float3(1.0), rayData.featureHashGrid);
+    HalfFeature<32> feature = computeHashEncFeature(gCamPos.xyz, -gViewW[gPixel].xyz, float3(1.0), rayData.featureHashGrid0);
     //HalfFeature<32> feature = computeFreqEncFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir);
     HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
     if (isnan(output.vals[0])) outputColor = float3(1.0, 0.0, 0.0);
