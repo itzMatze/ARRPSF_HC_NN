@@ -15,8 +15,8 @@ struct FeatureHashGrid
         uint capacity = kFeatureHashGridSize / kFeatureHashGridPlacesPerElement;
         hashmap = FeatureHashGridData(capacity);
         dataView = TensorView(param_offset, grad_offset, 32, 32);
-        param_offset += kFeatureHashGridSize * kFeatureHashGridPlacesPerElement;
-        grad_offset += kFeatureHashGridSize * kFeatureHashGridPlacesPerElement;
+        param_offset += kFeatureHashGridSize;
+        grad_offset += kFeatureHashGridSize;
     }
 
     uint InsertEntry(float3 samplePosition, float3 sampleDirection, float3 sampleNormal, uint level)
