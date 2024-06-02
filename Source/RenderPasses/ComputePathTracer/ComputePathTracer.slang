@@ -332,6 +332,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         // if hc query was not successful use 0.5 as luminance
         rayData.luminance_estimate = hcRadiance.x >= 0.0 ? luminance(hcRadiance) : 0.5;
 #elif RR_OPTION_BITS & (1u << 7)
+#if USE_NIRC
         HalfFeature<32> feature;
         if (!gDone) feature = computeHashEncFeature(sd.posW, rayData.direction, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
         //if (!gDone) feature = computeFreqEncFeature(sd.posW, rayData.direction);
@@ -343,6 +344,19 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
         float3 nnRadiance = float3(output.vals[0], output.vals[1], output.vals[2]);
         rayData.luminance_estimate = luminance(nnRadiance);
+#elif USE_NRC
+        HalfFeature<32> feature;
+        if (!gDone) feature = computeHashEncFeature(sd.posW, -gViewW[gPixel].xyz, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
+        //HalfFeature<32> feature = computeFreqEncFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir);
+        else
+        {
+            [ForceUnroll]
+            for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
+        }
+        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
+        float3 nnRadiance = float3(output.vals[0], output.vals[1], output.vals[2]);
+        rayData.luminance_estimate = luminance(nnRadiance);
+#endif
 #endif
     }
 
@@ -455,7 +469,6 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         rayData.setDeltaLobe(bsdfSample.isLobe(LobeType::Delta));
         // prevent self-intersection
         rayData.origin = sd.computeRayOrigin(!bsdfSample.isLobe(LobeType::Transmission));
-        rayData.direction = bsdfSample.wo;
         // update rayData
         rayData.pdf = bsdfSample.pdf;
         rayData.normal = sd.getOrientedFaceNormal();
@@ -463,7 +476,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 #if NN_QUERY
         if (rayData.numBounces < kNNMaxTrainingBounces)
         {
-            nnHitInfoList[rayData.numBounces].dir = rayData.direction;
+            nnHitInfoList[rayData.numBounces].dir = bsdfSample.wo;
             nnHitInfoList[rayData.numBounces].pos = sd.posW;
             nnHitInfoList[rayData.numBounces].normal = rayData.normal;
             nnHitInfoList[rayData.numBounces].thp = rayData.cur_thp;
@@ -502,19 +515,33 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             radiance = float3(-1.0);
         }
 #elif RR_OPTION_BITS & (1u << 4)
+#if USE_NIRC
         HalfFeature<32> feature;
         if (!gDone)
         {
-            feature = computeFreqEncFeature(sd.posW, rayData.direction);
+            feature = computeHashEncFeature(sd.posW, bsdfSample.wo, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
         }
         else
         {
             [ForceUnroll]
             for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
         }
-        GroupMemoryBarrierWithGroupSync();
         HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
         radiance = float3(output.vals[0], output.vals[1], output.vals[2]);
+#elif USE_NRC
+        HalfFeature<32> feature;
+        if (!gDone)
+        {
+            feature = computeHashEncFeature(sd.posW, rayData.direction, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
+        }
+        else
+        {
+            [ForceUnroll]
+            for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
+        }
+        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
+        radiance = float3(output.vals[0], output.vals[1], output.vals[2]);
+#endif
 #endif
 #if RR_OPTION_BITS & (1u << 1)
         if (radiance.x >= 0.0)
@@ -537,6 +564,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 #endif
         MASK_BLOCK
         {
+            rayData.direction = bsdfSample.wo;
             if (sampleNext1D(rayData.sg) > survival_prob)
             {
                 // russian roulette not survived
@@ -558,6 +586,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     }
     MASK_BLOCK
     {
+        rayData.direction = bsdfSample.wo;
         return any(rayData.cur_thp > 0.f);
     }
 #if KEEP_THREADS

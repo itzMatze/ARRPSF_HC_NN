@@ -108,7 +108,7 @@ private:
     bool mMISUsePowerHeuristic = true;
     struct RRParams
     {
-        bool active = false;
+        bool active = true;
         Gui::DropdownList survivalProbOptionList{Gui::DropdownValue{SP_USE_DEFAULT, "default"}, Gui::DropdownValue{SP_USE_EXP_CONTRIB, "exp contrib"}, Gui::DropdownValue{SP_USE_ADRRS, "adrrs"}};
         uint survivalProbOption = SP_USE_DEFAULT;
         Gui::DropdownList pathContribEstimateOptionList{Gui::DropdownValue{PCE_USE_R_HC, "rhc"}, Gui::DropdownValue{PCE_USE_NN, "nn"}};
@@ -121,7 +121,7 @@ private:
         float probReductionFactor = 0.9f;
 
         uint getOptionBits() { return optionsBits; }
-        void update() { optionsBits = survivalProbOption | (requiresPCE() & pathContribEstimateOption) | (requiresPME() & pixelMeasurementEstimateOption); }
+        void update() { optionsBits = survivalProbOption | (requiresPCE() ? pathContribEstimateOption : 0u) | (requiresPME() ? pixelMeasurementEstimateOption : 0u); }
         bool requiresReductionParams() { return optionsBits & SP_USE_DEFAULT; }
         bool requiresPCE() { return optionsBits & PCE_REQUIRED_MASK; }
         bool requiresPME() { return optionsBits & PME_REQUIRED_MASK; }
