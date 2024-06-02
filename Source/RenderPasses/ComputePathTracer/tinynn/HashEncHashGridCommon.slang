@@ -76,11 +76,11 @@ struct FeatureHashGridData
     }
 
     // Based on logarithmic caching by Johannes Jendersie
-    int4 CalculateGridPositionLog(float3 samplePosition, uint level)
+    int3 CalculateGridPositionLog(float3 samplePosition, uint level)
     {
-        float voxelSize    = GetVoxelSize(level);
-        int3  gridPosition = floor(samplePosition / voxelSize);
-        return int4(gridPosition.xyz, level);
+        float voxelSize = GetVoxelSize(level);
+        int3 gridPosition = floor(samplePosition / voxelSize);
+        return gridPosition.xyz;
     }
 
     uint3 quantizeToBitRange(float3 input, uint max)
@@ -90,12 +90,12 @@ struct FeatureHashGridData
 
     HashKey ComputeSpatialHash(float3 samplePosition, float3 sampleDirection, float3 sampleNormal, uint level)
     {
-        uint4 gridPosition = asuint(CalculateGridPositionLog(samplePosition, level));
+        uint3 gridPosition = asuint(CalculateGridPositionLog(samplePosition, level));
         uint3 quantizedDir = quantizeToBitRange(sampleDirection, kHashGridDirectionBitMask);
         // | normal bits | level | pos.z | pos.y | pos.x | dir.z | dir.y | dir.x |
         HashKey hashKey = (sampleNormal.x >= 0 ? 1 : 0) + (sampleNormal.y >= 0 ? 2 : 0) + (sampleNormal.z >= 0 ? 4 : 0);
         hashKey <<= kHashGridLevelBitNum;
-        hashKey |= ((HashKey)gridPosition.w & kHashGridLevelBitMask);
+        hashKey |= ((HashKey)level & kHashGridLevelBitMask);
         hashKey <<= kHashGridPositionBitNum;
         hashKey |= ((HashKey)gridPosition.z & kHashGridPositionBitMask);
         hashKey <<= kHashGridPositionBitNum;

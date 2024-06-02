@@ -27,6 +27,7 @@ cbuffer CB
     uint gFrameCount;
     uint2 gFrameDim;
     float3 gCamPos;
+    int gHashEncDebugLevel;
 }
 
 // Inputs
@@ -255,6 +256,13 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         bsdfProperties = mi.getProperties(sd);
         if (rayData.t == 0.0) rayData.distance = distance(sd.posW, gCamPos);
         else rayData.distance += rayData.t;
+#if NN_QUERY
+        if (gHashEncDebugLevel >= 0)
+        {
+            rayData.cur_radiance = rayData.featureHashGrid0.hashmap.DebugColoredHash(sd.posW, -gViewW[gPixel].xyz, sd.getOrientedFaceNormal(), gHashEncDebugLevel);
+            TERMINATE_PATH_0;
+        }
+#endif
 #if NN_DEBUG && USE_NRC
         HalfFeature<32> feature = computeHashEncFeature(sd.posW, -gViewW[gPixel].xyz, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
         //HalfFeature<32> feature = computeFreqEncFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir);

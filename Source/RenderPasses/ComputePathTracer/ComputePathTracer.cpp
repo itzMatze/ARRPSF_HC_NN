@@ -364,6 +364,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["CB"]["gFrameDim"] = frameDim;
         var["CB"]["gFrameCount"] = mFrameCount;
         var["CB"]["gCamPos"] = mCamPos;
+        var["CB"]["gHashEncDebugLevel"] = mNNParams.featureHashMapDebugShowLevel;
         mpScene->bindShaderData(var["gScene"]);
         mpSampleGenerator->bindShaderData(var);
         if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
@@ -628,11 +629,13 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         nn_group.checkbox("debug NN output", mNNParams.debugOutput);
         if (mNNParams.nnMethod == NNParams::USE_NIRC)
         {
+            ImGui::Separator();
             ImGui::Text("NIRC debug pass");
             nn_group.checkbox("enable", mNNParams.nircDebugPass);
             ImGui::InputInt("mlp index", &mNNParams.nircDebugPassMLPIndex);
             nn_group.checkbox("show transmission", mNNParams.nircDebugPassShowTransmission);
             nn_group.checkbox("apply bsdf", mNNParams.nircDebugPassApplyBSDF);
+            ImGui::Separator();
         }
         ImGui::Text("Weight init bounds");
         ImGui::InputFloat("min", &mNNParams.weightInitBound.x, 0.0f, 0.0f, "%.6f");
@@ -640,9 +643,11 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         ImGui::InputInt("training bounces", &mNNParams.trainingBounces);
         ImGui::Separator();
         ImGui::Text("input encoding");
+        ImGui::InputInt("hash enc debug show level", &mNNParams.featureHashMapDebugShowLevel);
         ImGui::InputInt("hash enc probing size", &mNNParams.featureHashMapProbingSize);
         nn_group.tooltip("The number of slots that are tested when the current slot is occupied.", true);
         ImGui::PopItemWidth();
+        ImGui::Separator();
         mNNParams.reset |= widget.button("Reset nn");
         ImGui::Separator();
     }
