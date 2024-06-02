@@ -52,12 +52,12 @@ static const bool kDebugPathLength = DEBUG_PATH_LENGTH;
 static const bool kUseImportanceSampling = USE_IMPORTANCE_SAMPLING;
 static const bool kUseEnvBackground = USE_ENV_BACKGROUND;
 static const float3 kDefaultBackgroundColor = float3(0.0, 0.0, 0.05);
-static const uint kRHCHashMapSize = R_HC_HASHMAP_SIZE;
-static const uint kRHCDebugVoxels = R_HC_DEBUG_VOXELS;
-static const uint kRHCDebugColor = R_HC_DEBUG_COLOR;
-static const uint kRHCDebugLevels = R_HC_DEBUG_LEVELS;
-static const uint kRHCInjectRadianceRR = R_HC_INJECT_RADIANCE_RR;
-static const uint kRHCInjectRadianceSpread = R_HC_INJECT_RADIANCE_SPREAD;
+static const uint kHCHashMapSize = HC_HASHMAP_SIZE;
+static const uint kHCDebugVoxels = HC_DEBUG_VOXELS;
+static const uint kHCDebugColor = HC_DEBUG_COLOR;
+static const uint kHCDebugLevels = HC_DEBUG_LEVELS;
+static const uint kHCInjectRadianceRR = HC_INJECT_RADIANCE_RR;
+static const uint kHCInjectRadianceSpread = HC_INJECT_RADIANCE_SPREAD;
 static const uint kNNMaxTrainingBounces = NN_TRAINING_BOUNCES;
 
 #if NN_QUERY
@@ -108,8 +108,8 @@ static float2 gPixel;
 
 struct ScatterRayData
 {
-#if R_HC_QUERY
-    rhc::HashCacheState hashCacheState;
+#if HC_QUERY
+    hc::HashCacheState hashCacheState;
     float materialRoughness;
     float spread;
 #endif
@@ -244,8 +244,8 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     IMaterialInstance mi;
     TriangleHit triangleHit;
     BSDFProperties bsdfProperties;
-#if R_HC_QUERY
-    rhc::HashCacheHitData hashCacheHitData;
+#if HC_QUERY
+    hc::HashCacheHitData hashCacheHitData;
 #endif
     MASK_BLOCK
     {
@@ -275,29 +275,29 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         }
         TERMINATE_PATH_0;
 #endif
-#if R_HC_QUERY
+#if HC_QUERY
         // Construct HashCacheHitData structure needed for creating a query point at this hit location
         hashCacheHitData.positionWorld = sd.posW;
         hashCacheHitData.normalWorld = sd.getOrientedFaceNormal();
         hashCacheHitData.distance = rayData.distance;
         uint gridLevel = rayData.hashCacheState.hashMapData.GetGridLevel(hashCacheHitData.distance);
-        if (kRHCDebugLevels)
+        if (kHCDebugLevels)
         {
             // the actual max level is 1024 (see clamp in function)
             // however, the upper levels are never really used, thus use 8 to get meaningful visualization
             rayData.cur_radiance = colormapViridis(float(gridLevel) / 8.0f);
             return false;
         }
-        if (kRHCDebugVoxels || kRHCDebugColor)
+        if (kHCDebugVoxels || kHCDebugColor)
         {
             // debug active; voxel debug will fetch voxel visualization values, otherwise just get color
             float3 debugColor;
-            rhc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, debugColor, kRHCDebugVoxels);
+            hc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, debugColor, kHCDebugVoxels);
             rayData.cur_radiance = debugColor;
             return false;
         }
 
-        if (kRHCInjectRadianceSpread)
+        if (kHCInjectRadianceSpread)
         {
             float voxelSize = rayData.hashCacheState.hashMapData.GetVoxelSize(gridLevel);
             bool isValidHit = rayData.t > voxelSize * lerp(1.0f, 2.0f, sampleNext1D(rayData.sg));
@@ -309,7 +309,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             isValidHit &= rayData.numBounces > 0;
 
             float3 hashCacheRadiance;
-            if (isValidHit && rhc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
+            if (isValidHit && hc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
             {
                 rayData.cur_radiance += hashCacheRadiance;
                 TERMINATE_PATH_0; // Terminate the path once we've looked up into the cache
@@ -325,7 +325,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 #elif RR_OPTION_BITS & (1u << 6)
         float3 hcRadiance;
         // only use hc for survival prob if the hc is ready at the current position, otherwise signal that the query was not successful
-        if (!rhc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hcRadiance))
+        if (!hc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hcRadiance))
         {
             hcRadiance = float3(-1.0);
         }
@@ -510,7 +510,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         float3 radiance = float3(0.0);
 #if RR_OPTION_BITS & (1u << 3)
         // only use hc for survival prob if the hc is ready at the current position, otherwise signal that the query was not successful
-        if (!rhc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, radiance))
+        if (!hc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, radiance))
         {
             radiance = float3(-1.0);
         }
@@ -568,10 +568,10 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             if (sampleNext1D(rayData.sg) > survival_prob)
             {
                 // russian roulette not survived
-#if R_HC_INJECT_RADIANCE_RR
+#if HC_INJECT_RADIANCE_RR
                 float3 hashCacheRadiance;
                 // only actually terminate path if the hc is ready at the current position
-                if (rhc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
+                if (hc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
                 {
                     rayData.cur_radiance += hashCacheRadiance * rayData.cur_thp;
                     TERMINATE_PATH_0;
@@ -662,8 +662,8 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, ScatterRayData rayData
         TERMINATE_PATH_1;
     }
 
-#if R_HC_QUERY
-    rayData.hashCacheState.hashMapData.capacity = kRHCHashMapSize;
+#if HC_QUERY
+    rayData.hashCacheState.hashMapData.capacity = kHCHashMapSize;
     rayData.materialRoughness = 0.0f;
     rayData.spread = 0.0f;
 #endif

@@ -1,7 +1,7 @@
 import Utils.Debug.PixelDebug;
 
-#if R_HC_UPDATE || R_HC_QUERY
-namespace rhc
+#if HC_UPDATE || HC_QUERY
+namespace hc
 {
 typedef uint64_t HashKey;
 static const uint sizeofHashKey = 8;
@@ -20,7 +20,7 @@ static const float3 kHashGridPositionOffset = float3(0.0f, 0.0f, 0.0f);
 static const float kHashCacheGridLogarithmBase = 2.0f;
 static const float kHashCacheSceneScale = 60.0f;
 
-RWByteAddressBuffer gRHCHashGridEntriesBuffer;
+RWByteAddressBuffer gHCHashGridEntriesBuffer;
 
 float LogBase(float x, float base)
 {
@@ -29,7 +29,7 @@ float LogBase(float x, float base)
 
 void HashMapReset(const uint idx)
 {
-    gRHCHashGridEntriesBuffer.Store(idx * sizeofHashKey, HashKey(0));
+    gHCHashGridEntriesBuffer.Store(idx * sizeofHashKey, HashKey(0));
 }
 
 struct HashMapData
@@ -98,7 +98,7 @@ struct HashMapData
         HashKey prevHashKey = kHashGridInvalidHashKey;
         for (uint bucketOffset = 0; bucketOffset < kHashGridHashMapBucketSize && slot < capacity; ++bucketOffset)
         {
-            gRHCHashGridEntriesBuffer.InterlockedCompareExchangeU64((slot + bucketOffset) * sizeofHashKey, kHashGridInvalidHashKey, hashKey, prevHashKey);
+            gHCHashGridEntriesBuffer.InterlockedCompareExchangeU64((slot + bucketOffset) * sizeofHashKey, kHashGridInvalidHashKey, hashKey, prevHashKey);
             if (prevHashKey == kHashGridInvalidHashKey || prevHashKey == hashKey)
             {
                 return slot + bucketOffset;
@@ -114,7 +114,7 @@ struct HashMapData
         const uint slot = hash % capacity;
         for (uint bucketOffset = 0; bucketOffset < kHashGridHashMapBucketSize; ++bucketOffset)
         {
-            HashKey storedHashKey = gRHCHashGridEntriesBuffer.Load<HashKey>((slot + bucketOffset) * sizeofHashKey);
+            HashKey storedHashKey = gHCHashGridEntriesBuffer.Load<HashKey>((slot + bucketOffset) * sizeofHashKey);
             if (storedHashKey == hashKey)
             {
                 return slot + bucketOffset;
@@ -141,5 +141,5 @@ struct HashMapData
     }
 }
 }
-#endif // R_HC_UPDATE || R_HC_QUERY
+#endif // HC_UPDATE || HC_QUERY
 

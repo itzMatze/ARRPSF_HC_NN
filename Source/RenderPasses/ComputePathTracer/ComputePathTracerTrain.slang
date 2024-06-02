@@ -48,10 +48,10 @@ static const bool kDebugPathLength = DEBUG_PATH_LENGTH;
 static const bool kUseImportanceSampling = USE_IMPORTANCE_SAMPLING;
 static const bool kUseEnvBackground = USE_ENV_BACKGROUND;
 static const float3 kDefaultBackgroundColor = float3(0.0, 0.0, 0.05);
-static const uint kHCHashMapSize = R_HC_HASHMAP_SIZE;
-static const uint kHCDebugVoxels = R_HC_DEBUG_VOXELS;
-static const uint kHCDebugColor = R_HC_DEBUG_COLOR;
-static const uint kHCDebugLevels = R_HC_DEBUG_LEVELS;
+static const uint kHCHashMapSize = HC_HASHMAP_SIZE;
+static const uint kHCDebugVoxels = HC_DEBUG_VOXELS;
+static const uint kHCDebugColor = HC_DEBUG_COLOR;
+static const uint kHCDebugLevels = HC_DEBUG_LEVELS;
 static const uint kNNMaxTrainingBounces = NN_TRAINING_BOUNCES;
 
 #if NN_TRAIN
@@ -112,8 +112,8 @@ void updateNNHitInfoRadiance(float3 radiance, int bounce)
 
 struct ScatterRayData
 {
-#if R_HC_UPDATE
-    rhc::HashCacheState hashCacheState;
+#if HC_UPDATE
+    hc::HashCacheState hashCacheState;
     float materialRoughness;
     float spread;
 #endif
@@ -241,8 +241,8 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     IMaterialInstance mi;
     TriangleHit triangleHit;
     BSDFProperties bsdfProperties;
-#if R_HC_UPDATE
-    rhc::HashCacheHitData hashCacheHitData;
+#if HC_UPDATE
+    hc::HashCacheHitData hashCacheHitData;
 #endif
     triangleHit = hit.getTriangleHit();
     let lod = ExplicitLodTextureSampler(0.f);
@@ -251,7 +251,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     bsdfProperties = mi.getProperties(sd);
     if (rayData.t == 0.0) rayData.distance = distance(sd.posW, gCamPos);
     else rayData.distance += rayData.t;
-#if R_HC_UPDATE
+#if HC_UPDATE
     // Construct HashCacheHitData structure needed for creating a query point at this hit location
     hashCacheHitData.positionWorld = sd.posW;
     hashCacheHitData.normalWorld = sd.getOrientedFaceNormal();
@@ -332,8 +332,8 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         }
     }
 
-#if R_HC_UPDATE
-    rhc::hashCacheUpdateHit(rayData.hashCacheState, hashCacheHitData, rayData.cur_radiance);
+#if HC_UPDATE
+    hc::hashCacheUpdateHit(rayData.hashCacheState, hashCacheHitData, rayData.cur_radiance);
 #endif
 #if NN_TRAIN
     updateNNHitInfoRadiance(rayData.cur_radiance, rayData.numBounces);
@@ -376,9 +376,9 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     else nnHitInfoList[kNNMaxTrainingBounces - 1].thp *= rayData.cur_thp;
 #endif
     rayData.direction = bsdfSample.wo;
-#if R_HC_UPDATE
-    rhc::hashCacheSetThroughput(rayData.hashCacheState, rayData.cur_thp);
-#endif // R_HC_UPDATE
+#if HC_UPDATE
+    hc::hashCacheSetThroughput(rayData.hashCacheState, rayData.cur_thp);
+#endif // HC_UPDATE
     return any(rayData.cur_thp > 0.f);
 }
 
@@ -415,9 +415,9 @@ bool traceScatterRay(inout ScatterRayData rayData)
             float3 Le = gSampler.envMapSampler.eval(rayData.direction);
             rayData.cur_radiance += misWeight * Le;
         }
-#if R_HC_UPDATE
-        rhc::hashCacheUpdateMiss(rayData.hashCacheState, rayData.cur_radiance);
-#endif // R_HC_UPDATE
+#if HC_UPDATE
+        hc::hashCacheUpdateMiss(rayData.hashCacheState, rayData.cur_radiance);
+#endif // HC_UPDATE
 #if NN_TRAIN
         updateNNHitInfoRadiance(rayData.cur_radiance, rayData.numBounces);
 #endif // NN_TRAIN
@@ -456,12 +456,12 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, ScatterRayData rayData
         return outColor;
     }
 
-#if R_HC_UPDATE
+#if HC_UPDATE
     rayData.hashCacheState.hashMapData.capacity = kHCHashMapSize;
     rayData.materialRoughness = 0.0f;
     rayData.spread = 0.0f;
     rayData.hashCacheState.pathLength = 0;
-#endif // R_HC_UPDATE
+#endif // HC_UPDATE
     rayData.direction = -gViewW[pixel].xyz;
     if (!handleHit(hit, rayData)) return rayData.cur_radiance;
     rayData.numBounces++;

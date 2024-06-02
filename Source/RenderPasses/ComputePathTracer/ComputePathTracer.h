@@ -69,9 +69,9 @@ private:
 
     enum // Buffer
     {
-        R_HC_HASH_GRID_ENTRIES_BUFFER = 0,
-        R_HC_VOXEL_DATA_BUFFER_0 = 1,
-        R_HC_VOXEL_DATA_BUFFER_1 = 2,
+        HC_HASH_GRID_ENTRIES_BUFFER = 0,
+        HC_VOXEL_DATA_BUFFER_0 = 1,
+        HC_VOXEL_DATA_BUFFER_1 = 2,
         NN_PRIMAL_BUFFER = 3,
         NN_FILTERED_PRIMAL_BUFFER = 4,
         NN_GRADIENT_BUFFER = 5,
@@ -85,8 +85,8 @@ private:
     enum // Passes
     {
         TRAIN_NN_FILL_CACHE_PASS = 0,
-        RHC_RESOLVE_PASS = 1,
-        RHC_RESET_PASS = 2,
+        HC_RESOLVE_PASS = 1,
+        HC_RESET_PASS = 2,
         PATH_TRACING_PASS = 3,
         NN_GRADIENT_CLEAR_PASS = 4,
         NN_GRADIENT_DESCENT_PASS = 5,
@@ -111,10 +111,10 @@ private:
         bool active = true;
         Gui::DropdownList survivalProbOptionList{Gui::DropdownValue{SP_USE_DEFAULT, "default"}, Gui::DropdownValue{SP_USE_EXP_CONTRIB, "exp contrib"}, Gui::DropdownValue{SP_USE_ADRRS, "adrrs"}};
         uint survivalProbOption = SP_USE_DEFAULT;
-        Gui::DropdownList pathContribEstimateOptionList{Gui::DropdownValue{PCE_USE_R_HC, "rhc"}, Gui::DropdownValue{PCE_USE_NN, "nn"}};
-        uint pathContribEstimateOption = PCE_USE_R_HC;
-        Gui::DropdownList pixelMeasurementEstimateOptionList{Gui::DropdownValue{PME_USE_REF, "ref"}, Gui::DropdownValue{PME_USE_R_HC, "rhc"}, Gui::DropdownValue{PME_USE_NN, "nn"}};
-        uint pixelMeasurementEstimateOption = PME_USE_R_HC;
+        Gui::DropdownList pathContribEstimateOptionList{Gui::DropdownValue{PCE_USE_HC, "hc"}, Gui::DropdownValue{PCE_USE_NN, "nn"}};
+        uint pathContribEstimateOption = PCE_USE_HC;
+        Gui::DropdownList pixelMeasurementEstimateOptionList{Gui::DropdownValue{PME_USE_REF, "ref"}, Gui::DropdownValue{PME_USE_HC, "hc"}, Gui::DropdownValue{PME_USE_NN, "nn"}};
+        uint pixelMeasurementEstimateOption = PME_USE_HC;
         // starting value for the survival probability of russian roulette
         float probStartValue = 1.2f;
         // factor by which the survival probability gets reduced
@@ -125,7 +125,7 @@ private:
         bool requiresReductionParams() { return optionsBits & SP_USE_DEFAULT; }
         bool requiresPCE() { return optionsBits & PCE_REQUIRED_MASK; }
         bool requiresPME() { return optionsBits & PME_REQUIRED_MASK; }
-        bool requiresRHC() { return (requiresPCE() && (optionsBits & PCE_USE_R_HC)) || (requiresPME() && (optionsBits & PME_USE_R_HC)); }
+        bool requiresHC() { return (requiresPCE() && (optionsBits & PCE_USE_HC)) || (requiresPME() && (optionsBits & PME_USE_HC)); }
         bool requiresNN() { return (requiresPCE() && (optionsBits & PCE_USE_NN)) || (requiresPME() && (optionsBits & PME_USE_NN)); }
     private:
         uint optionsBits = 0u;
@@ -140,7 +140,7 @@ private:
         enum PathContribEstimateOptions
         {
             PCE_REQUIRED_MASK = SP_USE_EXP_CONTRIB | SP_USE_ADRRS,
-            PCE_USE_R_HC = (1u << 3),
+            PCE_USE_HC = (1u << 3),
             PCE_USE_NN = (1u << 4),
         };
         // how to estimate the pixel measurement value
@@ -148,7 +148,7 @@ private:
         {
             PME_REQUIRED_MASK = SP_USE_ADRRS,
             PME_USE_REF = (1u << 5),
-            PME_USE_R_HC = (1u << 6),
+            PME_USE_HC = (1u << 6),
             PME_USE_NN = (1u << 7),
         };
     } mRRParams;
@@ -164,15 +164,15 @@ private:
     std::unique_ptr<PixelDebug> mpPixelDebug;
 
 // Hash Cache
-    struct RHCParams
+    struct HCParams
     {
         bool active = false;
         bool reset = true;
         uint hashMapSizeExp = 22;
         uint hashMapSize = std::pow(2u, hashMapSizeExp);
-        // inject radiance estimate of RHC on rr termination of path instead of using rr weight
+        // inject radiance estimate of HC on rr termination of path instead of using rr weight
         bool injectRadianceRR = false;
-        // terminate the path if the roughness of surfaces blur the inaccuracy of the rhc
+        // terminate the path if the roughness of surfaces blur the inaccuracy of the hc
         bool injectRadianceSpread = false;
         bool debugVoxels = false;
         bool debugColor = false;
@@ -183,7 +183,7 @@ private:
             reset = true;
             hashMapSize = std::pow(2, hashMapSizeExp);
         }
-    } mRHCParams;
+    } mHCParams;
 
 // NN
     struct NNParams
