@@ -255,6 +255,18 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         bsdfProperties = mi.getProperties(sd);
         if (rayData.t == 0.0) rayData.distance = distance(sd.posW, gCamPos);
         else rayData.distance += rayData.t;
+#if NN_DEBUG && USE_NRC
+        HalfFeature<32> feature = computeHashEncFeature(sd.posW, -gViewW[gPixel].xyz, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
+        //HalfFeature<32> feature = computeFreqEncFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir);
+        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
+        MASK_BLOCK
+        {
+            if (isnan(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 0.0);
+            else if (isinf(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 1.0);
+            else rayData.cur_radiance = float3(output.vals[0], output.vals[1], output.vals[2]);
+        }
+        TERMINATE_PATH_0;
+#endif
 #if R_HC_QUERY
         // Construct HashCacheHitData structure needed for creating a query point at this hit location
         hashCacheHitData.positionWorld = sd.posW;
@@ -675,33 +687,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
 #endif
 #endif
     float3 outputColor = float3(0.0, 1.0, 0.0);
-#if NN_DEBUG && USE_NRC
-    const HitInfo hit = HitInfo(gVBuffer[gPixel]);
-    if (!hit.isValid() || hit.getType() != HitType::Triangle) gDone = true;
-    ShadingData sd;
-    IMaterialInstance mi;
-    TriangleHit triangleHit;
-    BSDFProperties bsdfProperties;
-    MASK_BLOCK
-    {
-        triangleHit = hit.getTriangleHit();
-        let lod = ExplicitLodTextureSampler(0.f);
-        sd = loadShadingData(triangleHit, rayData.direction, lod);
-        mi = gScene.materials.getMaterialInstance(sd, lod);
-        bsdfProperties = mi.getProperties(sd);
-    }
-    HalfFeature<32> feature = computeHashEncFeature(sd.posW, -gViewW[gPixel].xyz, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
-    //HalfFeature<32> feature = computeFreqEncFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir);
-    HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
-    MASK_BLOCK
-    {
-        if (isnan(output.vals[0])) outputColor = float3(1.0, 0.0, 0.0);
-        else if (isinf(output.vals[0])) outputColor = float3(1.0, 0.0, 1.0);
-        else outputColor = float3(output.vals[0], output.vals[1], output.vals[2]);
-    }
-#else
     outputColor = tracePath(gPixel, gFrameDim, rayData);
-#endif
     gOutputColor[gPixel] = float4(outputColor, 1.0f);
 }
 
