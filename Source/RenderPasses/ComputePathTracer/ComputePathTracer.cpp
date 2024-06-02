@@ -495,19 +495,29 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         mNNParams.reset = false;
         mPasses[NN_RESET_PASS]->execute(pRenderContext, std::max(mNNParams.gradientAuxElements, mNNParams.nnParamCount), 1);
     }
-    for (uint32_t i = 0; i < 4; i++)
     {
-        if (mNNParams.active) mPasses[NN_GRADIENT_CLEAR_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
-        if (mRHCParams.active || mNNParams.active)
+        FALCOR_PROFILE(pRenderContext, "ComputePathTracer::training");
+        for (uint32_t i = 0; i < 4; i++)
         {
-            mPasses[TRAIN_NN_FILL_CACHE_PASS]->getRootVar()["CB"]["gTrainIteration"] = i;
-            mPasses[TRAIN_NN_FILL_CACHE_PASS]->execute(pRenderContext, frameDim.x / 10, frameDim.y / 10);
+            if (mNNParams.active) mPasses[NN_GRADIENT_CLEAR_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
+            if (mRHCParams.active || mNNParams.active)
+            {
+                mPasses[TRAIN_NN_FILL_CACHE_PASS]->getRootVar()["CB"]["gTrainIteration"] = i;
+                mPasses[TRAIN_NN_FILL_CACHE_PASS]->execute(pRenderContext, frameDim.x / 10, frameDim.y / 10);
+            }
+            if (mNNParams.active) mPasses[NN_GRADIENT_DESCENT_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
         }
-        if (mNNParams.active) mPasses[NN_GRADIENT_DESCENT_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
+        if (mRHCParams.active) mPasses[RHC_RESOLVE_PASS]->execute(pRenderContext, mRHCParams.hashMapSize, 1);
     }
-    if (mRHCParams.active) mPasses[RHC_RESOLVE_PASS]->execute(pRenderContext, mRHCParams.hashMapSize, 1);
-    mPasses[PATH_TRACING_PASS]->execute(pRenderContext, frameDim.x, frameDim.y);
-    if (mNNParams.active && mNNParams.nircDebug) mPasses[NIRC_DEBUG_PASS]->execute(pRenderContext, kNIRCDebugOutputDim.x, kNIRCDebugOutputDim.y);
+    {
+        FALCOR_PROFILE(pRenderContext, "ComputePathTracer::pt");
+        mPasses[PATH_TRACING_PASS]->execute(pRenderContext, frameDim.x, frameDim.y);
+    }
+    if (mNNParams.active && mNNParams.nircDebug)
+    {
+        FALCOR_PROFILE(pRenderContext, "ComputePathTracer::nirc_debug");
+        mPasses[NIRC_DEBUG_PASS]->execute(pRenderContext, kNIRCDebugOutputDim.x, kNIRCDebugOutputDim.y);
+    }
     mpPixelDebug->endFrame(pRenderContext);
     mFrameCount++;
     mNNParams.optimizerParams.step_count++;
