@@ -206,17 +206,24 @@ private:
         int mlpCount = nnLayerCount.size();
         Gui::DropdownList nnLayerWidthList{Gui::DropdownValue{16, "16"}, Gui::DropdownValue{32, "32"}};
         uint nnLayerWidth = 32;
+
+        enum NNMethods {
+            USE_NIRC = 0,
+            USE_NRC = 1
+        };
+        Gui::DropdownList nnMethodList{Gui::DropdownValue{USE_NIRC, "nirc"}, Gui::DropdownValue{USE_NRC, "nrc"}};
+        uint nnMethod = USE_NIRC;
         uint nnParamCount = 0;
         uint gradientAuxElements = 0;
         int gradOffset = 0;
         float2 weightInitBound = float2(0.001, 0.02);
         float filterAlpha = 0.99;
-        bool debugOutput = false;
-        bool nircDebug = false;
         int trainingBounces = 8;
-        bool nircDebugShowTransmission = false;
-        bool nircDebugApplyBSDF = false;
-        int nircMLPIndex = 0;
+        bool debugOutput = false;
+        bool nircDebugPass = false;
+        bool nircDebugPassShowTransmission = false;
+        int nircDebugPassMLPIndex = 0;
+        bool nircDebugPassApplyBSDF = false;
         bool keepThreads = false;
         const uint featureHashMapSize = std::pow(2, 22);
         // how many numbers one element in the hash map contains (how many feature values for each level)
@@ -228,6 +235,7 @@ private:
             reset = true;
             optimizerParams.step_count = 0;
             nnParamCount = ((nnLayerWidth * nnLayerWidth /*weights*/ + nnLayerWidth /*biases*/) * std::reduce(nnLayerCount.begin(), nnLayerCount.end()) + featureHashMapSize /*feature hash grid storage*/ * nnLayerCount.size() /*one feature hashmap per nn*/);
+            if (nnMethod != USE_NIRC) nircDebugPass = false;
         }
     } mNNParams;
 

@@ -3,6 +3,7 @@ import Utils.Debug.PixelDebug;
 typedef uint64_t HashKey;
 static const uint sizeofHashKey = 8;
 
+#if USE_NIRC
 static const HashKey kHashGridPositionBitNum = 14;
 static const HashKey kHashGridPositionBitMask = ((1u << kHashGridPositionBitNum) - 1);
 static const HashKey kHashGridDirectionBitNum = 4;
@@ -11,6 +12,16 @@ static const HashKey kHashGridLevelBitNum = 7;
 static const HashKey kHashGridLevelBitMask = ((1u << kHashGridLevelBitNum) - 1);
 static const HashKey kHashGridNormalBitNum = 3;
 static const HashKey kHashGridNormalBitMask = ((1u << kHashGridNormalBitNum) - 1);
+#elif USE_NRC
+static const HashKey kHashGridPositionBitNum = 17;
+static const HashKey kHashGridPositionBitMask = ((1u << kHashGridPositionBitNum) - 1);
+static const HashKey kHashGridDirectionBitNum = 0;
+static const HashKey kHashGridDirectionBitMask = ((1u << kHashGridDirectionBitNum) - 1);
+static const HashKey kHashGridLevelBitNum = 10;
+static const HashKey kHashGridLevelBitMask = ((1u << kHashGridLevelBitNum) - 1);
+static const HashKey kHashGridNormalBitNum = 3;
+static const HashKey kHashGridNormalBitMask = ((1u << kHashGridNormalBitNum) - 1);
+#endif
 static const float kHashCacheGridLogarithmBase = 2.0f;
 static const float kHashCacheSceneScale = 60.0f;
 static const uint kFeatureHashGridProbingSize = FEATURE_HASH_GRID_PROBING_SIZE;

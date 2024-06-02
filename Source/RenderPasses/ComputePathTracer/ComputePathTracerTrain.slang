@@ -91,6 +91,7 @@ static MLPModule2 gMlp2;
 #if NN_TRAIN
 void updateNNHitInfoRadiance(float3 radiance, int bounce)
 {
+#if USE_NIRC
     // in nirc emitted radiance is applied as incident radiance to the previous position
     bounce -= 1;
     // found light, propagate it through the path
@@ -98,6 +99,12 @@ void updateNNHitInfoRadiance(float3 radiance, int bounce)
     {
         // light is emitted at current vertex; so, its not reflected by the bsdf
         if (i != bounce) radiance *= nnHitInfoList[i + 1].thp;
+#elif USE_NRC
+    for (int i = min(kNNMaxTrainingBounces - 1, bounce); i >= 0; i--)
+    {
+        // light is emitted at current vertex; so, its not reflected by the bsdf
+        if (i != bounce) radiance *= nnHitInfoList[i].thp;
+#endif
         nnHitInfoList[i].radiance += radiance;
     }
 }
@@ -342,7 +349,6 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     rayData.origin = sd.computeRayOrigin(!bsdfSample.isLobe(LobeType::Transmission));
     // update rayData
     rayData.pdf = bsdfSample.pdf;
-    rayData.direction = bsdfSample.wo;
     rayData.normal = sd.getOrientedFaceNormal();
     rayData.cur_thp *= bsdfSample.weight;
     if (kUseRR)
@@ -359,12 +365,17 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     if (rayData.numBounces < kNNMaxTrainingBounces)
     {
         nnHitInfoList[rayData.numBounces].pos = sd.posW;
+#if USE_NRC
         nnHitInfoList[rayData.numBounces].dir = rayData.direction;
+#elif USE_NIRC
+        nnHitInfoList[rayData.numBounces].dir = bsdfSample.wo;
+#endif
         nnHitInfoList[rayData.numBounces].normal = sd.getOrientedFaceNormal();
         nnHitInfoList[rayData.numBounces].thp = rayData.cur_thp;
     }
     else nnHitInfoList[kNNMaxTrainingBounces - 1].thp *= rayData.cur_thp;
 #endif
+    rayData.direction = bsdfSample.wo;
 #if R_HC_UPDATE
     rhc::hashCacheSetThroughput(rayData.hashCacheState, rayData.cur_thp);
 #endif // R_HC_UPDATE
@@ -533,7 +544,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         bwd_diff(computeHashEncFeature)(nnHitInfoList[i].pos, nnHitInfoList[i].dir, nnHitInfoList[i].normal, featureHashGrid0, input_feature_pair.d);
     }
 #endif
-#if 1
+#if NN_DEBUG && USE_NIRC
     // nee training
     for (uint i = 0; i < kNNMaxTrainingBounces; i++)
     {

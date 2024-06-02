@@ -454,11 +454,13 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         //HalfFeature<32> feature = computeFreqEncFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir);
         output = MLPModule0.forward(gMlp0, feature);
     }
+#if MLP_COUNT > 1
     else if (gMLPIndex == 1)
     {
         HalfFeature<32> feature = computeHashEncFeature(pos, dir, normal, featureHashGrid1);
         output = MLPModule1.forward(gMlp1, feature);
     }
+#endif
     if (isnan(output.vals[0])) outputColorNIRC = float3(1.0, 0.0, 0.0);
     else if (isinf(output.vals[0])) outputColorNIRC = float3(1.0, 0.0, 1.0);
     else outputColorNIRC = float3(output.vals[0], output.vals[1], output.vals[2]);

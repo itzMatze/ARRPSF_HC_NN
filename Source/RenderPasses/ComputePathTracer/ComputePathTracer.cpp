@@ -4,7 +4,6 @@
 #include "RenderGraph/RenderPassStandardFlags.h"
 #include "imgui.h"
 
-#include <random>
 #include <string>
 
 namespace
@@ -171,6 +170,8 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["USE_EMISSIVE_LIGHTS"] = mpScene->useEmissiveLights() ? "1" : "0";
     defineList["USE_ENV_LIGHT"] = mpScene->useEnvLight() ? "1" : "0";
     defineList["USE_ENV_BACKGROUND"] = mpScene->useEnvBackground() ? "1" : "0";
+    defineList["USE_NRC"] = mNNParams.nnMethod == NNParams::USE_NRC ? "1" : "0";
+    defineList["USE_NIRC"] = mNNParams.nnMethod == NNParams::USE_NIRC ? "1" : "0";
     defineList["NN_DEBUG"] = mNNParams.debugOutput ? "1" : "0";
     defineList["NIRC_DEBUG_OUTPUT_WIDTH"] = std::to_string(kNIRCDebugOutputDim.x);
     defineList["NIRC_DEBUG_OUTPUT_HEIGHT"] = std::to_string(kNIRCDebugOutputDim.y);
@@ -413,14 +414,14 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         if (mNNParams.featureHashMapProbingSize > 0 && mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER]) var["gFeatureHashGridEntriesBuffer"] = mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER];
         mpPixelDebug->prepareProgram(mPasses[NN_RESET_PASS]->getProgram(), var);
     }
-    if (mNNParams.active && mNNParams.nircDebug)
+    if (mNNParams.active && mNNParams.nircDebugPass)
     {
         auto var = mPasses[NIRC_DEBUG_PASS]->getRootVar();
         var["CB"]["gDebugPixel"] = mpPixelDebug->getSelectedPixel();
         var["CB"]["gFrameCount"] = mFrameCount;
-        var["CB"]["gMLPIndex"] = mNNParams.nircMLPIndex;
-        var["CB"]["gShowTransmission"] = mNNParams.nircDebugShowTransmission;
-        var["CB"]["gApplyBSDF"] = mNNParams.nircDebugApplyBSDF;
+        var["CB"]["gMLPIndex"] = mNNParams.nircDebugPassMLPIndex;
+        var["CB"]["gShowTransmission"] = mNNParams.nircDebugPassShowTransmission;
+        var["CB"]["gApplyBSDF"] = mNNParams.nircDebugPassApplyBSDF;
         if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
         if (mpEmissiveSampler) mpEmissiveSampler->bindShaderData(mpSamplerBlock->getRootVar()["emissiveSampler"]);
         var["gSampler"] = mpSamplerBlock;
@@ -474,7 +475,7 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         // activate rhc if it is used somewhere
         mRHCParams.active = mRRParams.requiresRHC() | mRHCParams.injectRadianceRR | mRHCParams.injectRadianceSpread | mRHCParams.debugColor | mRHCParams.debugLevels | mRHCParams.debugVoxels;
         // activate nn if it is used somewhere
-        mNNParams.active = mRRParams.requiresNN() | mNNParams.debugOutput | mNNParams.nircDebug;
+        mNNParams.active = mRRParams.requiresNN() | mNNParams.debugOutput | mNNParams.nircDebugPass;
         mNNParams.keepThreads = mNNParams.active;
         setupData(pRenderContext);
         createPasses(renderData);
@@ -513,7 +514,7 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         FALCOR_PROFILE(pRenderContext, "ComputePathTracer::pt");
         mPasses[PATH_TRACING_PASS]->execute(pRenderContext, frameDim.x, frameDim.y);
     }
-    if (mNNParams.active && mNNParams.nircDebug)
+    if (mNNParams.active && mNNParams.nircDebugPass)
     {
         FALCOR_PROFILE(pRenderContext, "ComputePathTracer::nirc_debug");
         mPasses[NIRC_DEBUG_PASS]->execute(pRenderContext, kNIRCDebugOutputDim.x, kNIRCDebugOutputDim.y);
@@ -618,16 +619,21 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         }
         ImGui::PushItemWidth(120);
         nn_group.dropdown("NN layer width", mNNParams.nnLayerWidthList, mNNParams.nnLayerWidth);
-        ImGui::InputInt("MLP count", &mNNParams.mlpCount);
-        mNNParams.mlpCount = std::min(mNNParams.mlpCount, 3);
+        nn_group.dropdown("NN method", mNNParams.nnMethodList, mNNParams.nnMethod);
+        if (mNNParams.nnMethod == NNParams::USE_NIRC) mNNParams.mlpCount = 2;
+        else if (mNNParams.nnMethod == NNParams::USE_NRC) mNNParams.mlpCount = 1;
         if (mNNParams.nnLayerCount.size() != mNNParams.mlpCount) mNNParams.nnLayerCount.resize(mNNParams.mlpCount);
         for (uint i = 0; i < mNNParams.nnLayerCount.size(); i++) ImGui::InputInt(std::string(std::string("MLP ") + std::to_string(i) + std::string(" layer count")).c_str(), &mNNParams.nnLayerCount[i]);
         ImGui::InputFloat("Filter alpha", &mNNParams.filterAlpha, 0.0f, 0.0f, "%.4f");
         nn_group.checkbox("debug NN output", mNNParams.debugOutput);
-        nn_group.checkbox("debug NIRC", mNNParams.nircDebug);
-        ImGui::InputInt("NIRC debug mlp index", &mNNParams.nircMLPIndex);
-        nn_group.checkbox("NIRC debug show transmission", mNNParams.nircDebugShowTransmission);
-        nn_group.checkbox("NIRC debug apply bsdf", mNNParams.nircDebugApplyBSDF);
+        if (mNNParams.nnMethod == NNParams::USE_NIRC)
+        {
+            ImGui::Text("NIRC debug pass");
+            nn_group.checkbox("enable", mNNParams.nircDebugPass);
+            ImGui::InputInt("mlp index", &mNNParams.nircDebugPassMLPIndex);
+            nn_group.checkbox("show transmission", mNNParams.nircDebugPassShowTransmission);
+            nn_group.checkbox("apply bsdf", mNNParams.nircDebugPassApplyBSDF);
+        }
         ImGui::Text("Weight init bounds");
         ImGui::InputFloat("min", &mNNParams.weightInitBound.x, 0.0f, 0.0f, "%.6f");
         ImGui::InputFloat("max", &mNNParams.weightInitBound.y, 0.0f, 0.0f, "%.6f");

@@ -389,7 +389,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         }
     }
 
-#if NN_DEBUG
+#if NN_DEBUG && USE_NIRC
     // evaluate nn for nee
     {
         HalfFeature<32> feature;
@@ -451,7 +451,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         else nnHitInfoList[kNNMaxTrainingBounces - 1].thp *= rayData.cur_thp;
 #endif
     }
-#if NN_DEBUG
+#if NN_DEBUG && USE_NIRC
     {
         HalfFeature<32> feature;
         // evaluate nn for the bsdf sampled direction
@@ -675,14 +675,32 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
 #endif
 #endif
     float3 outputColor = float3(0.0, 1.0, 0.0);
-    outputColor = tracePath(gPixel, gFrameDim, rayData);
-#if 0 //NN_DEBUG
-    HalfFeature<32> feature = computeHashEncFeature(gCamPos.xyz, -gViewW[gPixel].xyz, float3(1.0), rayData.featureHashGrid0);
+#if NN_DEBUG && USE_NRC
+    const HitInfo hit = HitInfo(gVBuffer[gPixel]);
+    if (!hit.isValid() || hit.getType() != HitType::Triangle) gDone = true;
+    ShadingData sd;
+    IMaterialInstance mi;
+    TriangleHit triangleHit;
+    BSDFProperties bsdfProperties;
+    MASK_BLOCK
+    {
+        triangleHit = hit.getTriangleHit();
+        let lod = ExplicitLodTextureSampler(0.f);
+        sd = loadShadingData(triangleHit, rayData.direction, lod);
+        mi = gScene.materials.getMaterialInstance(sd, lod);
+        bsdfProperties = mi.getProperties(sd);
+    }
+    HalfFeature<32> feature = computeHashEncFeature(sd.posW, -gViewW[gPixel].xyz, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
     //HalfFeature<32> feature = computeFreqEncFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir);
     HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
-    if (isnan(output.vals[0])) outputColor = float3(1.0, 0.0, 0.0);
-    else if (isinf(output.vals[0])) outputColor = float3(1.0, 0.0, 1.0);
-    else outputColor = float3(output.vals[0], output.vals[1], output.vals[2]);
+    MASK_BLOCK
+    {
+        if (isnan(output.vals[0])) outputColor = float3(1.0, 0.0, 0.0);
+        else if (isinf(output.vals[0])) outputColor = float3(1.0, 0.0, 1.0);
+        else outputColor = float3(output.vals[0], output.vals[1], output.vals[2]);
+    }
+#else
+    outputColor = tracePath(gPixel, gFrameDim, rayData);
 #endif
     gOutputColor[gPixel] = float4(outputColor, 1.0f);
 }
