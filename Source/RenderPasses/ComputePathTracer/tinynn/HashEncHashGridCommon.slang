@@ -83,6 +83,17 @@ struct FeatureHashGridData
         return gridPosition.xyz;
     }
 
+    float2 convertDirToPolar(float3 input)
+    {
+        float2 angles = float2(atan(input.y / input.x), acos(input.z));
+        return angles;
+    }
+
+    uint2 quantizeToBitRange(float2 input, uint max)
+    {
+        return uint2(((input + 1.0) / 2.0) * float((max + 1) - 0.001));
+    }
+
     uint3 quantizeToBitRange(float3 input, uint max)
     {
         return uint3(((input + 1.0) / 2.0) * float((max + 1) - 0.001));
