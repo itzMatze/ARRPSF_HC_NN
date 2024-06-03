@@ -280,6 +280,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         hashCacheHitData.positionWorld = sd.posW;
         hashCacheHitData.normalWorld = sd.getOrientedFaceNormal();
         hashCacheHitData.distance = rayData.distance;
+        hashCacheHitData.direction = rayData.direction;
         uint gridLevel = rayData.hashCacheState.hashMapData.GetGridLevel(hashCacheHitData.distance);
         if (kHCDebugLevels)
         {
@@ -288,6 +289,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             rayData.cur_radiance = colormapViridis(float(gridLevel) / 8.0f);
             return false;
         }
+#if USE_RHC
         if (kHCDebugVoxels || kHCDebugColor)
         {
             // debug active; voxel debug will fetch voxel visualization values, otherwise just get color
@@ -315,6 +317,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
                 TERMINATE_PATH_0; // Terminate the path once we've looked up into the cache
             }
         }
+#endif
 #endif
     }
     if (rayData.numBounces == 0)
@@ -437,6 +440,14 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         HalfFeature<32> output = MLPModule1.forward(gMlp1, feature);
         MASK_BLOCK rayData.cur_radiance += (applyNEE && validSample) ? 0.5 * float3(output.vals[0], output.vals[1], output.vals[2]) * weight : 0.0;
     }
+#elif HC_DEBUG_COLOR && USE_IRHC
+    MASK_BLOCK
+    {
+        hashCacheHitData.direction = ls.dir;
+        float3 debugColor;
+        hc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, debugColor);
+        rayData.cur_radiance += (applyNEE && validSample) ? 0.5 * debugColor * weight : 0.0;
+    }
 #else
     MASK_BLOCK
     {
@@ -499,6 +510,39 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         float3 color = float3(output.vals[0], output.vals[1], output.vals[2]) * bsdfSample.weight;
         MASK_BLOCK rayData.cur_radiance += color;
         TERMINATE_PATH_0;
+    }
+#elif USE_IRHC
+    MASK_BLOCK
+    {
+        hashCacheHitData.direction = bsdfSample.wo;
+#if HC_DEBUG_COLOR
+        float3 debugColor;
+        hc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, debugColor);
+        rayData.cur_radiance += debugColor * bsdfSample.weight;
+        TERMINATE_PATH_0;
+#endif
+    }
+    MASK_BLOCK
+    {
+        if (kHCInjectRadianceSpread)
+        {
+            uint gridLevel = rayData.hashCacheState.hashMapData.GetGridLevel(hashCacheHitData.distance);
+            float voxelSize = rayData.hashCacheState.hashMapData.GetVoxelSize(gridLevel);
+            bool isValidHit = rayData.t > voxelSize * lerp(1.0f, 2.0f, sampleNext1D(rayData.sg));
+            float alpha = min(rayData.materialRoughness * rayData.materialRoughness, 0.99);
+            rayData.materialRoughness = bsdfProperties.roughness;
+            alpha *= alpha;
+            rayData.spread += rayData.t * sqrt(0.5f * alpha / (1.0f - alpha));
+            isValidHit &= rayData.spread * lerp(0.5f, 1.5f, sampleNext1D(rayData.sg)) > voxelSize;
+            isValidHit &= rayData.numBounces > 0;
+
+            float3 hashCacheRadiance;
+            if (isValidHit && hc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
+            {
+                rayData.cur_radiance += hashCacheRadiance;
+                TERMINATE_PATH_0; // Terminate the path once we've looked up into the cache
+            }
+        }
     }
 #endif
 

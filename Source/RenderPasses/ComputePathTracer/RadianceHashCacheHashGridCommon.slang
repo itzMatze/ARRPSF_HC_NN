@@ -6,12 +6,25 @@ namespace hc
 typedef uint64_t HashKey;
 static const uint sizeofHashKey = 8;
 
+#if USE_IRHC
+static const HashKey kHashGridPositionBitNum = 14;
+static const HashKey kHashGridPositionBitMask = ((1u << kHashGridPositionBitNum) - 1);
+static const HashKey kHashGridDirectionBitNum = 4;
+static const HashKey kHashGridDirectionBitMask = ((1u << kHashGridDirectionBitNum) - 1);
+static const HashKey kHashGridLevelBitNum = 7;
+static const HashKey kHashGridLevelBitMask = ((1u << kHashGridLevelBitNum) - 1);
+static const HashKey kHashGridNormalBitNum = 3;
+static const HashKey kHashGridNormalBitMask = ((1u << kHashGridNormalBitNum) - 1);
+#elif USE_RHC
 static const HashKey kHashGridPositionBitNum = 17;
 static const HashKey kHashGridPositionBitMask = ((1u << kHashGridPositionBitNum) - 1);
+static const HashKey kHashGridDirectionBitNum = 0;
+static const HashKey kHashGridDirectionBitMask = ((1u << kHashGridDirectionBitNum) - 1);
 static const HashKey kHashGridLevelBitNum = 10;
 static const HashKey kHashGridLevelBitMask = ((1u << kHashGridLevelBitNum) - 1);
 static const HashKey kHashGridNormalBitNum = 3;
 static const HashKey kHashGridNormalBitMask = ((1u << kHashGridNormalBitNum) - 1);
+#endif
 static const HashKey kHashGridHashMapBucketSize = 32;
 static const HashKey kHashGridInvalidHashKey = 0;
 static const HashKey kHashGridInvalidIdx = 0xffffffff;
@@ -74,10 +87,16 @@ struct HashMapData
         return int4(gridPosition.xyz, gridLevel);
     }
 
-    HashKey ComputeSpatialHash(float distance, float3 samplePosition, float3 sampleNormal, int levelOffset = 0)
+    uint3 quantizeToBitRange(float3 input, uint max)
+    {
+        return uint3(((input + 1.0) / 2.0) * float((max + 1) - 0.001));
+    }
+
+    HashKey ComputeSpatialHash(float distance, float3 samplePosition, float3 sampleDirection, float3 sampleNormal, int levelOffset = 0)
     {
         uint4 gridPosition = asuint(CalculateGridPositionLog(distance, samplePosition, levelOffset));
-        // | normal bits | level | pos.z | pos.y | pos.x |
+        uint3 quantizedDir = quantizeToBitRange(sampleDirection, kHashGridDirectionBitMask);
+        // | normal bits | level | pos.z | pos.y | pos.x | dir.z | dir.y | dir.x |
         HashKey hashKey = (sampleNormal.x >= 0 ? 1 : 0) + (sampleNormal.y >= 0 ? 2 : 0) + (sampleNormal.z >= 0 ? 4 : 0);
         hashKey <<= kHashGridLevelBitNum;
         hashKey |= ((HashKey)gridPosition.w & kHashGridLevelBitMask);
@@ -87,12 +106,18 @@ struct HashMapData
         hashKey |= ((HashKey)gridPosition.y & kHashGridPositionBitMask);
         hashKey <<= kHashGridPositionBitNum;
         hashKey |= ((HashKey)gridPosition.x & kHashGridPositionBitMask);
+        hashKey <<= kHashGridDirectionBitNum;
+        hashKey |= ((HashKey)quantizedDir.z);
+        hashKey <<= kHashGridDirectionBitNum;
+        hashKey |= ((HashKey)quantizedDir.y);
+        hashKey <<= kHashGridDirectionBitNum;
+        hashKey |= ((HashKey)quantizedDir.x);
         return hashKey;
     }
 
-    uint InsertEntry(float distance, float3 samplePosition, float3 sampleNormal, int levelOffset = 0)
+    uint InsertEntry(float distance, float3 samplePosition, float3 sampleDirection, float3 sampleNormal, int levelOffset = 0)
     {
-        const HashKey hashKey = ComputeSpatialHash(distance, samplePosition, sampleNormal, levelOffset);
+        const HashKey hashKey = ComputeSpatialHash(distance, samplePosition, sampleDirection, sampleNormal, levelOffset);
         const uint hash = Hash32(hashKey);
         const uint slot = hash % capacity;
         HashKey prevHashKey = kHashGridInvalidHashKey;
@@ -107,9 +132,9 @@ struct HashMapData
         return kHashGridInvalidIdx;
     }
 
-    uint FindEntry(float distance, float3 samplePosition, float3 sampleNormal)
+    uint FindEntry(float distance, float3 samplePosition, float3 sampleDirection, float3 sampleNormal)
     {
-        const HashKey hashKey = ComputeSpatialHash(distance, samplePosition, sampleNormal);
+        const HashKey hashKey = ComputeSpatialHash(distance, samplePosition, sampleDirection, sampleNormal);
         const uint hash = Hash32(hashKey);
         const uint slot = hash % capacity;
         for (uint bucketOffset = 0; bucketOffset < kHashGridHashMapBucketSize; ++bucketOffset)
@@ -134,9 +159,9 @@ struct HashMapData
     }
 
     // Debug visualization
-    float3 HashGridDebugColoredHash(float distance, float3 samplePosition)
+    float3 HashGridDebugColoredHash(float distance, float3 samplePosition, float3 sampleDirection)
     {
-        HashKey hashKey = ComputeSpatialHash(distance, samplePosition, float3(0, 0, 0));
+        HashKey hashKey = ComputeSpatialHash(distance, samplePosition, sampleDirection, float3(0, 0, 0));
         return GetColorFromHash32(Hash32(hashKey));
     }
 }

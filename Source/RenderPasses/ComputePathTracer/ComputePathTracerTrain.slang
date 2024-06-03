@@ -256,6 +256,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     hashCacheHitData.positionWorld = sd.posW;
     hashCacheHitData.normalWorld = sd.getOrientedFaceNormal();
     hashCacheHitData.distance = rayData.distance;
+    hashCacheHitData.direction = rayData.direction;
 #endif
 
     BSDFSample bsdfSample;
@@ -332,9 +333,6 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         }
     }
 
-#if HC_UPDATE
-    hc::hashCacheUpdateHit(rayData.hashCacheState, hashCacheHitData, rayData.cur_radiance);
-#endif
 #if NN_TRAIN
     updateNNHitInfoRadiance(rayData.cur_radiance, rayData.numBounces);
 #endif // NN_TRAIN
@@ -342,6 +340,11 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     // generate scatter ray for the next path segment.
     // Sample material.
     if (!mi.sample(sd, rayData.sg, bsdfSample, kUseImportanceSampling)) return false;
+
+#if HC_UPDATE
+    hashCacheHitData.direction = bsdfSample.wo;
+    hc::hashCacheUpdateHit(rayData.hashCacheState, hashCacheHitData, rayData.cur_radiance);
+#endif
 
     // delta lobes require some caution, store that one is used
     rayData.setDeltaLobe(bsdfSample.isLobe(LobeType::Delta));

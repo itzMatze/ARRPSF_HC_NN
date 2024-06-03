@@ -161,6 +161,8 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["RR_PROB_START_VALUE"] = fmt::format("{:.4f}", mRRParams.probStartValue);
     defineList["RR_PROB_REDUCTION_FACTOR"] = fmt::format("{:.4f}", mRRParams.probReductionFactor);
     defineList["DEBUG_PATH_LENGTH"] = mDebugPathLength ? "1" : "0";
+    defineList["USE_RHC"] = mHCParams.hcMethod == HCParams::USE_RHC ? "1" : "0";
+    defineList["USE_IRHC"] = mHCParams.hcMethod == HCParams::USE_IRHC ? "1" : "0";
     defineList["HC_DEBUG_VOXELS"] = mHCParams.debugVoxels ? "1" : "0";
     defineList["HC_DEBUG_COLOR"] = mHCParams.debugColor ? "1" : "0";
     defineList["HC_DEBUG_LEVELS"] = mHCParams.debugLevels ? "1" : "0";
@@ -585,6 +587,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     if (Gui::Group hc_group = widget.group("Radiance Hash Cache"))
     {
         hc_group.text(std::string("active: ") + (mHCParams.active ? "true" : "false"));
+        hc_group.dropdown("HC method", mHCParams.hcMethodList, mHCParams.hcMethod);
         ImGui::PushItemWidth(40);
         ImGui::InputScalar("hashMapSizeExponent", ImGuiDataType_U32, &mHCParams.hashMapSizeExp);
         ImGui::PopItemWidth();

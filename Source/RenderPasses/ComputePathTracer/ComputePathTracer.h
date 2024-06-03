@@ -178,6 +178,13 @@ private:
         bool debugColor = false;
         bool debugLevels = false;
 
+        enum HCMethods {
+            USE_RHC = 0,
+            USE_IRHC = 1
+        };
+        Gui::DropdownList hcMethodList{Gui::DropdownValue{USE_RHC, "rhc"}, Gui::DropdownValue{USE_IRHC, "irhc"}};
+        uint hcMethod = USE_RHC;
+
         void update()
         {
             reset = true;
