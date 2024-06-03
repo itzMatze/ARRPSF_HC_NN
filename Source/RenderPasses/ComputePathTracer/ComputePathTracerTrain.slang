@@ -48,7 +48,6 @@ static const bool kDebugPathLength = DEBUG_PATH_LENGTH;
 static const bool kUseImportanceSampling = USE_IMPORTANCE_SAMPLING;
 static const bool kUseEnvBackground = USE_ENV_BACKGROUND;
 static const float3 kDefaultBackgroundColor = float3(0.0, 0.0, 0.05);
-static const uint kHCHashMapSize = HC_HASHMAP_SIZE;
 static const uint kHCDebugVoxels = HC_DEBUG_VOXELS;
 static const uint kHCDebugColor = HC_DEBUG_COLOR;
 static const uint kHCDebugLevels = HC_DEBUG_LEVELS;
@@ -460,7 +459,6 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, ScatterRayData rayData
     }
 
 #if HC_UPDATE
-    rayData.hashCacheState.hashMapData.capacity = kHCHashMapSize;
     rayData.materialRoughness = 0.0f;
     rayData.spread = 0.0f;
     rayData.hashCacheState.pathLength = 0;

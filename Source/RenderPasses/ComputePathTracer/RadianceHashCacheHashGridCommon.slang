@@ -7,9 +7,9 @@ typedef uint64_t HashKey;
 static const uint sizeofHashKey = 8;
 
 #if USE_IRHC
-static const HashKey kHashGridPositionBitNum = 14;
+static const HashKey kHashGridPositionBitNum = 15;
 static const HashKey kHashGridPositionBitMask = ((1u << kHashGridPositionBitNum) - 1);
-static const HashKey kHashGridDirectionBitNum = 4;
+static const HashKey kHashGridDirectionBitNum = 3;
 static const HashKey kHashGridDirectionBitMask = ((1u << kHashGridDirectionBitNum) - 1);
 static const HashKey kHashGridLevelBitNum = 7;
 static const HashKey kHashGridLevelBitMask = ((1u << kHashGridLevelBitNum) - 1);
@@ -32,6 +32,7 @@ static const uint kHashGridLevelBias = 2; // positive bias adds extra levels wit
 static const float3 kHashGridPositionOffset = float3(0.0f, 0.0f, 0.0f);
 static const float kHashCacheGridLogarithmBase = 2.0f;
 static const float kHashCacheSceneScale = 60.0f;
+static const uint kHashCacheCapacity = HC_HASHMAP_SIZE;
 
 RWByteAddressBuffer gHCHashGridEntriesBuffer;
 
@@ -47,8 +48,6 @@ void HashMapReset(const uint idx)
 
 struct HashMapData
 {
-    uint capacity = HC_HASHMAP_SIZE;
-
     // http://burtleburtle.net/bob/hash/integer.html
     uint HashJenkins32(uint a)
     {
@@ -119,9 +118,9 @@ struct HashMapData
     {
         const HashKey hashKey = ComputeSpatialHash(distance, samplePosition, sampleDirection, sampleNormal, levelOffset);
         const uint hash = Hash32(hashKey);
-        const uint slot = hash % capacity;
+        const uint slot = hash % kHashCacheCapacity;
         HashKey prevHashKey = kHashGridInvalidHashKey;
-        for (uint bucketOffset = 0; bucketOffset < kHashGridHashMapBucketSize && slot < capacity; ++bucketOffset)
+        for (uint bucketOffset = 0; bucketOffset < kHashGridHashMapBucketSize && slot < kHashCacheCapacity; ++bucketOffset)
         {
             gHCHashGridEntriesBuffer.InterlockedCompareExchangeU64((slot + bucketOffset) * sizeofHashKey, kHashGridInvalidHashKey, hashKey, prevHashKey);
             if (prevHashKey == kHashGridInvalidHashKey || prevHashKey == hashKey)
@@ -134,9 +133,9 @@ struct HashMapData
 
     uint FindEntry(float distance, float3 samplePosition, float3 sampleDirection, float3 sampleNormal)
     {
-        const HashKey hashKey = ComputeSpatialHash(distance, samplePosition, sampleDirection, sampleNormal);
+        const HashKey hashKey = ComputeSpatialHash(distance, samplePosition, sampleDirection, sampleNormal, 0);
         const uint hash = Hash32(hashKey);
-        const uint slot = hash % capacity;
+        const uint slot = hash % kHashCacheCapacity;
         for (uint bucketOffset = 0; bucketOffset < kHashGridHashMapBucketSize; ++bucketOffset)
         {
             HashKey storedHashKey = gHCHashGridEntriesBuffer.Load<HashKey>((slot + bucketOffset) * sizeofHashKey);

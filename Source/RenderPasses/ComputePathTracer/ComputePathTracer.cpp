@@ -428,6 +428,9 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["CB"]["gMLPIndex"] = mIRDebugPassParams.nircMLPIndex;
         var["CB"]["gShowTransmission"] = mIRDebugPassParams.showTransmission;
         var["CB"]["gApplyBSDF"] = mIRDebugPassParams.applyBSDF;
+        var["gHCHashGridEntriesBuffer"] = mBuffers[HC_HASH_GRID_ENTRIES_BUFFER];
+        var["gHCVoxelDataBuffer"] = mFrameCount % 2 == 0 ? mBuffers[HC_VOXEL_DATA_BUFFER_0] : mBuffers[HC_VOXEL_DATA_BUFFER_1];
+        var["gHCVoxelDataBufferPrev"] = mFrameCount % 2 == 1 ? mBuffers[HC_VOXEL_DATA_BUFFER_0] : mBuffers[HC_VOXEL_DATA_BUFFER_1];
         if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
         if (mpEmissiveSampler) mpEmissiveSampler->bindShaderData(mpSamplerBlock->getRootVar()["emissiveSampler"]);
         var["gSampler"] = mpSamplerBlock;
@@ -479,9 +482,9 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         reset();
         renderData.getDictionary()[Falcor::kRenderPassRefreshFlags] = Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
         // activate hc if it is used somewhere
-        mHCParams.active = mRRParams.requiresHC() | mHCParams.injectRadianceRR | mHCParams.injectRadianceSpread | mHCParams.debugColor | mHCParams.debugLevels | mHCParams.debugVoxels | mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_IRHC;
+        mHCParams.active = mRRParams.requiresHC() | mHCParams.injectRadianceRR | mHCParams.injectRadianceSpread | mHCParams.debugColor | mHCParams.debugLevels | mHCParams.debugVoxels | (mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_IRHC && mIRDebugPassParams.active);
         // activate nn if it is used somewhere
-        mNNParams.active = mRRParams.requiresNN() | mNNParams.debugOutput | mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_NIRC;
+        mNNParams.active = mRRParams.requiresNN() | mNNParams.debugOutput | (mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_NIRC && mIRDebugPassParams.active);
         mNNParams.keepThreads = mNNParams.active;
         // only allow activation of ir debug pass if either nn or hc is using incident radiance
         mIRDebugPassParams.active &= ((mNNParams.nnMethod == NNParams::USE_NIRC && mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_NIRC)
