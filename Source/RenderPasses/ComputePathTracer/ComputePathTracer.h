@@ -91,7 +91,7 @@ private:
         NN_GRADIENT_CLEAR_PASS = 4,
         NN_GRADIENT_DESCENT_PASS = 5,
         NN_RESET_PASS = 6,
-        NIRC_DEBUG_PASS = 7,
+        IR_DEBUG_PASS = 7,
         PASS_COUNT
     };
 
@@ -227,10 +227,6 @@ private:
         float filterAlpha = 0.99;
         int trainingBounces = 8;
         bool debugOutput = false;
-        bool nircDebugPass = false;
-        bool nircDebugPassShowTransmission = false;
-        int nircDebugPassMLPIndex = 0;
-        bool nircDebugPassApplyBSDF = false;
         bool keepThreads = false;
         const uint featureHashMapSize = std::pow(2, 22);
         int featureHashMapDebugShowLevel = -1;
@@ -243,9 +239,22 @@ private:
             reset = true;
             optimizerParams.step_count = 0;
             nnParamCount = ((nnLayerWidth * nnLayerWidth /*weights*/ + nnLayerWidth /*biases*/) * std::reduce(nnLayerCount.begin(), nnLayerCount.end()) + featureHashMapSize /*feature hash grid storage*/ * nnLayerCount.size() /*one feature hashmap per nn*/);
-            if (nnMethod != USE_NIRC) nircDebugPass = false;
         }
     } mNNParams;
+
+    struct IRDebugPassParam {
+        bool active = false;
+        bool showTransmission = false;
+        bool applyBSDF = false;
+        int nircMLPIndex = 0;
+
+        enum IRMethods {
+            SHOW_NIRC = 0,
+            SHOW_IRHC = 1
+        };
+        Gui::DropdownList irMethodList{Gui::DropdownValue{SHOW_NIRC, "nirc"}, Gui::DropdownValue{SHOW_IRHC, "irhc"}};
+        uint irMethod = SHOW_NIRC;
+    } mIRDebugPassParams;
 
     uint mFrameCount = 0;
     bool mOptionsChanged = true;

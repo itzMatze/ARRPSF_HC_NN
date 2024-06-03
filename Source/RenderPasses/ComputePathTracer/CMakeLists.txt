@@ -18,7 +18,7 @@ target_sources(ComputePathTracer PRIVATE
     tinynn/TinynnHalfLinear.hlsli
     tinynn/TinynnHalfMLP.hlsli
     tinynn/TinynnTensorview.hlsli
-    NIRCDebugVis.slang
+    IRDebugVis.slang
 )
 
 target_copy_shaders(ComputePathTracer RenderPasses/ComputePathTracer)

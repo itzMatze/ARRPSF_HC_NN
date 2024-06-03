@@ -707,7 +707,6 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, ScatterRayData rayData
     }
 
 #if HC_QUERY
-    rayData.hashCacheState.hashMapData.capacity = kHCHashMapSize;
     rayData.materialRoughness = 0.0f;
     rayData.spread = 0.0f;
 #endif

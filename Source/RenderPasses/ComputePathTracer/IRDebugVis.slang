@@ -22,6 +22,7 @@ import LightSampling;
 
 cbuffer CB
 {
+    float3 gCamPos;
     uint2 gDebugPixel;
     uint gFrameCount;
     uint gMLPIndex;
@@ -34,9 +35,10 @@ Texture2D<PackedHitInfo> gVBuffer;
 Texture2D<float4> gViewW;
 
 // Outputs
-RWTexture2D<float4> gNIRCDebugOutputColor;
-RWTexture2D<float4> gNIRCDebugOutputColorRef;
+RWTexture2D<float4> gIRDebugOutputColor;
+RWTexture2D<float4> gIRDebugOutputColorRef;
 
+#if SHOW_NIRC
 // Static configuration based on defines set from the host.
 typedef MLPHalf32X32<NN_LAYER_COUNT0, ReLU> MLPModule0;
 static MLPModule0 gMlp0;
@@ -47,6 +49,7 @@ static MLPModule1 gMlp1;
 #if MLP_COUNT > 2
 typedef MLPHalf32X32<NN_LAYER_COUNT2, ReLU> MLPModule2;
 static MLPModule2 gMlp2;
+#endif
 #endif
 
 // Static configuration based on defines set from the host.
@@ -63,10 +66,10 @@ static const bool kDebugPathLength = DEBUG_PATH_LENGTH;
 static const bool kUseImportanceSampling = USE_IMPORTANCE_SAMPLING;
 static const bool kUseEnvBackground = USE_ENV_BACKGROUND;
 static const float3 kDefaultBackgroundColor = float3(0.0, 0.0, 0.05);
-static const uint kHCHashMapSize = R_HC_HASHMAP_SIZE;
-static const uint kHCDebugVoxels = R_HC_DEBUG_VOXELS;
-static const uint kHCDebugColor = R_HC_DEBUG_COLOR;
-static const uint kHCDebugLevels = R_HC_DEBUG_LEVELS;
+static const uint kHCHashMapSize = HC_HASHMAP_SIZE;
+static const uint kHCDebugVoxels = HC_DEBUG_VOXELS;
+static const uint kHCDebugColor = HC_DEBUG_COLOR;
+static const uint kHCDebugLevels = HC_DEBUG_LEVELS;
 static const uint kNNMaxTrainingBounces = NN_TRAINING_BOUNCES;
 
 struct ScatterRayData
@@ -404,13 +407,13 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
 {
     uint2 pixel = dispatchThreadId.xy;
     bool mainThread = true;
-    const uint width = NIRC_DEBUG_OUTPUT_WIDTH;
-    uint height = NIRC_DEBUG_OUTPUT_HEIGHT;
-    // make sure that slang includes all required extensions for glsl, because it fails to do so on its own
-    if (any(pixel >= uint2(width, height)) && traceShadowRay(float3(0.0), float3(1.0, 0.0, 0.0), 0.0)) mainThread = false;
+    const uint width = IR_DEBUG_OUTPUT_WIDTH;
+    uint height = IR_DEBUG_OUTPUT_HEIGHT;
+    if (any(pixel >= uint2(width, height))) mainThread = false;
     //if (any(pixel >= uint2(width, height)) && traceShadowRay(float3(0.0), float3(1.0, 0.0, 0.0), 0.0)) mainThread = false;
     printSetPixel(pixel);
     SampleGenerator sg = SampleGenerator(pixel, gFrameCount);
+#if SHOW_NIRC
     const ThreadInfo thread_info = ThreadInfo(groupThreadId.xy, int2(32, 4));
     uint param_offset = 0; uint grad_offset = 0;
     gMlp0 = MLPModule0(param_offset, grad_offset, thread_info);
@@ -418,6 +421,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
 #if MLP_COUNT > 1
     gMlp1 = MLPModule1(param_offset, grad_offset, thread_info);
     FeatureHashGrid featureHashGrid1 = FeatureHashGrid(param_offset, grad_offset);
+#endif
 #endif
     const HitInfo hit = HitInfo(gVBuffer[gDebugPixel]);
     if (hit.getType() != HitType::Triangle) mainThread = false;
@@ -446,7 +450,8 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         rayData.direction = dir;
         outputColor = tracePath(uint2(width, height), rayData);
     }
-    float3 outputColorNIRC = float3(0.0, 1.0, 0.0);
+    float3 outputColorIR = float3(0.0, 1.0, 0.0);
+#if SHOW_NIRC
     HalfFeature<32> output;
     if (gMLPIndex == 0)
     {
@@ -461,9 +466,20 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         output = MLPModule1.forward(gMlp1, feature);
     }
 #endif
-    if (isnan(output.vals[0])) outputColorNIRC = float3(1.0, 0.0, 0.0);
-    else if (isinf(output.vals[0])) outputColorNIRC = float3(1.0, 0.0, 1.0);
-    else outputColorNIRC = float3(output.vals[0], output.vals[1], output.vals[2]);
+    if (isnan(output.vals[0])) outputColorIR = float3(1.0, 0.0, 0.0);
+    else if (isinf(output.vals[0])) outputColorIR = float3(1.0, 0.0, 1.0);
+    else outputColorIR = float3(output.vals[0], output.vals[1], output.vals[2]);
+#elif SHOW_IRHC
+    hc::HashCacheState hashCacheState;
+    hc::HashCacheHitData hashCacheHitData;
+    hashCacheHitData.positionWorld = sd.posW;
+    hashCacheHitData.normalWorld = sd.getOrientedFaceNormal();
+    hashCacheHitData.distance = distance(gCamPos, sd.posW);
+    hashCacheHitData.direction = dir;
+    float3 debugColor;
+    hc::hashCacheGetCachedRadiance(hashCacheState, hashCacheHitData, debugColor);
+    outputColorIR = debugColor;
+#endif
     if (mainThread && gApplyBSDF)
     {
         BSDFSample bsdfSample;
@@ -475,13 +491,13 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
             else weight = float3(0.0);
         }
         else weight = mi.eval(sd, dir, sg);
-        outputColorNIRC *= weight;
+        outputColorIR *= weight;
         outputColor *= weight;
     }
     if (mainThread)
     {
-        gNIRCDebugOutputColor[pixel] = float4(outputColorNIRC, 1.0f);
-        gNIRCDebugOutputColorRef[pixel] = float4(outputColor, 1.0f);
+        gIRDebugOutputColor[pixel] = float4(outputColorIR, 1.0f);
+        gIRDebugOutputColorRef[pixel] = float4(outputColor, 1.0f);
     }
 }
 

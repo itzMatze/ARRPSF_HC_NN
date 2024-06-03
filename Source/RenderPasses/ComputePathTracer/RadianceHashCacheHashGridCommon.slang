@@ -47,7 +47,7 @@ void HashMapReset(const uint idx)
 
 struct HashMapData
 {
-    uint capacity;
+    uint capacity = HC_HASHMAP_SIZE;
 
     // http://burtleburtle.net/bob/hash/integer.html
     uint HashJenkins32(uint a)

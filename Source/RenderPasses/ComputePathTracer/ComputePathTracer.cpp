@@ -15,7 +15,7 @@ const std::string kHCResetShaderFile("RenderPasses/ComputePathTracer/RadianceHas
 const std::string kGradientClearShaderFile("RenderPasses/ComputePathTracer/tinynn/GradientClear.slang");
 const std::string kGradientDescentShaderFile("RenderPasses/ComputePathTracer/tinynn/GradientDescentPrimal.slang");
 const std::string kNNResetShaderFile("RenderPasses/ComputePathTracer/tinynn/NNReset.slang");
-const std::string kNIRCDebugVisShaderFile("RenderPasses/ComputePathTracer/NIRCDebugVis.slang");
+const std::string kIRDebugVisShaderFile("RenderPasses/ComputePathTracer/IRDebugVis.slang");
 
 // inputs
 const ChannelDesc kInputVBuffer{"vbuffer", "gVBuffer", "Visibility buffer in packed format"};
@@ -25,10 +25,10 @@ const ChannelList kInputChannels = {kInputVBuffer, kInputViewDir, kInputRefImage
 
 // outputs
 const ChannelDesc kOutputColor = { "color", "gOutputColor", "Output color (sum of direct and indirect)", false, ResourceFormat::RGBA32Float };
-constexpr uint2 kNIRCDebugOutputDim(1000, 1000);
-const ChannelDesc kNIRCDebugOutputColor = { "nirc_debug", "gNIRCDebugOutputColor", "Output color of NIRC debug visualization", false, ResourceFormat::RGBA32Float };
-const ChannelDesc kNIRCDebugOutputColorRef = { "nirc_debug_ref", "gNIRCDebugOutputColorRef", "Output color of the path traced NIRC debug visualization for reference", false, ResourceFormat::RGBA32Float };
-const ChannelList kOutputChannels = {kOutputColor, kNIRCDebugOutputColor};
+constexpr uint2 kIRDebugOutputDim(1000, 1000);
+const ChannelDesc kIRDebugOutputColor = { "ir_debug", "gIRDebugOutputColor", "Output color of IR debug visualization", false, ResourceFormat::RGBA32Float };
+const ChannelDesc kIRDebugOutputColorRef = { "ir_debug_ref", "gIRDebugOutputColorRef", "Output color of the path traced IR debug visualization for reference", false, ResourceFormat::RGBA32Float };
+const ChannelList kOutputChannels = {kOutputColor, kIRDebugOutputColor};
 
 const std::string kLowerBounceCount = "lowerBounceCount";
 const std::string kUpperBounceCount = "upperBounceCount";
@@ -138,8 +138,8 @@ RenderPassReflection ComputePathTracer::reflect(const CompileData& compileData)
     // Define our input/output channels.
     addRenderPassInputs(reflector, kInputChannels);
     addRenderPassOutputs(reflector, {kOutputColor});
-    addRenderPassOutputs(reflector, {kNIRCDebugOutputColor}, ResourceBindFlags::UnorderedAccess, kNIRCDebugOutputDim);
-    addRenderPassOutputs(reflector, {kNIRCDebugOutputColorRef}, ResourceBindFlags::UnorderedAccess, kNIRCDebugOutputDim);
+    addRenderPassOutputs(reflector, {kIRDebugOutputColor}, ResourceBindFlags::UnorderedAccess, kIRDebugOutputDim);
+    addRenderPassOutputs(reflector, {kIRDebugOutputColorRef}, ResourceBindFlags::UnorderedAccess, kIRDebugOutputDim);
     return reflector;
 }
 
@@ -175,8 +175,8 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["USE_NRC"] = mNNParams.nnMethod == NNParams::USE_NRC ? "1" : "0";
     defineList["USE_NIRC"] = mNNParams.nnMethod == NNParams::USE_NIRC ? "1" : "0";
     defineList["NN_DEBUG"] = mNNParams.debugOutput ? "1" : "0";
-    defineList["NIRC_DEBUG_OUTPUT_WIDTH"] = std::to_string(kNIRCDebugOutputDim.x);
-    defineList["NIRC_DEBUG_OUTPUT_HEIGHT"] = std::to_string(kNIRCDebugOutputDim.y);
+    defineList["IR_DEBUG_OUTPUT_WIDTH"] = std::to_string(kIRDebugOutputDim.x);
+    defineList["IR_DEBUG_OUTPUT_HEIGHT"] = std::to_string(kIRDebugOutputDim.y);
     defineList["NN_PARAM_COUNT"] = std::to_string(mNNParams.nnParamCount);
     defineList["NN_WEIGHT_INIT_LOWER_BOUND"] = fmt::format("{:.12f}", mNNParams.weightInitBound.x);
     defineList["NN_WEIGHT_INIT_UPPER_BOUND"] = fmt::format("{:.12f}", mNNParams.weightInitBound.y);
@@ -263,13 +263,15 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         desc.addShaderLibrary(kNNResetShaderFile).csEntry("main");
         mPasses[NN_RESET_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
     }
-    if (!mPasses[NIRC_DEBUG_PASS] && mNNParams.active)
+    if (!mPasses[IR_DEBUG_PASS] && mIRDebugPassParams.active)
     {
+        defineList["SHOW_NIRC"] = mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_NIRC ? "1" : "0";
+        defineList["SHOW_IRHC"] = mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_IRHC ? "1" : "0";
         ProgramDesc desc;
         desc.addShaderModules(mpScene->getShaderModules());
-        desc.addShaderLibrary(kNIRCDebugVisShaderFile).csEntry("main");
+        desc.addShaderLibrary(kIRDebugVisShaderFile).csEntry("main");
         desc.addTypeConformances(mpScene->getTypeConformances());
-        mPasses[NIRC_DEBUG_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
+        mPasses[IR_DEBUG_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
     }
 }
 
@@ -417,14 +419,15 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         if (mNNParams.featureHashMapProbingSize > 0 && mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER]) var["gFeatureHashGridEntriesBuffer"] = mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER];
         mpPixelDebug->prepareProgram(mPasses[NN_RESET_PASS]->getProgram(), var);
     }
-    if (mNNParams.active && mNNParams.nircDebugPass)
+    if (mPasses[IR_DEBUG_PASS])
     {
-        auto var = mPasses[NIRC_DEBUG_PASS]->getRootVar();
+        auto var = mPasses[IR_DEBUG_PASS]->getRootVar();
+        var["CB"]["gCamPos"] = mCamPos;
         var["CB"]["gDebugPixel"] = mpPixelDebug->getSelectedPixel();
         var["CB"]["gFrameCount"] = mFrameCount;
-        var["CB"]["gMLPIndex"] = mNNParams.nircDebugPassMLPIndex;
-        var["CB"]["gShowTransmission"] = mNNParams.nircDebugPassShowTransmission;
-        var["CB"]["gApplyBSDF"] = mNNParams.nircDebugPassApplyBSDF;
+        var["CB"]["gMLPIndex"] = mIRDebugPassParams.nircMLPIndex;
+        var["CB"]["gShowTransmission"] = mIRDebugPassParams.showTransmission;
+        var["CB"]["gApplyBSDF"] = mIRDebugPassParams.applyBSDF;
         if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
         if (mpEmissiveSampler) mpEmissiveSampler->bindShaderData(mpSamplerBlock->getRootVar()["emissiveSampler"]);
         var["gSampler"] = mpSamplerBlock;
@@ -434,9 +437,9 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         if (mNNParams.featureHashMapProbingSize > 0 && mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER]) var["gFeatureHashGridEntriesBuffer"] = mBuffers[FEATURE_HASH_GRID_ENTRIES_BUFFER];
         var[kInputVBuffer.texname] = renderData.getTexture(kInputVBuffer.name);
         var[kInputViewDir.texname] = renderData.getTexture(kInputViewDir.name);
-        var[kNIRCDebugOutputColor.texname] = renderData.getTexture(kNIRCDebugOutputColor.name);
-        var[kNIRCDebugOutputColorRef.texname] = renderData.getTexture(kNIRCDebugOutputColorRef.name);
-        mpPixelDebug->prepareProgram(mPasses[NIRC_DEBUG_PASS]->getProgram(), var);
+        var[kIRDebugOutputColor.texname] = renderData.getTexture(kIRDebugOutputColor.name);
+        var[kIRDebugOutputColorRef.texname] = renderData.getTexture(kIRDebugOutputColorRef.name);
+        mpPixelDebug->prepareProgram(mPasses[IR_DEBUG_PASS]->getProgram(), var);
     }
 }
 
@@ -476,10 +479,13 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         reset();
         renderData.getDictionary()[Falcor::kRenderPassRefreshFlags] = Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
         // activate hc if it is used somewhere
-        mHCParams.active = mRRParams.requiresHC() | mHCParams.injectRadianceRR | mHCParams.injectRadianceSpread | mHCParams.debugColor | mHCParams.debugLevels | mHCParams.debugVoxels;
+        mHCParams.active = mRRParams.requiresHC() | mHCParams.injectRadianceRR | mHCParams.injectRadianceSpread | mHCParams.debugColor | mHCParams.debugLevels | mHCParams.debugVoxels | mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_IRHC;
         // activate nn if it is used somewhere
-        mNNParams.active = mRRParams.requiresNN() | mNNParams.debugOutput | mNNParams.nircDebugPass;
+        mNNParams.active = mRRParams.requiresNN() | mNNParams.debugOutput | mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_NIRC;
         mNNParams.keepThreads = mNNParams.active;
+        // only allow activation of ir debug pass if either nn or hc is using incident radiance
+        mIRDebugPassParams.active &= ((mNNParams.nnMethod == NNParams::USE_NIRC && mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_NIRC)
+            | (mHCParams.hcMethod == HCParams::USE_IRHC && mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_IRHC));
         setupData(pRenderContext);
         createPasses(renderData);
         setupBuffers();
@@ -517,10 +523,10 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         FALCOR_PROFILE(pRenderContext, "ComputePathTracer::pt");
         mPasses[PATH_TRACING_PASS]->execute(pRenderContext, frameDim.x, frameDim.y);
     }
-    if (mNNParams.active && mNNParams.nircDebugPass)
+    if (mPasses[IR_DEBUG_PASS])
     {
-        FALCOR_PROFILE(pRenderContext, "ComputePathTracer::nirc_debug");
-        mPasses[NIRC_DEBUG_PASS]->execute(pRenderContext, kNIRCDebugOutputDim.x, kNIRCDebugOutputDim.y);
+        FALCOR_PROFILE(pRenderContext, "ComputePathTracer::ir_debug");
+        mPasses[IR_DEBUG_PASS]->execute(pRenderContext, kIRDebugOutputDim.x, kIRDebugOutputDim.y);
     }
     mpPixelDebug->endFrame(pRenderContext);
     mFrameCount++;
@@ -630,16 +636,6 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         for (uint i = 0; i < mNNParams.nnLayerCount.size(); i++) ImGui::InputInt(std::string(std::string("MLP ") + std::to_string(i) + std::string(" layer count")).c_str(), &mNNParams.nnLayerCount[i]);
         ImGui::InputFloat("Filter alpha", &mNNParams.filterAlpha, 0.0f, 0.0f, "%.4f");
         nn_group.checkbox("debug NN output", mNNParams.debugOutput);
-        if (mNNParams.nnMethod == NNParams::USE_NIRC)
-        {
-            ImGui::Separator();
-            ImGui::Text("NIRC debug pass");
-            nn_group.checkbox("enable", mNNParams.nircDebugPass);
-            ImGui::InputInt("mlp index", &mNNParams.nircDebugPassMLPIndex);
-            nn_group.checkbox("show transmission", mNNParams.nircDebugPassShowTransmission);
-            nn_group.checkbox("apply bsdf", mNNParams.nircDebugPassApplyBSDF);
-            ImGui::Separator();
-        }
         ImGui::Text("Weight init bounds");
         ImGui::InputFloat("min", &mNNParams.weightInitBound.x, 0.0f, 0.0f, "%.6f");
         ImGui::InputFloat("max", &mNNParams.weightInitBound.y, 0.0f, 0.0f, "%.6f");
@@ -656,6 +652,14 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     }
     if (Gui::Group debug_group = widget.group("Debug"))
     {
+        ImGui::Separator();
+        ImGui::Text("IR debug pass");
+        debug_group.checkbox("enable", mIRDebugPassParams.active);
+        debug_group.dropdown("IR method", mIRDebugPassParams.irMethodList, mIRDebugPassParams.irMethod);
+        ImGui::InputInt("mlp index", &mIRDebugPassParams.nircMLPIndex);
+        debug_group.checkbox("show transmission", mIRDebugPassParams.showTransmission);
+        debug_group.checkbox("apply bsdf", mIRDebugPassParams.applyBSDF);
+        ImGui::Separator();
         debug_group.checkbox("path length", mDebugPathLength);
         mpPixelDebug->renderUI(debug_group);
     }
