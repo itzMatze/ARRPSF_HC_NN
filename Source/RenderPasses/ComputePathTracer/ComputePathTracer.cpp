@@ -638,7 +638,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         nn_group.dropdown("NN method", mNNParams.nnMethodList, mNNParams.nnMethod);
         if (mNNParams.nnMethod == NNParams::USE_NIRC) mNNParams.mlpCount = 2;
         else if (mNNParams.nnMethod == NNParams::USE_NRC) mNNParams.mlpCount = 1;
-        if (mNNParams.nnLayerCount.size() != mNNParams.mlpCount) mNNParams.nnLayerCount.resize(mNNParams.mlpCount);
+        if (mNNParams.nnLayerCount.size() != mNNParams.mlpCount) mNNParams.nnLayerCount.resize(mNNParams.mlpCount, 1);
         for (uint i = 0; i < mNNParams.nnLayerCount.size(); i++) ImGui::InputInt(std::string(std::string("MLP ") + std::to_string(i) + std::string(" layer count")).c_str(), &mNNParams.nnLayerCount[i]);
         ImGui::InputFloat("Filter alpha", &mNNParams.filterAlpha, 0.0f, 0.0f, "%.4f");
         nn_group.checkbox("debug NN output", mNNParams.debugOutput);
