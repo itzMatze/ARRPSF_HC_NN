@@ -30,12 +30,10 @@ cbuffer CB
     float3 gCamPos;
 }
 
-// Inputs
+// inputs
 Texture2D<PackedHitInfo> gVBuffer;
 Texture2D<float4> gViewW;
 
-// Static configuration based on defines set from the host.
-#define is_valid(name) (is_valid_##name != 0)
 static const uint kLowerBounceCount = LOWER_BOUNCE_COUNT;
 static const uint kUpperBounceCount = UPPER_BOUNCE_COUNT;
 static const float kRRProbStartValue = RR_PROB_START_VALUE;

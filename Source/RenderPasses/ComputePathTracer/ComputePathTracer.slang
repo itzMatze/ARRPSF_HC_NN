@@ -30,16 +30,14 @@ cbuffer CB
     int gHashEncDebugLevel;
 }
 
-// Inputs
+// inputs
 Texture2D<PackedHitInfo> gVBuffer;
 Texture2D<float4> gViewW;
 Texture2D<float4> gRefImage;
 
-// Outputs
+// outputs
 RWTexture2D<float4> gOutputColor;
 
-// Static configuration based on defines set from the host.
-#define is_valid(name) (is_valid_##name != 0)
 static const uint kLowerBounceCount = LOWER_BOUNCE_COUNT;
 static const uint kUpperBounceCount = UPPER_BOUNCE_COUNT;
 static const float kRRProbStartValue = RR_PROB_START_VALUE;
@@ -511,7 +509,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         MASK_BLOCK rayData.cur_radiance += color;
         TERMINATE_PATH_0;
     }
-#elif USE_IRHC
+#elif HC_QUERY && USE_IRHC
     MASK_BLOCK
     {
         hashCacheHitData.direction = bsdfSample.wo;
@@ -595,6 +593,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             survival_prob = min(survival_prob, (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces)));
         }
 #elif RR_OPTION_BITS & (1u << 2)
+        // adrr
         float local_luminance_estimate = luminance(radiance);
         if (local_luminance_estimate < 0.001) local_luminance_estimate = 0.001;
         float center = rayData.luminance_estimate / local_luminance_estimate;
