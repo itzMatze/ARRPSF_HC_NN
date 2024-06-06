@@ -537,7 +537,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             float3 hashCacheRadiance;
             if (isValidHit && hc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
             {
-                rayData.cur_radiance += hashCacheRadiance;
+                rayData.cur_radiance += hashCacheRadiance * bsdfSample.weight;
                 TERMINATE_PATH_0; // Terminate the path once we've looked up into the cache
             }
         }
