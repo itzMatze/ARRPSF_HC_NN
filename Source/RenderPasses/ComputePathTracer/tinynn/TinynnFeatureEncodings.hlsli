@@ -140,13 +140,25 @@ HalfFeature<32> computeHashEncFeature(
     [ForceUnroll]
     for (uint i = 0; i < 8; i++)
     {
+#if USE_MULTI_LEVEL_DIR
 #if NN_TRAIN
-        uint idx = no_diff featureHashGrid.InsertEntry(pos, dir, normal, i);
+        uint idx0 = no_diff featureHashGrid.InsertEntry(pos, dir, normal, i, true);
+        uint idx1 = no_diff featureHashGrid.InsertEntry(pos, dir, normal, i, false);
 #else
-        uint idx = featureHashGrid.FindEntry(pos, dir, normal, i);
+        uint idx0 = featureHashGrid.FindEntry(pos, dir, normal, i, true);
+        uint idx1 = featureHashGrid.FindEntry(pos, dir, normal, i, false);
+#endif
+        feature.vals[offset++] = float16_t(featureHashGrid.dataView.load_prim(idx0));
+        feature.vals[offset++] = float16_t(featureHashGrid.dataView.load_prim(idx1));
+#else
+#if NN_TRAIN
+        uint idx = no_diff featureHashGrid.InsertEntry(pos, dir, normal, i, false);
+#else
+        uint idx = featureHashGrid.FindEntry(pos, dir, normal, i, false);
 #endif
         feature.vals[offset++] = float16_t(featureHashGrid.dataView.load_prim(idx));
         feature.vals[offset++] = float16_t(featureHashGrid.dataView.load_prim(idx + 1));
+#endif
     }
     // shDegree^2 values
     float16_t shVals[9];

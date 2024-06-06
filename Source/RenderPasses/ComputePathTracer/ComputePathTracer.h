@@ -230,8 +230,9 @@ private:
         bool keepThreads = false;
         const uint featureHashMapSize = std::pow(2, 22);
         int featureHashMapDebugShowLevel = -1;
+        bool featureHashEncUseMultiLevelDir = true;
         // how many numbers one element in the hash map contains (how many feature values for each level)
-        const uint featureHashMapPlacesPerElement = 2;
+        uint featureHashMapPlacesPerElement = 1;
         int featureHashMapProbingSize = 0;
 
         void update()
@@ -239,6 +240,7 @@ private:
             reset = true;
             optimizerParams.step_count = 0;
             nnParamCount = ((nnLayerWidth * nnLayerWidth /*weights*/ + nnLayerWidth /*biases*/) * std::reduce(nnLayerCount.begin(), nnLayerCount.end()) + featureHashMapSize /*feature hash grid storage*/ * nnLayerCount.size() /*one feature hashmap per nn*/);
+            featureHashMapPlacesPerElement = featureHashEncUseMultiLevelDir ? 1 : 2;
         }
     } mNNParams;
 

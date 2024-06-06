@@ -99,32 +99,46 @@ struct FeatureHashGridData
         return uint3(((input + 1.0) / 2.0) * float((max + 1) - 0.001));
     }
 
-    HashKey ComputeSpatialHash(float3 samplePosition, float3 sampleDirection, float3 sampleNormal, uint level)
+    HashKey ComputeSpatialHash(float3 samplePosition, float3 sampleDirection, float3 sampleNormal, uint level, bool multiLevelDir = false)
     {
+#if USE_NRC
         uint3 gridPosition = asuint(CalculateGridPositionLog(samplePosition, level));
         uint3 quantizedDir = quantizeToBitRange(sampleDirection, kHashGridDirectionBitMask);
+        const HashKey positionBitNum = kHashGridPositionBitNum;
+        const HashKey positionBitMask = kHashGridPositionBitMask;
+        const HashKey directionBitNum = kHashGridDirectionBitNum;
+        const HashKey directionBitMask = kHashGridDirectionBitMask;
+#elif USE_NIRC
+        // range of used bits for directional encoding: [1, 8]
+        const HashKey directionBitNum = multiLevelDir ? level + 1 : kHashGridDirectionBitNum;
+        const HashKey directionBitMask = ((1u << directionBitNum) - 1);
+        const HashKey positionBitNum = 18 - directionBitNum;
+        const HashKey positionBitMask = ((1u << positionBitNum) - 1);
+        uint3 gridPosition = multiLevelDir ? asuint(CalculateGridPositionLog(samplePosition, 5)) : asuint(CalculateGridPositionLog(samplePosition, level));
+        uint3 quantizedDir = quantizeToBitRange(sampleDirection, directionBitMask);
+#endif
         // | normal bits | level | pos.z | pos.y | pos.x | dir.z | dir.y | dir.x |
         HashKey hashKey = (sampleNormal.x >= 0 ? 1 : 0) + (sampleNormal.y >= 0 ? 2 : 0) + (sampleNormal.z >= 0 ? 4 : 0);
         hashKey <<= kHashGridLevelBitNum;
         hashKey |= ((HashKey)level & kHashGridLevelBitMask);
-        hashKey <<= kHashGridPositionBitNum;
-        hashKey |= ((HashKey)gridPosition.z & kHashGridPositionBitMask);
-        hashKey <<= kHashGridPositionBitNum;
-        hashKey |= ((HashKey)gridPosition.y & kHashGridPositionBitMask);
-        hashKey <<= kHashGridPositionBitNum;
-        hashKey |= ((HashKey)gridPosition.x & kHashGridPositionBitMask);
-        hashKey <<= kHashGridDirectionBitNum;
-        hashKey |= ((HashKey)quantizedDir.z & kHashGridDirectionBitMask);
-        hashKey <<= kHashGridDirectionBitNum;
-        hashKey |= ((HashKey)quantizedDir.y & kHashGridDirectionBitMask);
-        hashKey <<= kHashGridDirectionBitNum;
-        hashKey |= ((HashKey)quantizedDir.x & kHashGridDirectionBitMask);
+        hashKey <<= positionBitNum;
+        hashKey |= ((HashKey)gridPosition.z & positionBitMask);
+        hashKey <<= positionBitNum;
+        hashKey |= ((HashKey)gridPosition.y & positionBitMask);
+        hashKey <<= positionBitNum;
+        hashKey |= ((HashKey)gridPosition.x & positionBitMask);
+        hashKey <<= directionBitNum;
+        hashKey |= ((HashKey)quantizedDir.z & directionBitMask);
+        hashKey <<= directionBitNum;
+        hashKey |= ((HashKey)quantizedDir.y & directionBitMask);
+        hashKey <<= directionBitNum;
+        hashKey |= ((HashKey)quantizedDir.x & directionBitMask);
         return hashKey;
     }
 
-    uint InsertEntry(float3 samplePosition, float3 sampleDirection, float3 sampleNormal, uint level)
+    uint InsertEntry(float3 samplePosition, float3 sampleDirection, float3 sampleNormal, uint level, bool multiLevelDir)
     {
-        const HashKey hashKey = ComputeSpatialHash(samplePosition, sampleDirection, sampleNormal, level);
+        const HashKey hashKey = ComputeSpatialHash(samplePosition, sampleDirection, sampleNormal, level, multiLevelDir);
         uint hash = Hash32(hashKey);
         uint slot = (hash % capacity);
 #if FEATURE_HASH_GRID_PROBING_SIZE > 0
@@ -144,9 +158,9 @@ struct FeatureHashGridData
         return slot;
     }
 
-    uint FindEntry(float3 samplePosition, float3 sampleDirection, float3 sampleNormal, uint level)
+    uint FindEntry(float3 samplePosition, float3 sampleDirection, float3 sampleNormal, uint level, bool multiLevelDir)
     {
-        const HashKey hashKey = ComputeSpatialHash(samplePosition, sampleDirection, sampleNormal, level);
+        const HashKey hashKey = ComputeSpatialHash(samplePosition, sampleDirection, sampleNormal, level, multiLevelDir);
         uint hash = Hash32(hashKey);
         uint slot = (hash % capacity);
 #if FEATURE_HASH_GRID_PROBING_SIZE > 0

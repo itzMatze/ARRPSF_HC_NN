@@ -19,14 +19,14 @@ struct FeatureHashGrid
         grad_offset += kFeatureHashGridSize;
     }
 
-    uint InsertEntry(float3 samplePosition, float3 sampleDirection, float3 sampleNormal, uint level)
+    uint InsertEntry(float3 samplePosition, float3 sampleDirection, float3 sampleNormal, uint level, bool multiLevelDir)
     {
-        return hashmap.InsertEntry(samplePosition, sampleDirection, sampleNormal, level) * kFeatureHashGridPlacesPerElement;
+        return hashmap.InsertEntry(samplePosition, sampleDirection, sampleNormal, level, multiLevelDir) * kFeatureHashGridPlacesPerElement;
     }
 
-    uint FindEntry(float3 samplePosition, float3 sampleDirection, float3 sampleNormal, uint level)
+    uint FindEntry(float3 samplePosition, float3 sampleDirection, float3 sampleNormal, uint level, bool multiLevelDir)
     {
-        return hashmap.FindEntry(samplePosition, sampleDirection, sampleNormal, level) * kFeatureHashGridPlacesPerElement;
+        return hashmap.FindEntry(samplePosition, sampleDirection, sampleNormal, level, multiLevelDir) * kFeatureHashGridPlacesPerElement;
     }
 }
 

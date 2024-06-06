@@ -175,6 +175,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["USE_ENV_BACKGROUND"] = mpScene->useEnvBackground() ? "1" : "0";
     defineList["USE_NRC"] = mNNParams.nnMethod == NNParams::USE_NRC ? "1" : "0";
     defineList["USE_NIRC"] = mNNParams.nnMethod == NNParams::USE_NIRC ? "1" : "0";
+    defineList["USE_MULTI_LEVEL_DIR"] = mNNParams.featureHashEncUseMultiLevelDir ? "1" : "0";
     defineList["NN_DEBUG"] = mNNParams.debugOutput ? "1" : "0";
     defineList["IR_DEBUG_OUTPUT_WIDTH"] = std::to_string(kIRDebugOutputDim.x);
     defineList["IR_DEBUG_OUTPUT_HEIGHT"] = std::to_string(kIRDebugOutputDim.y);
@@ -649,6 +650,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         ImGui::InputInt("training bounces", &mNNParams.trainingBounces);
         ImGui::Separator();
         ImGui::Text("input encoding");
+        nn_group.checkbox("hash enc use multi level dir", mNNParams.featureHashEncUseMultiLevelDir);
         ImGui::InputInt("hash enc debug show level", &mNNParams.featureHashMapDebugShowLevel);
         ImGui::InputInt("hash enc probing size", &mNNParams.featureHashMapProbingSize);
         nn_group.tooltip("The number of slots that are tested when the current slot is occupied.", true);

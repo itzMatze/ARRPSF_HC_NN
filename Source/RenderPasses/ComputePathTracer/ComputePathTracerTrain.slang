@@ -394,6 +394,7 @@ bool traceScatterRay(inout ScatterRayData rayData)
     HitInfo hit;
     if (!rayQuery.traceRay(ray, hit, rayData.t, RAY_FLAG_NONE, 0xff))
     {
+        float3 Le;
         // add contribution from environment map
         bool computeEnv = kUseEnvLight && (!kUseNEE || kUseMIS || !rayData.isLightSampled() || rayData.isDeltaLobe());
         if (computeEnv && rayData.numBounces >= kLowerBounceCount && rayData.numBounces <= kUpperBounceCount)
@@ -412,14 +413,14 @@ bool traceScatterRay(inout ScatterRayData rayData)
                 misWeight = evalMIS(1, rayData.pdf, 1, lightPdf);
             }
 
-            float3 Le = gSampler.envMapSampler.eval(rayData.direction);
+            Le = gSampler.envMapSampler.eval(rayData.direction);
             rayData.cur_radiance += misWeight * Le;
         }
 #if HC_UPDATE
         hc::hashCacheUpdateMiss(rayData.hashCacheState, rayData.cur_radiance);
 #endif // HC_UPDATE
 #if NN_TRAIN
-        updateNNHitInfoRadiance(rayData.cur_radiance, rayData.numBounces);
+        updateNNHitInfoRadiance(Le, rayData.numBounces);
 #endif // NN_TRAIN
         return false;
     }
