@@ -188,7 +188,7 @@ private:
         void update()
         {
             reset = true;
-            hashMapSize = std::pow(2, hashMapSizeExp);
+            hashMapSize = std::pow(2u, hashMapSizeExp);
         }
     } mHCParams;
 

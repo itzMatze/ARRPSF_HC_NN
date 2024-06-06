@@ -91,6 +91,7 @@ void ComputePathTracer::reset()
 {
     mNNParams.optimizerParams.step_count = 0;
     mNNParams.update();
+    mHCParams.update();
     // Retain the options for the emissive sampler.
     if (auto lightBVHSampler = dynamic_cast<LightBVHSampler*>(mpEmissiveSampler.get()))
     {
