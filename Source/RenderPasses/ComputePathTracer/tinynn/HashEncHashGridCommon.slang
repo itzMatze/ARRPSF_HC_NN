@@ -114,11 +114,11 @@ struct FeatureHashGridData
         hashKey <<= kHashGridPositionBitNum;
         hashKey |= ((HashKey)gridPosition.x & kHashGridPositionBitMask);
         hashKey <<= kHashGridDirectionBitNum;
-        hashKey |= ((HashKey)quantizedDir.z);
+        hashKey |= ((HashKey)quantizedDir.z & kHashGridDirectionBitMask);
         hashKey <<= kHashGridDirectionBitNum;
-        hashKey |= ((HashKey)quantizedDir.y);
+        hashKey |= ((HashKey)quantizedDir.y & kHashGridDirectionBitMask);
         hashKey <<= kHashGridDirectionBitNum;
-        hashKey |= ((HashKey)quantizedDir.x);
+        hashKey |= ((HashKey)quantizedDir.x & kHashGridDirectionBitMask);
         return hashKey;
     }
 

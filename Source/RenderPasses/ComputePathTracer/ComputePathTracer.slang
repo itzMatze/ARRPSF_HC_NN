@@ -261,18 +261,27 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             TERMINATE_PATH_0;
         }
 #endif
+    }
 #if NN_DEBUG && USE_NRC
-        HalfFeature<32> feature = computeHashEncFeature(sd.posW, -gViewW[gPixel].xyz, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
-        //HalfFeature<32> feature = computeFreqEncFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir);
-        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
-        MASK_BLOCK
-        {
-            if (isnan(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 0.0);
-            else if (isinf(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 1.0);
-            else rayData.cur_radiance = float3(output.vals[0], output.vals[1], output.vals[2]);
-        }
-        TERMINATE_PATH_0;
+    HalfFeature<32> feature;
+    if (!gDone) feature = computeHashEncFeature(sd.posW, -gViewW[gPixel].xyz, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
+    //feature = computeFreqEncFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir);
+    else
+    {
+        [ForceUnroll]
+        for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
+    }
+    HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
+    MASK_BLOCK
+    {
+        if (isnan(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 0.0);
+        else if (isinf(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 1.0);
+        else rayData.cur_radiance = float3(output.vals[0], output.vals[1], output.vals[2]);
+    }
+    TERMINATE_PATH_0;
 #endif
+    MASK_BLOCK
+    {
 #if HC_QUERY
         // Construct HashCacheHitData structure needed for creating a query point at this hit location
         hashCacheHitData.positionWorld = sd.posW;
