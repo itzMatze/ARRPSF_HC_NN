@@ -248,6 +248,7 @@ private:
         bool active = false;
         bool showTransmission = false;
         bool applyBSDF = false;
+        bool accumulate = false;
         int nircMLPIndex = 0;
 
         enum IRMethods {

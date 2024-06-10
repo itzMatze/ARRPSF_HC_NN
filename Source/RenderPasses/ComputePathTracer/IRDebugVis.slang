@@ -28,6 +28,7 @@ cbuffer CB
     uint gMLPIndex;
     bool gShowTransmission;
     bool gApplyBSDF;
+    bool gAccumulate;
 }
 
 // Inputs
@@ -497,7 +498,12 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     if (mainThread)
     {
         gIRDebugOutputColor[pixel] = float4(outputColorIR, 1.0f);
-        gIRDebugOutputColorRef[pixel] = float4(outputColor, 1.0f);
+        float4 value = gIRDebugOutputColorRef[pixel];
+        value.xyz = value.xyz * value.w + outputColor;
+        value.w++;
+        value.xyz /= value.w;
+        if (gAccumulate) gIRDebugOutputColorRef[pixel] = value;
+        else gIRDebugOutputColorRef[pixel] = float4(outputColor, 1.0);
     }
 }
 

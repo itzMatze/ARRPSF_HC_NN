@@ -668,6 +668,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         ImGui::InputInt("mlp index", &mIRDebugPassParams.nircMLPIndex);
         debug_group.checkbox("show transmission", mIRDebugPassParams.showTransmission);
         debug_group.checkbox("apply bsdf", mIRDebugPassParams.applyBSDF);
+        debug_group.checkbox("accumulate", mIRDebugPassParams.accumulate);
         ImGui::Separator();
         debug_group.checkbox("path length", mDebugPathLength);
         mpPixelDebug->renderUI(debug_group);
