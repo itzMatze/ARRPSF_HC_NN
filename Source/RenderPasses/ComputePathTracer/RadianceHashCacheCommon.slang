@@ -154,7 +154,7 @@ void hashCacheCombine(uint idx)
         voxelData.radiance /= float(newSampleNum);
         if (voxelDataPrev.sampleNum > 0)
         {
-            float weight = min(newSampleNum * 0.0005, 0.025);
+            float weight = (newSampleNum * 0.001);
             voxelData.radiance = (1 - weight) * voxelDataPrev.radiance + weight * voxelData.radiance;
         }
     }
