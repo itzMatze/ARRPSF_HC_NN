@@ -102,7 +102,7 @@ static bool gDone = false;
 #define TERMINATE_PATH_1 return rayData.cur_radiance
 #endif
 
-static float2 gPixel;
+static uint2 gPixel;
 
 struct ScatterRayData
 {
@@ -264,8 +264,11 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     }
 #if NN_DEBUG && USE_NRC
     HalfFeature<32> feature;
-    if (!gDone) feature = computeHashEncFeature(sd.posW, -gViewW[gPixel].xyz, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
-    //feature = computeFreqEncFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir);
+    if (!gDone)
+    {
+        feature = computeHashEncFeature(sd.posW, -gViewW[gPixel].xyz, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
+        //feature = computeFreqEncFeature(sd.posW, -gViewW[gPixel].xyz);
+    }
     else
     {
         [ForceUnroll]
@@ -344,8 +347,11 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 #elif RR_OPTION_BITS & (1u << 7)
 #if USE_NIRC
         HalfFeature<32> feature;
-        if (!gDone) feature = computeHashEncFeature(sd.posW, rayData.direction, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
-        //if (!gDone) feature = computeFreqEncFeature(sd.posW, rayData.direction);
+        if (!gDone)
+        {
+            feature = computeHashEncFeature(sd.posW, rayData.direction, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
+            //feature = computeFreqEncFeature(sd.posW, rayData.direction);
+        }
         else
         {
             [ForceUnroll]
@@ -356,8 +362,11 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         rayData.luminance_estimate = luminance(nnRadiance);
 #elif USE_NRC
         HalfFeature<32> feature;
-        if (!gDone) feature = computeHashEncFeature(sd.posW, -gViewW[gPixel].xyz, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
-        //HalfFeature<32> feature = computeFreqEncFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir);
+        if (!gDone)
+        {
+            feature = computeHashEncFeature(sd.posW, -gViewW[gPixel].xyz, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
+            //feature = computeFreqEncFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir);
+        }
         else
         {
             [ForceUnroll]
@@ -437,8 +446,11 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     // evaluate nn for nee
     {
         HalfFeature<32> feature;
-        if (!gDone) feature = computeHashEncFeature(sd.posW, ls.dir, sd.getOrientedFaceNormal(), rayData.featureHashGrid1);
-        //if (!gDone) feature = computeFreqEncFeature(sd.posW, ls.dir);
+        if (!gDone)
+        {
+            feature = computeHashEncFeature(sd.posW, ls.dir, sd.getOrientedFaceNormal(), rayData.featureHashGrid1);
+            //feature = computeFreqEncFeature(sd.posW, ls.dir);
+        }
         else
         {
             [ForceUnroll]
@@ -506,8 +518,11 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     {
         HalfFeature<32> feature;
         // evaluate nn for the bsdf sampled direction
-        if (!gDone) feature = computeHashEncFeature(sd.posW, bsdfSample.wo, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
-        //if (!gDone) feature = computeFreqEncFeature(sd.posW, bsdfSample.wo);
+        if (!gDone)
+        {
+            feature = computeHashEncFeature(sd.posW, bsdfSample.wo, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
+            //feature = computeFreqEncFeature(sd.posW, bsdfSample.wo);
+        }
         else
         {
             [ForceUnroll]
@@ -698,19 +713,18 @@ bool traceScatterRay(inout ScatterRayData rayData)
  * hit. The environment map contribution is added when a scattered ray does
  * not hit any geometry.
  *
- * @param[in] pixel Pixel to trace a path for.
  * @param[in] frameDim Dimension of the frame in pixels.
  * @return Returns the estimated color (radiance).
  */
-float3 tracePath(const uint2 pixel, const uint2 frameDim, ScatterRayData rayData)
+float3 tracePath(const uint2 frameDim, ScatterRayData rayData)
 {
     float3 outColor = float3(0.f);
-    const HitInfo hit = HitInfo(gVBuffer[pixel]);
+    const HitInfo hit = HitInfo(gVBuffer[gPixel]);
 
     if (!hit.isValid() || hit.getType() != HitType::Triangle)
     {
         // Background pixel.
-        rayData.cur_radiance = kUseEnvBackground ? gScene.envMap.eval(-gViewW[pixel].xyz) : kDefaultBackgroundColor;
+        rayData.cur_radiance = kUseEnvBackground ? gScene.envMap.eval(-gViewW[gPixel].xyz) : kDefaultBackgroundColor;
         TERMINATE_PATH_1;
     }
 
@@ -718,7 +732,7 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, ScatterRayData rayData
     rayData.materialRoughness = 0.0f;
     rayData.spread = 0.0f;
 #endif
-    rayData.direction = -gViewW[pixel].xyz;
+    rayData.direction = -gViewW[gPixel].xyz;
     if (!handleHit(hit, rayData)) TERMINATE_PATH_1;
     MASK_BLOCK rayData.numBounces++;
     // Follow path into the scene and compute its total contribution.
@@ -753,7 +767,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     int3 groupThreadId: SV_GroupThreadID,
     int3 groupId: SV_GroupID)
 {
-    uint2 gPixel = dispatchThreadId.xy;
+    gPixel = dispatchThreadId.xy;
 #if NN_QUERY
     if (any(gPixel >= gFrameDim)) gDone = true;
 #else
@@ -775,7 +789,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
 #endif
 #endif
     float3 outputColor = float3(0.0, 1.0, 0.0);
-    outputColor = tracePath(gPixel, gFrameDim, rayData);
+    outputColor = tracePath(gFrameDim, rayData);
     gOutputColor[gPixel] = float4(outputColor, 1.0f);
 }
 
