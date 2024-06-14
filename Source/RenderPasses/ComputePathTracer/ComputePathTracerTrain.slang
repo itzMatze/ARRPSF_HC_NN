@@ -63,8 +63,8 @@ struct NNHitInfo
     __init()
     {
         pos = float3(0.0);
-        normal = float3(0.0);
         dir = float3(0.0);
+        normal = float3(0.0);
         thp = float3(0.0);
         radiance = float3(0.0);
     }
@@ -86,7 +86,7 @@ static MLPModule2 gMlp2;
 #endif
 
 #if NN_TRAIN
-void updateNNHitInfoRadiance(float3 radiance, int bounce)
+void updateNNHitInfoRadiance(in float3 radiance, int bounce)
 {
 #if USE_NIRC
     // in nirc emitted radiance is applied as incident radiance to the previous position
@@ -394,7 +394,7 @@ bool traceScatterRay(inout ScatterRayData rayData)
     HitInfo hit;
     if (!rayQuery.traceRay(ray, hit, rayData.t, RAY_FLAG_NONE, 0xff))
     {
-        float3 Le;
+        float3 Le = float3(0.0);
         // add contribution from environment map
         bool computeEnv = kUseEnvLight && (!kUseNEE || kUseMIS || !rayData.isLightSampled() || rayData.isDeltaLobe());
         if (computeEnv && rayData.numBounces >= kLowerBounceCount && rayData.numBounces <= kUpperBounceCount)
