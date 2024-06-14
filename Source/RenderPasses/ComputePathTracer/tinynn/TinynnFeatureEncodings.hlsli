@@ -104,6 +104,16 @@ HalfFeature<32> computeFreqEncFeature(
     feature.vals[offset++] = float16_t(pos.x);
     feature.vals[offset++] = float16_t(pos.y);
     feature.vals[offset++] = float16_t(pos.z);
+#if 0
+    [ForceUnroll]
+    for (uint i = 0; i < 8; i++)
+    {
+        feature.vals[offset++] = sin(float16_t(pos.x) * float16_t(3.1415926f * pow(2.0, (i))));
+        feature.vals[offset++] = sin(float16_t(pos.y) * float16_t(3.1415926f * pow(2.0, (i))));
+        feature.vals[offset++] = sin(float16_t(pos.z) * float16_t(3.1415926f * pow(2.0, (i))));
+    }
+#endif
+#if 1
     [ForceUnroll]
     for (uint i = 0; i < 4; i++)
     {
@@ -111,6 +121,14 @@ HalfFeature<32> computeFreqEncFeature(
         feature.vals[offset++] = sin(float16_t(pos.y) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
         feature.vals[offset++] = sin(float16_t(pos.z) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
     }
+#if 1
+    // shDegree^2 values
+    float16_t shVals[16];
+    shEnc<4, 16>(dir, shVals);
+    [ForceUnroll]
+    for (uint i = 0; i < 16; i++) feature.vals[offset++] = shVals[i];
+#endif
+#if 0
     feature.vals[offset++] = float16_t(dir.x);
     feature.vals[offset++] = float16_t(dir.y);
     feature.vals[offset++] = float16_t(dir.z);
@@ -121,6 +139,8 @@ HalfFeature<32> computeFreqEncFeature(
         feature.vals[offset++] = sin(float16_t(dir.y) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
         feature.vals[offset++] = sin(float16_t(dir.z) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
     }
+#endif
+#endif
     return feature;
 }
 
@@ -160,6 +180,7 @@ HalfFeature<32> computeHashEncFeature(
         feature.vals[offset++] = float16_t(featureHashGrid.dataView.load_prim(idx + 1));
 #endif
     }
+#if 1
     // shDegree^2 values
     float16_t shVals[9];
     shEnc<3, 9>(dir, shVals);
@@ -175,6 +196,7 @@ HalfFeature<32> computeHashEncFeature(
         feature.vals[offset++] = sin(float16_t(pos.y) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
         feature.vals[offset++] = sin(float16_t(pos.z) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
     }
+#endif
     return feature;
 }
 #endif // !_SRENDERER_ADDON_HALF_TINYNN_FEATUREGRID_HLSLI_HEADER_
