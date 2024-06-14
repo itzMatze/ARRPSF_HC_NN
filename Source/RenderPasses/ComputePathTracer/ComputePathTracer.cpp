@@ -430,6 +430,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["CB"]["gMLPIndex"] = mIRDebugPassParams.nircMLPIndex;
         var["CB"]["gShowTransmission"] = mIRDebugPassParams.showTransmission;
         var["CB"]["gApplyBSDF"] = mIRDebugPassParams.applyBSDF;
+        var["CB"]["gAccumulate"] = mIRDebugPassParams.accumulate;
         if (mHCParams.active)
         {
             var["gHCHashGridEntriesBuffer"] = mBuffers[HC_HASH_GRID_ENTRIES_BUFFER];
