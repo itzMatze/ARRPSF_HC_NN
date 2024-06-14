@@ -525,8 +525,17 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
 #if 1
     for (uint i = 0; i < kNNMaxTrainingBounces - 1; i++)
     {
-        HalfFeature<32> feature = computeHashEncFeature(nnHitInfoList[i].pos, nnHitInfoList[i].dir, nnHitInfoList[i].normal, featureHashGrid0);
-        //HalfFeature<32> feature = computeFreqEncFeature(nnHitInfoList[i].pos, nnHitInfoList[i].dir);
+        HalfFeature<32> feature;
+        if (length(nnHitInfoList[i].dir) < 0.1)
+        {
+            [ForceUnroll]
+            for (uint j = 0; j < 32; j++) feature.vals[j] = 0.0h;
+        }
+        else
+        {
+            feature = computeHashEncFeature(nnHitInfoList[i].pos, nnHitInfoList[i].dir, nnHitInfoList[i].normal, featureHashGrid0);
+            //feature = computeFreqEncFeature(nnHitInfoList[i].pos, nnHitInfoList[i].dir);
+        }
         HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
         HalfFeature<32>.Differential output_grad;
         float3 target_color = nnHitInfoList[i].radiance;
