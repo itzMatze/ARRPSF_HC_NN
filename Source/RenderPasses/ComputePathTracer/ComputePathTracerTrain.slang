@@ -417,10 +417,18 @@ bool traceScatterRay(inout ScatterRayData rayData)
             rayData.cur_radiance += misWeight * Le;
         }
 #if HC_UPDATE
+#if USE_RHC
+        hc::hashCacheUpdateMiss(rayData.hashCacheState, rayData.cur_radiance);
+#elif USE_IRHC
         hc::hashCacheUpdateMiss(rayData.hashCacheState, Le);
+#endif
 #endif // HC_UPDATE
 #if NN_TRAIN
+#if USE_NRC
+        updateNNHitInfoRadiance(rayData.cur_radiance, rayData.numBounces);
+#elif USE_NIRC
         updateNNHitInfoRadiance(Le, rayData.numBounces);
+#endif
 #endif // NN_TRAIN
         return false;
     }
