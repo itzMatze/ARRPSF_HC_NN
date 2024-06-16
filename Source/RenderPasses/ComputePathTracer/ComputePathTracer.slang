@@ -266,8 +266,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     HalfFeature<32> feature;
     if (!gDone)
     {
-        feature = computeHashEncFeature(sd.posW, -gViewW[gPixel].xyz, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
-        //feature = computeFreqEncFeature(sd.posW, -gViewW[gPixel].xyz);
+        feature = computeFeature(sd.posW, rayData.direction, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
     }
     else
     {
@@ -349,8 +348,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         HalfFeature<32> feature;
         if (!gDone)
         {
-            feature = computeHashEncFeature(sd.posW, rayData.direction, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
-            //feature = computeFreqEncFeature(sd.posW, rayData.direction);
+            feature = computeFeature(sd.posW, rayData.direction, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
         }
         else
         {
@@ -364,8 +362,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         HalfFeature<32> feature;
         if (!gDone)
         {
-            feature = computeHashEncFeature(sd.posW, -gViewW[gPixel].xyz, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
-            //feature = computeFreqEncFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir);
+            feature = computeFeature(sd.posW, -gViewW[gPixel].xyz, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
         }
         else
         {
@@ -448,8 +445,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         HalfFeature<32> feature;
         if (!gDone)
         {
-            feature = computeHashEncFeature(sd.posW, ls.dir, sd.getOrientedFaceNormal(), rayData.featureHashGrid1);
-            //feature = computeFreqEncFeature(sd.posW, ls.dir);
+            feature = computeFeature(sd.posW, ls.dir, sd.getOrientedFaceNormal(), rayData.featureHashGrid1);
         }
         else
         {
@@ -520,8 +516,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         // evaluate nn for the bsdf sampled direction
         if (!gDone)
         {
-            feature = computeHashEncFeature(sd.posW, bsdfSample.wo, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
-            //feature = computeFreqEncFeature(sd.posW, bsdfSample.wo);
+            feature = computeFeature(sd.posW, bsdfSample.wo, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
         }
         else
         {
@@ -585,7 +580,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         HalfFeature<32> feature;
         if (!gDone)
         {
-            feature = computeHashEncFeature(sd.posW, bsdfSample.wo, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
+            feature = computeFeature(sd.posW, bsdfSample.wo, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
         }
         else
         {
@@ -598,7 +593,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         HalfFeature<32> feature;
         if (!gDone)
         {
-            feature = computeHashEncFeature(sd.posW, rayData.direction, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
+            feature = computeFeature(sd.posW, rayData.direction, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
         }
         else
         {

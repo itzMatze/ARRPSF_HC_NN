@@ -220,6 +220,12 @@ private:
         };
         Gui::DropdownList nnMethodList{Gui::DropdownValue{USE_NIRC, "nirc"}, Gui::DropdownValue{USE_NRC, "nrc"}};
         uint nnMethod = USE_NIRC;
+        enum EncMethods {
+            USE_HASH_ENC = 0,
+            USE_FREQ_ENC = 1
+        };
+        Gui::DropdownList encMethodList{Gui::DropdownValue{USE_HASH_ENC, "hash enc"}, Gui::DropdownValue{USE_FREQ_ENC, "freq enc"}};
+        uint encMethod = USE_HASH_ENC;
         uint nnParamCount = 0;
         uint gradientAuxElements = 0;
         int gradOffset = 0;

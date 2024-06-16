@@ -175,6 +175,8 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["USE_ENV_BACKGROUND"] = mpScene->useEnvBackground() ? "1" : "0";
     defineList["USE_NRC"] = mNNParams.nnMethod == NNParams::USE_NRC ? "1" : "0";
     defineList["USE_NIRC"] = mNNParams.nnMethod == NNParams::USE_NIRC ? "1" : "0";
+    defineList["NN_USE_HASH_ENC"] = mNNParams.encMethod == NNParams::USE_HASH_ENC ? "1" : "0";
+    defineList["NN_USE_FREQ_ENC"] = mNNParams.encMethod == NNParams::USE_FREQ_ENC ? "1" : "0";
     defineList["USE_MULTI_LEVEL_DIR"] = mNNParams.featureHashEncUseMultiLevelDir ? "1" : "0";
     defineList["NN_DEBUG"] = mNNParams.debugOutput ? "1" : "0";
     defineList["IR_DEBUG_OUTPUT_WIDTH"] = std::to_string(kIRDebugOutputDim.x);
@@ -643,6 +645,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         else if (mNNParams.nnMethod == NNParams::USE_NRC) mNNParams.mlpCount = 1;
         if (mNNParams.nnLayerCount.size() != mNNParams.mlpCount) mNNParams.nnLayerCount.resize(mNNParams.mlpCount, 1);
         for (uint i = 0; i < mNNParams.nnLayerCount.size(); i++) ImGui::InputInt(std::string(std::string("MLP ") + std::to_string(i) + std::string(" layer count")).c_str(), &mNNParams.nnLayerCount[i]);
+        nn_group.dropdown("enc method", mNNParams.encMethodList, mNNParams.encMethod);
         ImGui::InputFloat("Filter alpha", &mNNParams.filterAlpha, 0.0f, 0.0f, "%.4f");
         nn_group.checkbox("debug NN output", mNNParams.debugOutput);
         ImGui::Text("Weight init bounds");
