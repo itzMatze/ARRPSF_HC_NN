@@ -14,7 +14,6 @@ static const uint kOptimizerType = NN_OPTIMIZER_TYPE;
 static const float kLearningRate = NN_LEARNING_RATE; // |    SGD    |   Adam   |
 static const float kParam0 = NN_PARAM_0;             // |  momentum |  beta_1  |
 static const float kParam1 = NN_PARAM_1;             // | dampening |  beta_2  |
-static const float kParam2 = NN_PARAM_2;             // |           |  epsilon  |
 static const float kFilterAlpha = NN_FILTER_ALPHA;
 
 enum OptimizerType : uint32_t {
@@ -49,7 +48,7 @@ void main(int3 dtid: SV_DispatchThreadID) {
         print("ADAM", m_t);
         float v_t = GradientAuxBuffer[2 * (kGradOffset + tid) + 1];
         if (t == 0) { m_t = 0; v_t = 0; }
-        theta_new = adam_optimizer(theta, df_dtheta, m_t, v_t, t, kLearningRate, kParam0, kParam1, kParam2);
+        theta_new = adam_optimizer(theta, df_dtheta, m_t, v_t, t, kLearningRate, kParam0, kParam1);
         GradientAuxBuffer[2 * (kGradOffset + tid) + 0] = m_t;
         GradientAuxBuffer[2 * (kGradOffset + tid) + 1] = v_t;
     }

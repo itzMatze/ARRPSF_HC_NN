@@ -190,7 +190,6 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["NN_LEARNING_RATE"] = fmt::format("{:.12f}", mNNParams.optimizerParams.learn_r);
     defineList["NN_PARAM_0"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_0);
     defineList["NN_PARAM_1"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_1);
-    defineList["NN_PARAM_2"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_2);
     defineList["NN_LAYER_WIDTH"] = std::to_string(mNNParams.nnLayerWidth);
     defineList["MLP_COUNT"] = std::to_string(mNNParams.nnLayerCount.size());
     for (uint i = 0; i < mNNParams.nnLayerCount.size(); i++) defineList[std::string("NN_LAYER_COUNT") + std::to_string(i)] = std::to_string(mNNParams.nnLayerCount[i]);
@@ -634,7 +633,6 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
             {
                 ImGui::InputFloat("beta_1", &mNNParams.optimizerParams.param_0, 0.0f, 0.0f, "%.8f");
                 ImGui::InputFloat("beta_2", &mNNParams.optimizerParams.param_1, 0.0f, 0.0f, "%.8f");
-                ImGui::InputFloat("epsilon", &mNNParams.optimizerParams.param_2, 0.0f, 0.0f, "%.8f");
             }
             ImGui::PopItemWidth();
         }

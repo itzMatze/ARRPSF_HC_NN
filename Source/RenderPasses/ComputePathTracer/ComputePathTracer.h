@@ -206,8 +206,7 @@ private:
             int step_count = 0;
             float learn_r = 0.01;
             float param_0 = 0.9;
-            float param_1 = 0.999;
-            float param_2 = 1e-08;
+            float param_1 = 0.99;
         } optimizerParams;
         std::vector<int> nnLayerCount = {1, 1};
         int mlpCount = nnLayerCount.size();
