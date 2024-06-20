@@ -1,4 +1,5 @@
 import Utils.Debug.PixelDebug;
+#include "Utils/Math/MathConstants.slangh"
 
 typedef uint64_t HashKey;
 static const uint sizeofHashKey = 8;
@@ -89,21 +90,24 @@ struct FeatureHashGridData
         return angles;
     }
 
-    uint2 quantizeToBitRange(float2 input, uint max)
+    uint2 quantizePolarToBitRange(float2 input, uint newMax)
     {
-        return uint2(((input + 1.0) / 2.0) * float((max + 1) - 0.001));
+        uint2 result;
+        result.x = uint(((input.x + M_PI) / (M_PI + M_PI)) * float((newMax + 1) - 0.001));
+        result.y = uint((input.y / M_PI) * float((newMax + 1) - 0.001));
+        return result;
     }
 
-    uint3 quantizeToBitRange(float3 input, uint max)
+    uint3 quantizeCartesianToBitRange(float3 input, uint newMax)
     {
-        return uint3(((input + 1.0) / 2.0) * float((max + 1) - 0.001));
+        return uint3(((input + 1.0) / 2.0) * float((newMax + 1) - 0.001));
     }
 
     HashKey ComputeSpatialHash(float3 samplePosition, float3 sampleDirection, float3 sampleNormal, uint level, bool multiLevelDir = false)
     {
 #if USE_NRC
         uint3 gridPosition = asuint(CalculateGridPositionLog(samplePosition, level));
-        uint3 quantizedDir = quantizeToBitRange(sampleDirection, kHashGridDirectionBitMask);
+        uint3 quantizedDir = quantizeCartesianToBitRange(sampleDirection, kHashGridDirectionBitMask);
         const HashKey positionBitNum = kHashGridPositionBitNum;
         const HashKey positionBitMask = kHashGridPositionBitMask;
         const HashKey directionBitNum = kHashGridDirectionBitNum;
@@ -115,7 +119,7 @@ struct FeatureHashGridData
         const HashKey positionBitNum = 18 - directionBitNum;
         const HashKey positionBitMask = ((1u << positionBitNum) - 1);
         uint3 gridPosition = multiLevelDir ? asuint(CalculateGridPositionLog(samplePosition, 5)) : asuint(CalculateGridPositionLog(samplePosition, level));
-        uint3 quantizedDir = quantizeToBitRange(sampleDirection, directionBitMask);
+        uint2 quantizedDir = quantizePolarToBitRange(convertDirToPolar(sampleDirection), directionBitMask);
 #endif
         // | normal bits | level | pos.z | pos.y | pos.x | dir.z | dir.y | dir.x |
         HashKey hashKey = (sampleNormal.x >= 0 ? 1 : 0) + (sampleNormal.y >= 0 ? 2 : 0) + (sampleNormal.z >= 0 ? 4 : 0);
@@ -127,8 +131,8 @@ struct FeatureHashGridData
         hashKey |= ((HashKey)gridPosition.y & positionBitMask);
         hashKey <<= positionBitNum;
         hashKey |= ((HashKey)gridPosition.x & positionBitMask);
-        hashKey <<= directionBitNum;
-        hashKey |= ((HashKey)quantizedDir.z & directionBitMask);
+        //hashKey <<= directionBitNum;
+        //hashKey |= ((HashKey)quantizedDir.z & directionBitMask);
         hashKey <<= directionBitNum;
         hashKey |= ((HashKey)quantizedDir.y & directionBitMask);
         hashKey <<= directionBitNum;
