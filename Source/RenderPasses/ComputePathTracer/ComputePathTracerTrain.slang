@@ -92,12 +92,12 @@ void updateNNHitInfoRadiance(in float3 radiance, int bounce)
     // in nirc emitted radiance is applied as incident radiance to the previous position
     bounce -= 1;
     // found light, propagate it through the path
-    for (int i = min(kNNMaxTrainingBounces - 2, bounce); i >= 0; i--)
+    for (int i = min(int(kNNMaxTrainingBounces) - 2, bounce); i >= 0; i--)
     {
         // light is emitted at current vertex; so, its not reflected by the bsdf
         if (i != bounce) radiance *= nnHitInfoList[i + 1].thp;
 #elif USE_NRC
-    for (int i = min(kNNMaxTrainingBounces - 1, bounce); i >= 0; i--)
+    for (int i = min(int(kNNMaxTrainingBounces) - 1, bounce); i >= 0; i--)
     {
         // light is emitted at current vertex; so, its not reflected by the bsdf
         if (i != bounce) radiance *= nnHitInfoList[i].thp;
