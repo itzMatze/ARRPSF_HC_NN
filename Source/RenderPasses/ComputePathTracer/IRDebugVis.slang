@@ -440,13 +440,19 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         mi = gScene.materials.getMaterialInstance(sd, lod);
         BSDFProperties bsdfProperties = mi.getProperties(sd);
         pos = sd.posW;
+
+        ScatterRayData rayData = ScatterRayData(sg);
+        rayData.direction = normalize(pos - gCamPos);
+        handleHit(hit, rayData);
+
         normal = gShowTransmission ? -sd.getOrientedFaceNormal() : sd.getOrientedFaceNormal();
         float pitch = -M_PI_2 + (float(pixel.x) / float(height)) * M_PI;
         float yaw = -M_PI_2 + (float(pixel.y) / float(width)) * M_PI;
         dir = float3(cos(yaw) * cos(pitch), sin(yaw) * cos(pitch), sin(pitch));
         const matrix<float, 3, 3> rot = rotateAlign(float3(1.0, 0.0, 0.0), normal);
         dir = mul(rot, dir);
-        ScatterRayData rayData = ScatterRayData(sg);
+        rayData = ScatterRayData(sg);
+        rayData.numBounces++;
         rayData.origin = sd.computeRayOrigin(!gShowTransmission);
         rayData.direction = dir;
         outputColor = tracePath(uint2(width, height), rayData);
