@@ -196,6 +196,7 @@ private:
     struct NNParams
     {
         bool active = false;
+        bool train = true;
         bool reset = true;
         enum OptimizerType {
             SGD = 0,

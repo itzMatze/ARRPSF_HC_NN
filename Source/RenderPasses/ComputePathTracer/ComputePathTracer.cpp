@@ -525,7 +525,7 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
                 mPasses[TRAIN_NN_FILL_CACHE_PASS]->getRootVar()["CB"]["gTrainIteration"] = i;
                 mPasses[TRAIN_NN_FILL_CACHE_PASS]->execute(pRenderContext, frameDim.x / 10, frameDim.y / 10);
             }
-            if (mNNParams.active) mPasses[NN_GRADIENT_DESCENT_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
+            if (mNNParams.active && mNNParams.train) mPasses[NN_GRADIENT_DESCENT_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
         }
         if (mHCParams.active) mPasses[HC_RESOLVE_PASS]->execute(pRenderContext, mHCParams.hashMapSize, 1);
     }
@@ -620,6 +620,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     if (Gui::Group nn_group = widget.group("NN"))
     {
         nn_group.text(std::string("active: ") + (mNNParams.active ? "true" : "false"));
+        nn_group.checkbox("train", mNNParams.train);
         if (Gui::Group nn_optimizer_group = nn_group.group("Optimizer"))
         {
             ImGui::PushItemWidth(160);
