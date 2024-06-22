@@ -640,7 +640,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         ImGui::PushItemWidth(120);
         nn_group.dropdown("NN layer width", mNNParams.nnLayerWidthList, mNNParams.nnLayerWidth);
         nn_group.dropdown("NN method", mNNParams.nnMethodList, mNNParams.nnMethod);
-        if (mNNParams.nnMethod == NNParams::USE_NIRC) mNNParams.mlpCount = 2;
+        if (mNNParams.nnMethod == NNParams::USE_NIRC) mNNParams.mlpCount = 1;
         else if (mNNParams.nnMethod == NNParams::USE_NRC) mNNParams.mlpCount = 1;
         if (mNNParams.nnLayerCount.size() != mNNParams.mlpCount) mNNParams.nnLayerCount.resize(mNNParams.mlpCount, 1);
         for (uint i = 0; i < mNNParams.nnLayerCount.size(); i++) ImGui::InputInt(std::string(std::string("MLP ") + std::to_string(i) + std::string(" layer count")).c_str(), &mNNParams.nnLayerCount[i]);

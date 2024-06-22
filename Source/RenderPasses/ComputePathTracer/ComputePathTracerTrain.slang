@@ -75,14 +75,6 @@ static NNHitInfo nnNeeHitInfoList[kNNMaxTrainingBounces];
 
 typedef MLPHalf32X32<NN_LAYER_COUNT0, ReLU> MLPModule0;
 static MLPModule0 gMlp0;
-#if MLP_COUNT > 1
-typedef MLPHalf32X32<NN_LAYER_COUNT1, ReLU> MLPModule1;
-static MLPModule1 gMlp1;
-#endif
-#if MLP_COUNT > 2
-typedef MLPHalf32X32<NN_LAYER_COUNT2, ReLU> MLPModule2;
-static MLPModule2 gMlp2;
-#endif
 #endif
 
 #if NN_TRAIN
@@ -520,10 +512,6 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     uint param_offset = 0; uint grad_offset = 0;
     gMlp0 = MLPModule0(param_offset, grad_offset, thread_info);
     FeatureHashGrid featureHashGrid0 = FeatureHashGrid(param_offset, grad_offset);
-#if MLP_COUNT > 1
-    gMlp1 = MLPModule1(param_offset, grad_offset, thread_info);
-    FeatureHashGrid featureHashGrid1 = FeatureHashGrid(param_offset, grad_offset);
-#endif
 #endif
     float3 outputColor = float3(0.0, 1.0, 0.0);
     if (mainThread) outputColor = tracePath(pixel, gFrameDim, rayData);
@@ -562,27 +550,27 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
 #endif
     }
 #endif
-#if NN_DEBUG && USE_NIRC
+#if USE_NIRC && 0
     // nee training
     for (uint i = 0; i < kNNMaxTrainingBounces; i++)
     {
-        HalfFeature<32> feature = computeFeature(nnNeeHitInfoList[i].pos, nnNeeHitInfoList[i].dir, nnNeeHitInfoList[i].normal, featureHashGrid1);
-        HalfFeature<32> output = MLPModule1.forward(gMlp1, feature);
+        HalfFeature<32> feature = computeFeature(nnNeeHitInfoList[i].pos, nnNeeHitInfoList[i].dir, nnNeeHitInfoList[i].normal, featureHashGrid0);
+        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
         HalfFeature<32>.Differential output_grad;
         float3 target_color = nnNeeHitInfoList[i].radiance;
         float3 color = float3(output.vals[0], output.vals[1], output.vals[2]);
         var color_pair = diffPair(color);
         float loss = L2Loss(color, target_color, color);
         bwd_diff(L2Loss)(color_pair, target_color, color, 1);
-        // set gradient to zero if current hitInfoList entry is invalid as it was never updated or if current thread is just helper thread
-        const float gradient_scalar = (!mainThread || length(nnNeeHitInfoList[i].dir) < 0.1) ? 0.0 : 1.0;
+        // set gradient to zero if current hitInfoList entry is not a valid light transport path
+        const float gradient_scalar = (mainThread && length(nnNeeHitInfoList[i].radiance) > 0.01) ? 1.0 : 0.0;
         output_grad.vals[0] = float16_t(color_pair.d.x * gradient_scalar);
         output_grad.vals[1] = float16_t(color_pair.d.y * gradient_scalar);
         output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
         var input_feature_pair = diffPair(feature);
-        bwd_diff(MLPModule1.forward)(gMlp1, input_feature_pair, output_grad);
+        bwd_diff(MLPModule0.forward)(gMlp0, input_feature_pair, output_grad);
 #if NN_USE_HASH_ENC
-        bwd_diff(computeFeature)(nnNeeHitInfoList[i].pos, nnNeeHitInfoList[i].dir, nnNeeHitInfoList[i].normal, featureHashGrid1, input_feature_pair.d);
+        bwd_diff(computeFeature)(nnNeeHitInfoList[i].pos, nnNeeHitInfoList[i].dir, nnNeeHitInfoList[i].normal, featureHashGrid0, input_feature_pair.d);
 #endif
     }
 #endif

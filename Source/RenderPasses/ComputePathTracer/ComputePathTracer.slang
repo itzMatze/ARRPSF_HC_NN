@@ -81,14 +81,6 @@ static NNHitInfo nnHitInfoList[kNNMaxTrainingBounces];
 
 typedef MLPHalf32X32<NN_LAYER_COUNT0, ReLU> MLPModule0;
 static MLPModule0 gMlp0;
-#if MLP_COUNT > 1
-typedef MLPHalf32X32<NN_LAYER_COUNT1, ReLU> MLPModule1;
-static MLPModule1 gMlp1;
-#endif
-#if MLP_COUNT > 2
-typedef MLPHalf32X32<NN_LAYER_COUNT2, ReLU> MLPModule2;
-static MLPModule2 gMlp2;
-#endif
 #endif
 
 #if KEEP_THREADS
@@ -439,23 +431,23 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         }
     }
 
-#if NN_DEBUG && USE_NIRC
+#if NN_DEBUG && USE_NIRC && 0
     // evaluate nn for nee
     {
         HalfFeature<32> feature;
         if (!gDone)
         {
-            feature = computeFeature(sd.posW, ls.dir, sd.getOrientedFaceNormal(), rayData.featureHashGrid1);
+            feature = computeFeature(sd.posW, ls.dir, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
         }
         else
         {
             [ForceUnroll]
             for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
         }
-        HalfFeature<32> output = MLPModule1.forward(gMlp1, feature);
-        MASK_BLOCK rayData.cur_radiance += (applyNEE && validSample) ? 0.5 * float3(output.vals[0], output.vals[1], output.vals[2]) * weight : 0.0;
+        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
+        //MASK_BLOCK rayData.cur_radiance += (applyNEE && validSample) ? 0.5 * float3(output.vals[0], output.vals[1], output.vals[2]) * weight : 0.0;
     }
-#elif HC_DEBUG_COLOR && USE_IRHC
+#elif HC_DEBUG_COLOR && USE_IRHC && 0
     MASK_BLOCK
     {
         hashCacheHitData.direction = ls.dir;
@@ -778,10 +770,6 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     uint param_offset = 0; uint grad_offset = 0;
     gMlp0 = MLPModule0(param_offset, grad_offset, thread_info);
     rayData.featureHashGrid0 = FeatureHashGrid(param_offset, grad_offset);
-#if MLP_COUNT > 1
-    gMlp1 = MLPModule1(param_offset, grad_offset, thread_info);
-    rayData.featureHashGrid1 = FeatureHashGrid(param_offset, grad_offset);
-#endif
 #endif
     float3 outputColor = float3(0.0, 1.0, 0.0);
     outputColor = tracePath(gFrameDim, rayData);
