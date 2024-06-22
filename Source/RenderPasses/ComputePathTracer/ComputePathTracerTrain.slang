@@ -412,14 +412,14 @@ bool traceScatterRay(inout ScatterRayData rayData)
 #if USE_RHC
         hc::hashCacheUpdateMiss(rayData.hashCacheState, rayData.cur_radiance);
 #elif USE_IRHC
-        hc::hashCacheUpdateMiss(rayData.hashCacheState, Le);
+        hc::hashCacheUpdateMiss(rayData.hashCacheState, rayData.cur_radiance);
 #endif
 #endif // HC_UPDATE
 #if NN_TRAIN
 #if USE_NRC
         updateNNHitInfoRadiance(rayData.cur_radiance, rayData.numBounces);
 #elif USE_NIRC
-        updateNNHitInfoRadiance(Le, rayData.numBounces);
+        updateNNHitInfoRadiance(rayData.cur_radiance, rayData.numBounces);
 #endif
 #endif // NN_TRAIN
         return false;
@@ -519,7 +519,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
 // NN
 #if NN_TRAIN
 #if 1
-    for (uint i = 0; i < kNNMaxTrainingBounces - 1; i++)
+    for (uint i = 0; i < kNNMaxTrainingBounces - 2; i++)
     {
         HalfFeature<32> feature;
         if (length(nnHitInfoList[i].dir) < 0.1)
