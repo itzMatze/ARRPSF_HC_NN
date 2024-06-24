@@ -16,6 +16,7 @@ static const HashKey kHashGridLevelBitNum = 7;
 static const HashKey kHashGridLevelBitMask = ((1u << kHashGridLevelBitNum) - 1);
 static const HashKey kHashGridNormalBitNum = 3;
 static const HashKey kHashGridNormalBitMask = ((1u << kHashGridNormalBitNum) - 1);
+static const float kHashCacheSceneScale = 30.0f;
 #elif USE_RHC
 static const HashKey kHashGridPositionBitNum = 17;
 static const HashKey kHashGridPositionBitMask = ((1u << kHashGridPositionBitNum) - 1);
@@ -25,6 +26,7 @@ static const HashKey kHashGridLevelBitNum = 10;
 static const HashKey kHashGridLevelBitMask = ((1u << kHashGridLevelBitNum) - 1);
 static const HashKey kHashGridNormalBitNum = 3;
 static const HashKey kHashGridNormalBitMask = ((1u << kHashGridNormalBitNum) - 1);
+static const float kHashCacheSceneScale = 60.0f;
 #endif
 static const HashKey kHashGridHashMapBucketSize = 32;
 static const HashKey kHashGridInvalidHashKey = 0;
@@ -32,7 +34,6 @@ static const HashKey kHashGridInvalidIdx = 0xffffffff;
 static const uint kHashGridLevelBias = 2; // positive bias adds extra levels with content magnification
 static const float3 kHashGridPositionOffset = float3(0.0f, 0.0f, 0.0f);
 static const float kHashCacheGridLogarithmBase = 2.0f;
-static const float kHashCacheSceneScale = 60.0f;
 static const uint kHashCacheCapacity = HC_HASHMAP_SIZE;
 
 RWByteAddressBuffer gHCHashGridEntriesBuffer;
