@@ -247,6 +247,7 @@ private:
             optimizerParams.step_count = 0;
             nnParamCount = ((nnLayerWidth * nnLayerWidth /*weights*/ + nnLayerWidth /*biases*/) * std::reduce(nnLayerCount.begin(), nnLayerCount.end()) + featureHashMapSize /*feature hash grid storage*/ * nnLayerCount.size() /*one feature hashmap per nn*/);
             featureHashMapPlacesPerElement = featureHashEncUseMultiLevelDir ? 1 : 2;
+            featureHashEncUseMultiLevelDir &= (nnMethod == USE_NIRC);
         }
     } mNNParams;
 
