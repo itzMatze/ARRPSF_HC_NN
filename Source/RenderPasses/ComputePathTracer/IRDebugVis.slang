@@ -409,7 +409,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     uint2 pixel = dispatchThreadId.xy;
     bool mainThread = true;
     const uint width = IR_DEBUG_OUTPUT_WIDTH;
-    uint height = IR_DEBUG_OUTPUT_HEIGHT;
+    const uint height = IR_DEBUG_OUTPUT_HEIGHT;
     if (any(pixel >= uint2(width, height))) mainThread = false;
     //if (any(pixel >= uint2(width, height)) && traceShadowRay(float3(0.0), float3(1.0, 0.0, 0.0), 0.0)) mainThread = false;
     printSetPixel(pixel);
@@ -446,11 +446,11 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         handleHit(hit, rayData);
 
         normal = gShowTransmission ? -sd.getOrientedFaceNormal() : sd.getOrientedFaceNormal();
-        float pitch = -M_PI_2 + (float(pixel.x) / float(height)) * M_PI;
-        float yaw = -M_PI_2 + (float(pixel.y) / float(width)) * M_PI;
-        dir = float3(cos(yaw) * cos(pitch), sin(yaw) * cos(pitch), sin(pitch));
+        float pitch = -M_PI_2 + ((float(pixel.x) + 0.5) / float(height)) * M_PI;
+        float yaw = -M_PI_2 + ((float(pixel.y) + 0.5) / float(width)) * M_PI;
+        dir = normalize(float3(cos(yaw) * cos(pitch), sin(yaw) * cos(pitch), sin(pitch)));
         const matrix<float, 3, 3> rot = rotateAlign(float3(1.0, 0.0, 0.0), normal);
-        dir = mul(rot, dir);
+        dir = normalize(mul(rot, dir));
         rayData = ScatterRayData(sg);
         rayData.numBounces++;
         rayData.origin = sd.computeRayOrigin(!gShowTransmission);
