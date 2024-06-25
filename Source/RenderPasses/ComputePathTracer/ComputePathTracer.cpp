@@ -687,6 +687,7 @@ void ComputePathTracer::setScene(RenderContext* pRenderContext, const ref<Scene>
 {
     mpScene = pScene;
     mCamPos = mpScene->getCamera()->getPosition();
+    mpScene->toggleAnimations(false);
     reset();
 }
 
