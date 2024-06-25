@@ -102,7 +102,7 @@ private:
 
     // show contribution of specific bounce range, upper bound will terminate path
     uint mLowerBounceCount = 0;
-    uint mUpperBounceCount = 10;
+    uint mUpperBounceCount = 16;
     bool mUseNEE = true;
     bool mUseMIS = true;
     bool mMISUsePowerHeuristic = true;
