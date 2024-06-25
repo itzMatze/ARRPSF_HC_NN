@@ -107,7 +107,7 @@ HalfFeature<32> computeFeature(
     [ForceUnroll]
     for (uint i = 0; i < 8; i++)
     {
-#if USE_MULTI_LEVEL_DIR
+#if USE_MULTI_LEVEL_DIR && USE_NIRC
 #if NN_TRAIN
         uint idx0 = no_diff featureHashGrid.InsertEntry(pos, dir, normal, i, true);
         uint idx1 = no_diff featureHashGrid.InsertEntry(pos, dir, normal, i, false);
@@ -127,6 +127,7 @@ HalfFeature<32> computeFeature(
         feature.vals[offset++] = float16_t(featureHashGrid.dataView.load_prim(idx + 1));
 #endif
     }
+#if 1
     feature.vals[offset++] = float16_t(pos.x);
     feature.vals[offset++] = float16_t(pos.y);
     feature.vals[offset++] = float16_t(pos.z);
@@ -142,6 +143,7 @@ HalfFeature<32> computeFeature(
     shEnc<3, 9>(dir, shVals);
     [ForceUnroll]
     for (uint i = 0; i < 9; i++) feature.vals[offset++] = shVals[i];
+#endif
 
 #elif NN_USE_FREQ_ENC
     feature.vals[offset++] = float16_t(pos.x);
@@ -171,6 +173,17 @@ HalfFeature<32> computeFeature(
     shEnc<4, 16>(dir, shVals);
     [ForceUnroll]
     for (uint i = 0; i < 16; i++) feature.vals[offset++] = shVals[i];
+#else
+    feature.vals[offset++] = float16_t(dir.x);
+    feature.vals[offset++] = float16_t(dir.y);
+    feature.vals[offset++] = float16_t(dir.z);
+    [ForceUnroll]
+    for (uint i = 0; i < 4; i++)
+    {
+        feature.vals[offset++] = sin(float16_t(dir.x) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
+        feature.vals[offset++] = sin(float16_t(dir.y) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
+        feature.vals[offset++] = sin(float16_t(dir.z) * float16_t(3.1415926f * pow(2.0, (i * 2.0))));
+    }
 #endif
 #endif
     return feature;
