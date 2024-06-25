@@ -149,12 +149,23 @@ void hashCacheCombine(uint idx)
     {
         voxelData.radiance = voxelDataPrev.radiance;
     }
+#if USE_IRHC
+    else if (voxelData.sampleNum < 32)
+    {
+        voxelData.radiance += voxelDataPrev.radiance * voxelDataPrev.sampleNum;
+        voxelData.radiance /= voxelData.sampleNum;
+    }
+#endif
     else
     {
         voxelData.radiance /= float(newSampleNum);
         if (voxelDataPrev.sampleNum > 0)
         {
+#if USE_RHC
             float weight = (newSampleNum * 0.001);
+#elif USE_IRHC
+            float weight = (newSampleNum * 0.0015);
+#endif
             voxelData.radiance = (1 - weight) * voxelDataPrev.radiance + weight * voxelData.radiance;
         }
     }

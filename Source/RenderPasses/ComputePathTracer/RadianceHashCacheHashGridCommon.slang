@@ -16,7 +16,7 @@ static const HashKey kHashGridLevelBitNum = 7;
 static const HashKey kHashGridLevelBitMask = ((1u << kHashGridLevelBitNum) - 1);
 static const HashKey kHashGridNormalBitNum = 3;
 static const HashKey kHashGridNormalBitMask = ((1u << kHashGridNormalBitNum) - 1);
-static const float kHashCacheSceneScale = 30.0f;
+static const float kHashCacheSceneScale = 45.0f;
 #elif USE_RHC
 static const HashKey kHashGridPositionBitNum = 17;
 static const HashKey kHashGridPositionBitMask = ((1u << kHashGridPositionBitNum) - 1);
@@ -110,7 +110,7 @@ struct HashMapData
     HashKey ComputeSpatialHash(float distance, float3 samplePosition, float3 sampleDirection, float3 sampleNormal, int levelOffset = 0)
     {
         uint4 gridPosition = asuint(CalculateGridPositionLog(distance, samplePosition, levelOffset));
-        uint3 quantizedDir = quantizeCartesianToBitRange((sampleDirection), kHashGridDirectionBitMask);
+        uint2 quantizedDir = quantizePolarToBitRange(convertDirToPolar(sampleDirection), kHashGridDirectionBitMask);
         // | normal bits | level | pos.z | pos.y | pos.x | dir.z | dir.y | dir.x |
         HashKey hashKey = (sampleNormal.x >= 0 ? 1 : 0) + (sampleNormal.y >= 0 ? 2 : 0) + (sampleNormal.z >= 0 ? 4 : 0);
         hashKey <<= kHashGridLevelBitNum;
@@ -121,8 +121,8 @@ struct HashMapData
         hashKey |= ((HashKey)gridPosition.y & kHashGridPositionBitMask);
         hashKey <<= kHashGridPositionBitNum;
         hashKey |= ((HashKey)gridPosition.x & kHashGridPositionBitMask);
-        hashKey <<= kHashGridDirectionBitNum;
-        hashKey |= ((HashKey)quantizedDir.z);
+        //hashKey <<= kHashGridDirectionBitNum;
+        //hashKey |= ((HashKey)quantizedDir.z);
         hashKey <<= kHashGridDirectionBitNum;
         hashKey |= ((HashKey)quantizedDir.y);
         hashKey <<= kHashGridDirectionBitNum;
