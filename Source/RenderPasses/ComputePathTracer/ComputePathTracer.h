@@ -125,10 +125,10 @@ private:
         uint getOptionBits() { return optionsBits; }
         void update() { optionsBits = survivalProbOption | (requiresPCE() ? pathContribEstimateOption : 0u) | (requiresPME() ? pixelMeasurementEstimateOption : 0u); }
         bool requiresReductionParams() { return optionsBits & SP_USE_DEFAULT; }
-        bool requiresPCE() { return optionsBits & PCE_REQUIRED_MASK; }
-        bool requiresPME() { return optionsBits & PME_REQUIRED_MASK; }
-        bool requiresHC() { return (requiresPCE() && (optionsBits & PCE_USE_HC)) || (requiresPME() && (optionsBits & PME_USE_HC)); }
-        bool requiresNN() { return (requiresPCE() && (optionsBits & PCE_USE_NN)) || (requiresPME() && (optionsBits & PME_USE_NN)); }
+        bool requiresPCE() { return active && (optionsBits & PCE_REQUIRED_MASK); }
+        bool requiresPME() { return active && (optionsBits & PME_REQUIRED_MASK); }
+        bool requiresHC() { return active && ((requiresPCE() && (optionsBits & PCE_USE_HC)) || (requiresPME() && (optionsBits & PME_USE_HC))); }
+        bool requiresNN() { return active && ((requiresPCE() && (optionsBits & PCE_USE_NN)) || (requiresPME() && (optionsBits & PME_USE_NN))); }
     private:
         uint optionsBits = 0u;
         // how to determine the survival probability for rr

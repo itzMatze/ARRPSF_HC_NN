@@ -564,6 +564,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         ImGui::PushItemWidth(120);
         rr_group.dropdown("survival prob", mRRParams.survivalProbOptionList, mRRParams.survivalProbOption);
         rr_group.tooltip("Determine the survival probability using one of the option.\ndefault: use a constantly shrinking probability based on the parameters\nexpected thp: based on the expected contribution to come\nadrrs: based on the weight window method from adrrs", true);
+        mRRParams.update();
         ImGui::PopItemWidth();
         if (mRRParams.requiresReductionParams())
         {
