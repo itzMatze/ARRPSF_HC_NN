@@ -54,7 +54,6 @@ static const uint kHCHashMapSize = HC_HASHMAP_SIZE;
 static const uint kHCDebugVoxels = HC_DEBUG_VOXELS;
 static const uint kHCDebugColor = HC_DEBUG_COLOR;
 static const uint kHCDebugLevels = HC_DEBUG_LEVELS;
-static const uint kHCInjectRadianceRR = HC_INJECT_RADIANCE_RR;
 static const uint kHCInjectRadianceSpread = HC_INJECT_RADIANCE_SPREAD;
 static const uint kNNMaxTrainingBounces = NN_TRAINING_BOUNCES;
 
@@ -255,24 +254,27 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 #endif
     }
 #if NN_DEBUG && USE_NRC
-    HalfFeature<32> feature;
-    if (!gDone)
+    if (gDone || (rayData.numBounces >= kLowerBounceCount && rayData.numBounces <= kUpperBounceCount))
     {
-        feature = computeFeature(sd.posW, rayData.direction, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
+        HalfFeature<32> feature;
+        if (!gDone)
+        {
+            feature = computeFeature(sd.posW, rayData.direction, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
+        }
+        else
+        {
+            [ForceUnroll]
+            for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
+        }
+        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
+        MASK_BLOCK
+        {
+            if (isnan(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 0.0);
+            else if (isinf(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 1.0);
+            else rayData.cur_radiance = float3(output.vals[0], output.vals[1], output.vals[2]);
+        }
+        TERMINATE_PATH_0;
     }
-    else
-    {
-        [ForceUnroll]
-        for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
-    }
-    HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
-    MASK_BLOCK
-    {
-        if (isnan(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 0.0);
-        else if (isinf(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 1.0);
-        else rayData.cur_radiance = float3(output.vals[0], output.vals[1], output.vals[2]);
-    }
-    TERMINATE_PATH_0;
 #endif
     MASK_BLOCK
     {
@@ -291,7 +293,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             return false;
         }
 #if USE_RHC
-        if (kHCDebugVoxels || kHCDebugColor)
+        if ((kHCDebugVoxels || kHCDebugColor) && (rayData.numBounces >= kLowerBounceCount && rayData.numBounces <= kUpperBounceCount))
         {
             // debug active; voxel debug will fetch voxel visualization values, otherwise just get color
             float3 debugColor;
@@ -318,52 +320,6 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
                 TERMINATE_PATH_0; // Terminate the path once we've looked up into the cache
             }
         }
-#endif
-#endif
-    }
-    if (rayData.numBounces == 0)
-    {
-        // set pixel measurement estimate
-#if RR_OPTION_BITS & (1u << 5)
-        rayData.luminance_estimate = luminance(gRefImage[gPixel].xyz);
-#elif RR_OPTION_BITS & (1u << 6)
-        float3 hcRadiance;
-        // only use hc for survival prob if the hc is ready at the current position, otherwise signal that the query was not successful
-        if (!hc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hcRadiance))
-        {
-            hcRadiance = float3(-1.0);
-        }
-        // if hc query was not successful use 0.5 as luminance
-        rayData.luminance_estimate = hcRadiance.x >= 0.0 ? luminance(hcRadiance) : 0.5;
-#elif RR_OPTION_BITS & (1u << 7)
-#if USE_NIRC
-        HalfFeature<32> feature;
-        if (!gDone)
-        {
-            feature = computeFeature(sd.posW, rayData.direction, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
-        }
-        else
-        {
-            [ForceUnroll]
-            for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
-        }
-        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
-        float3 nnRadiance = float3(output.vals[0], output.vals[1], output.vals[2]);
-        rayData.luminance_estimate = luminance(nnRadiance);
-#elif USE_NRC
-        HalfFeature<32> feature;
-        if (!gDone)
-        {
-            feature = computeFeature(sd.posW, -gViewW[gPixel].xyz, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
-        }
-        else
-        {
-            [ForceUnroll]
-            for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
-        }
-        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
-        float3 nnRadiance = float3(output.vals[0], output.vals[1], output.vals[2]);
-        rayData.luminance_estimate = luminance(nnRadiance);
 #endif
 #endif
     }
@@ -431,31 +387,6 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         }
     }
 
-#if NN_DEBUG && USE_NIRC && 0
-    // evaluate nn for nee
-    {
-        HalfFeature<32> feature;
-        if (!gDone)
-        {
-            feature = computeFeature(sd.posW, ls.dir, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
-        }
-        else
-        {
-            [ForceUnroll]
-            for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
-        }
-        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
-        //MASK_BLOCK rayData.cur_radiance += (applyNEE && validSample) ? 0.5 * float3(output.vals[0], output.vals[1], output.vals[2]) * weight : 0.0;
-    }
-#elif HC_DEBUG_COLOR && USE_IRHC && 0
-    MASK_BLOCK
-    {
-        hashCacheHitData.direction = ls.dir;
-        float3 debugColor;
-        hc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, debugColor);
-        rayData.cur_radiance += (applyNEE && validSample) ? 0.5 * debugColor * weight : 0.0;
-    }
-#else
     MASK_BLOCK
     {
         if (applyNEE && validSample)
@@ -471,7 +402,6 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             }
         }
     }
-#endif
 
     BSDFSample bsdfSample;
     MASK_BLOCK
@@ -503,6 +433,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 #endif
     }
 #if NN_DEBUG && USE_NIRC
+    if (rayData.numBounces + 1 >= kLowerBounceCount && rayData.numBounces + 1 <= kUpperBounceCount)
     {
         HalfFeature<32> feature;
         // evaluate nn for the bsdf sampled direction
@@ -525,10 +456,13 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     {
         hashCacheHitData.direction = bsdfSample.wo;
 #if HC_DEBUG_COLOR
-        float3 debugColor;
-        hc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, debugColor);
-        rayData.cur_radiance += debugColor * bsdfSample.weight;
-        TERMINATE_PATH_0;
+        if (rayData.numBounces >= kLowerBounceCount && rayData.numBounces <= kUpperBounceCount)
+        {
+            float3 debugColor;
+            hc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, debugColor);
+            rayData.cur_radiance += debugColor * bsdfSample.weight;
+            TERMINATE_PATH_0;
+        }
 #endif
     }
     MASK_BLOCK
@@ -557,6 +491,60 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
     if (kUseRR)
     {
+        if (rayData.numBounces == 0)
+        {
+            // set pixel measurement estimate
+#if RR_OPTION_BITS & (1u << 5)
+            rayData.luminance_estimate = luminance(gRefImage[gPixel].xyz);
+#elif RR_OPTION_BITS & (1u << 6)
+            float3 hcRadiance;
+            // only use hc for survival prob if the hc is ready at the current position, otherwise signal that the query was not successful
+            if (!hc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hcRadiance))
+            {
+                hcRadiance = float3(-1.0);
+            }
+            // if hc query was not successful use 0.5 as luminance
+#if USE_IRHC
+            hcRadiance *= bsdfSample.weight;
+            hcRadiance += rayData.cur_radiance;
+#endif
+            rayData.luminance_estimate = hcRadiance.x >= 0.0 ? luminance(hcRadiance) : 0.5;
+            print("hc global estimate", hcRadiance);
+#elif RR_OPTION_BITS & (1u << 7)
+#if USE_NIRC
+            HalfFeature<32> feature;
+            if (!gDone)
+            {
+                feature = computeFeature(sd.posW, bsdfSample.wo, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
+            }
+            else
+            {
+                [ForceUnroll]
+                for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
+            }
+            HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
+            float3 nnRadiance = float3(output.vals[0], output.vals[1], output.vals[2]) * bsdfSample.weight + rayData.cur_radiance;
+            rayData.luminance_estimate = luminance(nnRadiance);
+            print("nirc global estimate", nnRadiance);
+#elif USE_NRC
+            HalfFeature<32> feature;
+            if (!gDone)
+            {
+                feature = computeFeature(sd.posW, -gViewW[gPixel].xyz, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
+            }
+            else
+            {
+                [ForceUnroll]
+                for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
+            }
+            HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
+            float3 nnRadiance = float3(output.vals[0], output.vals[1], output.vals[2]);
+            rayData.luminance_estimate = luminance(nnRadiance);
+            print("nrc global estimate", nnRadiance);
+#endif
+#endif
+        }
+
         // use the parameters as fallback; will be overwritten by the actually used method
         float survival_prob = (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces));;
 #if RR_OPTION_BITS & ((1u << 1) | (1u << 2))
@@ -567,6 +555,9 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         {
             radiance = float3(-1.0);
         }
+#if USE_IRHC
+        radiance *= bsdfSample.weight;
+#endif
 #elif RR_OPTION_BITS & (1u << 4)
 #if USE_NIRC
         HalfFeature<32> feature;
@@ -580,7 +571,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
         }
         HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
-        radiance = float3(output.vals[0], output.vals[1], output.vals[2]);
+        radiance = float3(output.vals[0], output.vals[1], output.vals[2]) * bsdfSample.weight;
 #elif USE_NRC
         HalfFeature<32> feature;
         if (!gDone)
@@ -601,7 +592,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         {
             radiance *= rayData.thp;
             survival_prob = luminance(radiance);
-            survival_prob = min(survival_prob, (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces)));
+            survival_prob = min(survival_prob + 0.5, (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces)));
         }
 #elif RR_OPTION_BITS & (1u << 2)
         // adrr
@@ -622,14 +613,12 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             if (sampleNext1D(rayData.sg) > survival_prob)
             {
                 // russian roulette not survived
-#if HC_INJECT_RADIANCE_RR
-                float3 hashCacheRadiance;
-                // only actually terminate path if the hc is ready at the current position
-                if (hc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
+#if INJECT_RADIANCE_RR
+                if (radiance.x >= 0.0)
                 {
-                    rayData.cur_radiance += hashCacheRadiance * rayData.cur_thp;
-                    TERMINATE_PATH_0;
+                    rayData.cur_radiance += radiance * rayData.cur_thp;
                 }
+                TERMINATE_PATH_0;
             }
 #else
                 TERMINATE_PATH_0;

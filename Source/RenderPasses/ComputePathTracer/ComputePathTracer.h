@@ -119,6 +119,8 @@ private:
         float probStartValue = 1.2f;
         // factor by which the survival probability gets reduced
         float probReductionFactor = 0.9f;
+        // inject local radiance estimate on rr termination of path instead of using rr weight
+        bool injectRadiance = false;
 
         uint getOptionBits() { return optionsBits; }
         void update() { optionsBits = survivalProbOption | (requiresPCE() ? pathContribEstimateOption : 0u) | (requiresPME() ? pixelMeasurementEstimateOption : 0u); }
@@ -170,8 +172,6 @@ private:
         bool reset = true;
         uint hashMapSizeExp = 22;
         uint hashMapSize = std::pow(2u, hashMapSizeExp);
-        // inject radiance estimate of HC on rr termination of path instead of using rr weight
-        bool injectRadianceRR = false;
         // terminate the path if the roughness of surfaces blur the inaccuracy of the hc
         bool injectRadianceSpread = false;
         bool debugVoxels = false;

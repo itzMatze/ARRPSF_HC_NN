@@ -34,8 +34,7 @@ cbuffer CB
 Texture2D<PackedHitInfo> gVBuffer;
 Texture2D<float4> gViewW;
 
-static const uint kLowerBounceCount = LOWER_BOUNCE_COUNT;
-static const uint kUpperBounceCount = UPPER_BOUNCE_COUNT;
+static const uint kUpperBounceCount = 10;
 static const float kRRProbStartValue = RR_PROB_START_VALUE;
 static const float kRRProbReductionFactor = RR_PROB_REDUCTION_FACTOR;
 static const bool kUseNEE = USE_NEE;
@@ -252,7 +251,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     // # light hit by chance
     // always show directly visible lights
     // incorporate emission when: NEE is not active or could not sample this light at the last vertex, MIS is used
-    bool computeEmissive = rayData.numBounces >= kLowerBounceCount && kUseEmissiveLights && (!kUseNEE || kUseMIS || !rayData.isLightSampled() || rayData.isDeltaLobe());
+    bool computeEmissive = kUseEmissiveLights && (!kUseNEE || kUseMIS || !rayData.isLightSampled() || rayData.isDeltaLobe());
     if (computeEmissive && any(bsdfProperties.emission > 0.f))
     {
         float misWeight = 1.0;
@@ -279,7 +278,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     PathVertex vertex = PathVertex(sd.posW, sd.faceN, sd.frontFacing);
     const uint lobeTypes = mi.getLobeTypes(sd);
     // NEE not applicable to DeltaLobes, only apply if bounce falls in requested bounce range
-    const bool applyNEE = kUseNEE && ((lobeTypes & uint(LobeType::NonDelta)) != 0) && ((rayData.numBounces + 1) >= kLowerBounceCount && (rayData.numBounces + 1) <= kUpperBounceCount);
+    const bool applyNEE = kUseNEE && ((lobeTypes & uint(LobeType::NonDelta)) != 0);
     rayData.setLightSampled(false, false);
     if (applyNEE)
     {
@@ -389,7 +388,7 @@ bool traceScatterRay(inout ScatterRayData rayData)
         float3 Le = float3(0.0);
         // add contribution from environment map
         bool computeEnv = kUseEnvLight && (!kUseNEE || kUseMIS || !rayData.isLightSampled() || rayData.isDeltaLobe());
-        if (computeEnv && rayData.numBounces >= kLowerBounceCount && rayData.numBounces <= kUpperBounceCount)
+        if (computeEnv)
         {
             float misWeight = 1.f;
             if (kUseNEE && kUseMIS && rayData.isLightSampled() && !rayData.isDeltaLobe())

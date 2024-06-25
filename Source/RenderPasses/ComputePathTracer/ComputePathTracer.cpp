@@ -41,7 +41,6 @@ const std::string kRRProbStartValue = "RRProbStartValue";
 const std::string kRRProbReductionFactor = "RRProbReductionFactor";
 const std::string kLightBVHOptions = "lightBVHOptions";
 const std::string kHCHashMapSizeExponent = "HCHashMapSizeExponent";
-const std::string kHCInjectRadianceRR = "HCInjectRadianceRR";
 const std::string kHCInjectRadianceSpread = "HCInjectRadianceSpread";
 const std::string kHCDebugColor = "HCDebugColor";
 const std::string kRRSurvivalProbOption = "RRSurvivalProbOption";
@@ -70,7 +69,6 @@ void ComputePathTracer::parseProperties(const Properties& props)
             mHCParams.hashMapSizeExp = uint32_t(value);
             mHCParams.hashMapSize = std::pow(2u, mHCParams.hashMapSizeExp);
         }
-        else if (key == kHCInjectRadianceRR) mHCParams.injectRadianceRR = value;
         else if (key == kHCInjectRadianceSpread) mHCParams.injectRadianceSpread = value;
         else if (key == kHCDebugColor) mHCParams.debugColor = value;
         else if (key == kRRSurvivalProbOption) mRRParams.survivalProbOption = value;
@@ -90,6 +88,7 @@ ComputePathTracer::ComputePathTracer(ref<Device> pDevice, const Properties& prop
 void ComputePathTracer::reset()
 {
     mNNParams.optimizerParams.step_count = 0;
+    mRRParams.update();
     mNNParams.update();
     mHCParams.update();
     // Retain the options for the emissive sampler.
@@ -125,7 +124,6 @@ Properties ComputePathTracer::getProperties() const
     props[kRRProbStartValue] = mRRParams.probStartValue;
     props[kRRProbReductionFactor] = mRRParams.probReductionFactor;
     props[kHCHashMapSizeExponent] = mHCParams.hashMapSizeExp;
-    props[kHCInjectRadianceRR] = mHCParams.injectRadianceRR;
     props[kHCInjectRadianceSpread] = mHCParams.injectRadianceSpread;
     props[kHCDebugColor] = mHCParams.debugColor;
     props[kRRSurvivalProbOption] = mRRParams.survivalProbOption;
@@ -206,7 +204,6 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         defineList["NN_QUERY"] = "0";
         // use default rr for training
         defineList["RR_OPTION_BITS"] = "0";
-        defineList["HC_INJECT_RADIANCE_RR"] = "0";
         defineList["HC_INJECT_RADIANCE_SPREAD"] = "0";
         ProgramDesc desc;
         desc.addShaderModules(mpScene->getShaderModules());
@@ -223,7 +220,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         defineList["RR_OPTION_BITS"] = std::to_string(mRRParams.getOptionBits());
         // when using the nn during pt the threads need to be kept running for the cooperative matrices
         defineList["KEEP_THREADS"] = mNNParams.keepThreads ? "1" : "0";
-        defineList["HC_INJECT_RADIANCE_RR"] = mHCParams.injectRadianceRR ? "1" : "0";
+        defineList["INJECT_RADIANCE_RR"] = mRRParams.injectRadiance ? "1" : "0";
         defineList["HC_INJECT_RADIANCE_SPREAD"] = mHCParams.injectRadianceSpread ? "1" : "0";
         ProgramDesc desc;
         desc.addShaderModules(mpScene->getShaderModules());
@@ -489,7 +486,7 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         reset();
         renderData.getDictionary()[Falcor::kRenderPassRefreshFlags] = Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
         // activate hc if it is used somewhere
-        mHCParams.active = mRRParams.requiresHC() | mHCParams.injectRadianceRR | mHCParams.injectRadianceSpread | mHCParams.debugColor | mHCParams.debugLevels | mHCParams.debugVoxels | (mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_IRHC && mIRDebugPassParams.active);
+        mHCParams.active = mRRParams.requiresHC() | mHCParams.injectRadianceSpread | mHCParams.debugColor | mHCParams.debugLevels | mHCParams.debugVoxels | (mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_IRHC && mIRDebugPassParams.active);
         // activate nn if it is used somewhere
         mNNParams.active = mRRParams.requiresNN() | mNNParams.debugOutput | (mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_NIRC && mIRDebugPassParams.active);
         mNNParams.keepThreads = mNNParams.active;
@@ -584,6 +581,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
             ImGui::PushItemWidth(120);
             rr_group.dropdown("contrib estimation", mRRParams.pathContribEstimateOptionList, mRRParams.pathContribEstimateOption);
             rr_group.tooltip("Estimate the expected radiance to come at a vertex on a path.\nhc: use estimate from hc\nnn: use estimate from nn", true);
+            rr_group.checkbox("inject local radiance estimate to rr", mRRParams.injectRadiance);
             ImGui::PopItemWidth();
         }
         if (mRRParams.requiresPME())
@@ -593,7 +591,6 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
             rr_group.tooltip("Estimate the total measurement of a pixel for adrrs.\nhc: use estimate from hc\nnn: use estimate from nn", true);
             ImGui::PopItemWidth();
         }
-        mRRParams.update();
     }
     if (Gui::Group emissive_sampler_group = widget.group("EmissiveSampler"))
     {
@@ -607,7 +604,6 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         ImGui::PushItemWidth(40);
         ImGui::InputScalar("hashMapSizeExponent", ImGuiDataType_U32, &mHCParams.hashMapSizeExp);
         ImGui::PopItemWidth();
-        hc_group.checkbox("inject radiance to rr", mHCParams.injectRadianceRR);
         hc_group.tooltip("Use the radiance estimate from the hc instead of the rr weights.", true);
         hc_group.checkbox("inject radiance to spread", mHCParams.injectRadianceSpread);
         hc_group.tooltip("Terminate the path as soon as the accumulated roughness blurred the inaccuracies of the hc away. Then, query the hc for a radiance estimate.", true);
