@@ -55,8 +55,8 @@ static const uint kHCDebugVoxels = HC_DEBUG_VOXELS;
 static const uint kHCDebugColor = HC_DEBUG_COLOR;
 static const uint kHCDebugLevels = HC_DEBUG_LEVELS;
 static const uint kHCInjectRadianceSpread = HC_INJECT_RADIANCE_SPREAD;
-static const uint kNNInjectRadianceSpread = NN_INJECT_RADIANCE_SPREAD;
-static const float kNNInjectRadianceSpreadThreshold = 0.1;
+static const float kNRCInjectRadianceSpreadThreshold = 0.01;
+static const float kNIRCInjectRadianceSpreadThreshold = 0.01;
 static const uint kNNMaxTrainingBounces = NN_TRAINING_BOUNCES;
 
 #if NN_QUERY
@@ -274,7 +274,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     }
 #endif
 #if USE_NRC && NN_INJECT_RADIANCE_SPREAD
-    bool validHit = rayData.spread[1] * rayData.spread[1] > kNNInjectRadianceSpreadThreshold * rayData.initialSpread;
+    bool validHit = rayData.spread[1] * rayData.spread[1] > kNRCInjectRadianceSpreadThreshold * rayData.initialSpread;
     if (WaveActiveAnyTrue(validHit))
     {
         HalfFeature<32> feature;
@@ -290,7 +290,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
         if (!gDone && validHit)
         {
-            rayData.cur_radiance += float3(output.vals[0], output.vals[1], output.vals[2]);
+            rayData.cur_radiance = float3(output.vals[0], output.vals[1], output.vals[2]);
             TERMINATE_PATH_0;
         }
     }
@@ -324,14 +324,13 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         if (kHCInjectRadianceSpread)
         {
             float voxelSize = rayData.hashCacheState.hashMapData.GetVoxelSize(gridLevel);
-            bool isValidHit = rayData.t > voxelSize * lerp(1.0f, 2.0f, sampleNext1D(rayData.sg));
-            isValidHit &= rayData.spread[0] * lerp(0.5f, 1.5f, sampleNext1D(rayData.sg)) > voxelSize;
+            bool isValidHit = rayData.spread[0] * lerp(2.0f, 4.0f, sampleNext1D(rayData.sg)) > voxelSize;
             isValidHit &= rayData.numBounces > 0;
 
             float3 hashCacheRadiance;
             if (isValidHit && hc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, hashCacheRadiance))
             {
-                rayData.cur_radiance += hashCacheRadiance;
+                rayData.cur_radiance = hashCacheRadiance;
                 TERMINATE_PATH_0; // Terminate the path once we've looked up into the cache
             }
         }
@@ -458,7 +457,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         TERMINATE_PATH_0;
     }
 #elif NN_INJECT_RADIANCE_SPREAD
-    bool validHit = rayData.spread[1] * rayData.spread[1] > kNNInjectRadianceSpreadThreshold * rayData.initialSpread;
+    bool validHit = rayData.spread[1] * rayData.spread[1] > kNIRCInjectRadianceSpreadThreshold * rayData.initialSpread;
     if (WaveActiveAnyTrue(validHit))
     {
         HalfFeature<32> feature;
@@ -499,8 +498,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         {
             uint gridLevel = rayData.hashCacheState.hashMapData.GetGridLevel(hashCacheHitData.distance);
             float voxelSize = rayData.hashCacheState.hashMapData.GetVoxelSize(gridLevel);
-            bool isValidHit = rayData.t > voxelSize * lerp(1.0f, 2.0f, sampleNext1D(rayData.sg));
-            isValidHit &= rayData.spread[0] * lerp(0.5f, 1.5f, sampleNext1D(rayData.sg)) > voxelSize;
+            bool isValidHit = rayData.spread[0] * lerp(2.0f, 4.0f, sampleNext1D(rayData.sg)) > voxelSize;
             isValidHit &= rayData.numBounces > 0;
 
             float3 hashCacheRadiance;
