@@ -232,6 +232,7 @@ private:
         float2 weightInitBound = float2(0.001, 0.02);
         float filterAlpha = 0.99;
         int trainingBounces = 8;
+        bool injectRadianceSpread = false;
         bool debugOutput = false;
         bool keepThreads = false;
         const uint featureHashMapSize = std::pow(2, 22);

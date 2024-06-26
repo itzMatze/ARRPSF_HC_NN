@@ -222,6 +222,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         defineList["KEEP_THREADS"] = mNNParams.keepThreads ? "1" : "0";
         defineList["INJECT_RADIANCE_RR"] = mRRParams.injectRadiance ? "1" : "0";
         defineList["HC_INJECT_RADIANCE_SPREAD"] = mHCParams.injectRadianceSpread ? "1" : "0";
+        defineList["NN_INJECT_RADIANCE_SPREAD"] = mNNParams.injectRadianceSpread ? "1" : "0";
         ProgramDesc desc;
         desc.addShaderModules(mpScene->getShaderModules());
         desc.addShaderLibrary(kPTShaderFile).csEntry("main");
@@ -488,7 +489,7 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         // activate hc if it is used somewhere
         mHCParams.active = mRRParams.requiresHC() | mHCParams.injectRadianceSpread | mHCParams.debugColor | mHCParams.debugLevels | mHCParams.debugVoxels | (mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_IRHC && mIRDebugPassParams.active);
         // activate nn if it is used somewhere
-        mNNParams.active = mRRParams.requiresNN() | mNNParams.debugOutput | (mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_NIRC && mIRDebugPassParams.active);
+        mNNParams.active = mRRParams.requiresNN() | mNNParams.debugOutput | (mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_NIRC && mIRDebugPassParams.active) | mNNParams.injectRadianceSpread;
         mNNParams.keepThreads = mNNParams.active;
         // only allow activation of ir debug pass if either nn or hc is using incident radiance
         mIRDebugPassParams.active &= ((mNNParams.nnMethod == NNParams::USE_NIRC && mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_NIRC)
@@ -643,6 +644,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         for (uint i = 0; i < mNNParams.nnLayerCount.size(); i++) ImGui::InputInt(std::string(std::string("MLP ") + std::to_string(i) + std::string(" layer count")).c_str(), &mNNParams.nnLayerCount[i]);
         nn_group.dropdown("enc method", mNNParams.encMethodList, mNNParams.encMethod);
         ImGui::InputFloat("Filter alpha", &mNNParams.filterAlpha, 0.0f, 0.0f, "%.4f");
+        nn_group.checkbox("inject radiance to spread", mNNParams.injectRadianceSpread);
         nn_group.checkbox("debug NN output", mNNParams.debugOutput);
         ImGui::Text("Weight init bounds");
         ImGui::InputFloat("min", &mNNParams.weightInitBound.x, 0.0f, 0.0f, "%.6f");
