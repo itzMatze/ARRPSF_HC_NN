@@ -570,8 +570,8 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 
         // use the parameters as fallback; will be overwritten by the actually used method
         float survival_prob = (kRRProbStartValue * pow(kRRProbReductionFactor, rayData.numBounces));;
-#if RR_OPTION_BITS & ((1u << 1) | (1u << 2))
         float3 radiance = float3(0.0);
+#if RR_OPTION_BITS & ((1u << 1) | (1u << 2))
 #if RR_OPTION_BITS & (1u << 3)
         // only use hc for survival prob if the hc is ready at the current position, otherwise signal that the query was not successful
         if (!hc::hashCacheGetCachedRadiance(rayData.hashCacheState, hashCacheHitData, radiance))
