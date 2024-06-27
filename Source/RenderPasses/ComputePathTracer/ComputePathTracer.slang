@@ -478,7 +478,8 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         }
     }
 #endif
-#elif HC_QUERY && USE_IRHC
+#endif
+#if HC_QUERY && USE_IRHC
     MASK_BLOCK
     {
         hashCacheHitData.direction = bsdfSample.wo;
