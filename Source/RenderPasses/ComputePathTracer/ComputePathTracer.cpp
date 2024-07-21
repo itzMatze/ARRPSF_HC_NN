@@ -41,7 +41,6 @@ const std::string kRRProbStartValue = "RRProbStartValue";
 const std::string kRRProbReductionFactor = "RRProbReductionFactor";
 const std::string kLightBVHOptions = "lightBVHOptions";
 const std::string kHCHashMapSizeExponent = "HCHashMapSizeExponent";
-const std::string kHCInjectRadianceRR = "HCInjectRadianceRR";
 const std::string kHCInjectRadianceSpread = "HCInjectRadianceSpread";
 const std::string kHCDebugColor = "HCDebugColor";
 const std::string kRRSurvivalProbOption = "RRSurvivalProbOption";
@@ -70,7 +69,6 @@ void ComputePathTracer::parseProperties(const Properties& props)
             mHCParams.hashMapSizeExp = uint32_t(value);
             mHCParams.hashMapSize = std::pow(2u, mHCParams.hashMapSizeExp);
         }
-        else if (key == kHCInjectRadianceRR) mHCParams.injectRadianceRR = value;
         else if (key == kHCInjectRadianceSpread) mHCParams.injectRadianceSpread = value;
         else if (key == kHCDebugColor) mHCParams.debugColor = value;
         else if (key == kRRSurvivalProbOption) mRRParams.survivalProbOption = value;
@@ -90,6 +88,7 @@ ComputePathTracer::ComputePathTracer(ref<Device> pDevice, const Properties& prop
 void ComputePathTracer::reset()
 {
     mNNParams.optimizerParams.step_count = 0;
+    mRRParams.update();
     mNNParams.update();
     mHCParams.update();
     // Retain the options for the emissive sampler.
@@ -125,7 +124,6 @@ Properties ComputePathTracer::getProperties() const
     props[kRRProbStartValue] = mRRParams.probStartValue;
     props[kRRProbReductionFactor] = mRRParams.probReductionFactor;
     props[kHCHashMapSizeExponent] = mHCParams.hashMapSizeExp;
-    props[kHCInjectRadianceRR] = mHCParams.injectRadianceRR;
     props[kHCInjectRadianceSpread] = mHCParams.injectRadianceSpread;
     props[kHCDebugColor] = mHCParams.debugColor;
     props[kRRSurvivalProbOption] = mRRParams.survivalProbOption;
@@ -175,6 +173,8 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["USE_ENV_BACKGROUND"] = mpScene->useEnvBackground() ? "1" : "0";
     defineList["USE_NRC"] = mNNParams.nnMethod == NNParams::USE_NRC ? "1" : "0";
     defineList["USE_NIRC"] = mNNParams.nnMethod == NNParams::USE_NIRC ? "1" : "0";
+    defineList["NN_USE_HASH_ENC"] = mNNParams.encMethod == NNParams::USE_HASH_ENC ? "1" : "0";
+    defineList["NN_USE_FREQ_ENC"] = mNNParams.encMethod == NNParams::USE_FREQ_ENC ? "1" : "0";
     defineList["USE_MULTI_LEVEL_DIR"] = mNNParams.featureHashEncUseMultiLevelDir ? "1" : "0";
     defineList["NN_DEBUG"] = mNNParams.debugOutput ? "1" : "0";
     defineList["IR_DEBUG_OUTPUT_WIDTH"] = std::to_string(kIRDebugOutputDim.x);
@@ -188,7 +188,6 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["NN_LEARNING_RATE"] = fmt::format("{:.12f}", mNNParams.optimizerParams.learn_r);
     defineList["NN_PARAM_0"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_0);
     defineList["NN_PARAM_1"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_1);
-    defineList["NN_PARAM_2"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_2);
     defineList["NN_LAYER_WIDTH"] = std::to_string(mNNParams.nnLayerWidth);
     defineList["MLP_COUNT"] = std::to_string(mNNParams.nnLayerCount.size());
     for (uint i = 0; i < mNNParams.nnLayerCount.size(); i++) defineList[std::string("NN_LAYER_COUNT") + std::to_string(i)] = std::to_string(mNNParams.nnLayerCount[i]);
@@ -205,7 +204,6 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         defineList["NN_QUERY"] = "0";
         // use default rr for training
         defineList["RR_OPTION_BITS"] = "0";
-        defineList["HC_INJECT_RADIANCE_RR"] = "0";
         defineList["HC_INJECT_RADIANCE_SPREAD"] = "0";
         ProgramDesc desc;
         desc.addShaderModules(mpScene->getShaderModules());
@@ -222,8 +220,9 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         defineList["RR_OPTION_BITS"] = std::to_string(mRRParams.getOptionBits());
         // when using the nn during pt the threads need to be kept running for the cooperative matrices
         defineList["KEEP_THREADS"] = mNNParams.keepThreads ? "1" : "0";
-        defineList["HC_INJECT_RADIANCE_RR"] = mHCParams.injectRadianceRR ? "1" : "0";
+        defineList["INJECT_RADIANCE_RR"] = mRRParams.injectRadiance ? "1" : "0";
         defineList["HC_INJECT_RADIANCE_SPREAD"] = mHCParams.injectRadianceSpread ? "1" : "0";
+        defineList["NN_INJECT_RADIANCE_SPREAD"] = mNNParams.injectRadianceSpread ? "1" : "0";
         ProgramDesc desc;
         desc.addShaderModules(mpScene->getShaderModules());
         desc.addShaderLibrary(kPTShaderFile).csEntry("main");
@@ -430,6 +429,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["CB"]["gMLPIndex"] = mIRDebugPassParams.nircMLPIndex;
         var["CB"]["gShowTransmission"] = mIRDebugPassParams.showTransmission;
         var["CB"]["gApplyBSDF"] = mIRDebugPassParams.applyBSDF;
+        var["CB"]["gAccumulate"] = mIRDebugPassParams.accumulate;
         if (mHCParams.active)
         {
             var["gHCHashGridEntriesBuffer"] = mBuffers[HC_HASH_GRID_ENTRIES_BUFFER];
@@ -487,9 +487,9 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         reset();
         renderData.getDictionary()[Falcor::kRenderPassRefreshFlags] = Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
         // activate hc if it is used somewhere
-        mHCParams.active = mRRParams.requiresHC() | mHCParams.injectRadianceRR | mHCParams.injectRadianceSpread | mHCParams.debugColor | mHCParams.debugLevels | mHCParams.debugVoxels | (mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_IRHC && mIRDebugPassParams.active);
+        mHCParams.active = mRRParams.requiresHC() | mHCParams.injectRadianceSpread | mHCParams.debugColor | mHCParams.debugLevels | mHCParams.debugVoxels | (mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_IRHC && mIRDebugPassParams.active);
         // activate nn if it is used somewhere
-        mNNParams.active = mRRParams.requiresNN() | mNNParams.debugOutput | (mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_NIRC && mIRDebugPassParams.active);
+        mNNParams.active = mRRParams.requiresNN() | mNNParams.debugOutput | (mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_NIRC && mIRDebugPassParams.active) | mNNParams.injectRadianceSpread;
         mNNParams.keepThreads = mNNParams.active;
         // only allow activation of ir debug pass if either nn or hc is using incident radiance
         mIRDebugPassParams.active &= ((mNNParams.nnMethod == NNParams::USE_NIRC && mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_NIRC)
@@ -523,7 +523,7 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
                 mPasses[TRAIN_NN_FILL_CACHE_PASS]->getRootVar()["CB"]["gTrainIteration"] = i;
                 mPasses[TRAIN_NN_FILL_CACHE_PASS]->execute(pRenderContext, frameDim.x / 10, frameDim.y / 10);
             }
-            if (mNNParams.active) mPasses[NN_GRADIENT_DESCENT_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
+            if (mNNParams.active && mNNParams.train) mPasses[NN_GRADIENT_DESCENT_PASS]->execute(pRenderContext, mNNParams.nnParamCount, 1);
         }
         if (mHCParams.active) mPasses[HC_RESOLVE_PASS]->execute(pRenderContext, mHCParams.hashMapSize, 1);
     }
@@ -565,6 +565,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         ImGui::PushItemWidth(120);
         rr_group.dropdown("survival prob", mRRParams.survivalProbOptionList, mRRParams.survivalProbOption);
         rr_group.tooltip("Determine the survival probability using one of the option.\ndefault: use a constantly shrinking probability based on the parameters\nexpected thp: based on the expected contribution to come\nadrrs: based on the weight window method from adrrs", true);
+        mRRParams.update();
         ImGui::PopItemWidth();
         if (mRRParams.requiresReductionParams())
         {
@@ -582,6 +583,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
             ImGui::PushItemWidth(120);
             rr_group.dropdown("contrib estimation", mRRParams.pathContribEstimateOptionList, mRRParams.pathContribEstimateOption);
             rr_group.tooltip("Estimate the expected radiance to come at a vertex on a path.\nhc: use estimate from hc\nnn: use estimate from nn", true);
+            rr_group.checkbox("inject local radiance estimate to rr", mRRParams.injectRadiance);
             ImGui::PopItemWidth();
         }
         if (mRRParams.requiresPME())
@@ -591,7 +593,6 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
             rr_group.tooltip("Estimate the total measurement of a pixel for adrrs.\nhc: use estimate from hc\nnn: use estimate from nn", true);
             ImGui::PopItemWidth();
         }
-        mRRParams.update();
     }
     if (Gui::Group emissive_sampler_group = widget.group("EmissiveSampler"))
     {
@@ -605,7 +606,6 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         ImGui::PushItemWidth(40);
         ImGui::InputScalar("hashMapSizeExponent", ImGuiDataType_U32, &mHCParams.hashMapSizeExp);
         ImGui::PopItemWidth();
-        hc_group.checkbox("inject radiance to rr", mHCParams.injectRadianceRR);
         hc_group.tooltip("Use the radiance estimate from the hc instead of the rr weights.", true);
         hc_group.checkbox("inject radiance to spread", mHCParams.injectRadianceSpread);
         hc_group.tooltip("Terminate the path as soon as the accumulated roughness blurred the inaccuracies of the hc away. Then, query the hc for a radiance estimate.", true);
@@ -618,6 +618,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     if (Gui::Group nn_group = widget.group("NN"))
     {
         nn_group.text(std::string("active: ") + (mNNParams.active ? "true" : "false"));
+        nn_group.checkbox("train", mNNParams.train);
         if (Gui::Group nn_optimizer_group = nn_group.group("Optimizer"))
         {
             ImGui::PushItemWidth(160);
@@ -631,18 +632,19 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
             {
                 ImGui::InputFloat("beta_1", &mNNParams.optimizerParams.param_0, 0.0f, 0.0f, "%.8f");
                 ImGui::InputFloat("beta_2", &mNNParams.optimizerParams.param_1, 0.0f, 0.0f, "%.8f");
-                ImGui::InputFloat("epsilon", &mNNParams.optimizerParams.param_2, 0.0f, 0.0f, "%.8f");
             }
             ImGui::PopItemWidth();
         }
         ImGui::PushItemWidth(120);
         nn_group.dropdown("NN layer width", mNNParams.nnLayerWidthList, mNNParams.nnLayerWidth);
         nn_group.dropdown("NN method", mNNParams.nnMethodList, mNNParams.nnMethod);
-        if (mNNParams.nnMethod == NNParams::USE_NIRC) mNNParams.mlpCount = 2;
+        if (mNNParams.nnMethod == NNParams::USE_NIRC) mNNParams.mlpCount = 1;
         else if (mNNParams.nnMethod == NNParams::USE_NRC) mNNParams.mlpCount = 1;
         if (mNNParams.nnLayerCount.size() != mNNParams.mlpCount) mNNParams.nnLayerCount.resize(mNNParams.mlpCount, 1);
         for (uint i = 0; i < mNNParams.nnLayerCount.size(); i++) ImGui::InputInt(std::string(std::string("MLP ") + std::to_string(i) + std::string(" layer count")).c_str(), &mNNParams.nnLayerCount[i]);
+        nn_group.dropdown("enc method", mNNParams.encMethodList, mNNParams.encMethod);
         ImGui::InputFloat("Filter alpha", &mNNParams.filterAlpha, 0.0f, 0.0f, "%.4f");
+        nn_group.checkbox("inject radiance to spread", mNNParams.injectRadianceSpread);
         nn_group.checkbox("debug NN output", mNNParams.debugOutput);
         ImGui::Text("Weight init bounds");
         ImGui::InputFloat("min", &mNNParams.weightInitBound.x, 0.0f, 0.0f, "%.6f");
@@ -668,6 +670,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         ImGui::InputInt("mlp index", &mIRDebugPassParams.nircMLPIndex);
         debug_group.checkbox("show transmission", mIRDebugPassParams.showTransmission);
         debug_group.checkbox("apply bsdf", mIRDebugPassParams.applyBSDF);
+        debug_group.checkbox("accumulate", mIRDebugPassParams.accumulate);
         ImGui::Separator();
         debug_group.checkbox("path length", mDebugPathLength);
         mpPixelDebug->renderUI(debug_group);
@@ -686,6 +689,7 @@ void ComputePathTracer::setScene(RenderContext* pRenderContext, const ref<Scene>
 {
     mpScene = pScene;
     mCamPos = mpScene->getCamera()->getPosition();
+    mpScene->toggleAnimations(false);
     reset();
 }
 

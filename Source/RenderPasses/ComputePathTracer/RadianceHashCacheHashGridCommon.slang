@@ -1,4 +1,5 @@
 import Utils.Debug.PixelDebug;
+#include "Utils/Math/MathConstants.slangh"
 
 #if HC_UPDATE || HC_QUERY
 namespace hc
@@ -15,6 +16,7 @@ static const HashKey kHashGridLevelBitNum = 7;
 static const HashKey kHashGridLevelBitMask = ((1u << kHashGridLevelBitNum) - 1);
 static const HashKey kHashGridNormalBitNum = 3;
 static const HashKey kHashGridNormalBitMask = ((1u << kHashGridNormalBitNum) - 1);
+static const float kHashCacheSceneScale = 45.0f;
 #elif USE_RHC
 static const HashKey kHashGridPositionBitNum = 17;
 static const HashKey kHashGridPositionBitMask = ((1u << kHashGridPositionBitNum) - 1);
@@ -24,6 +26,7 @@ static const HashKey kHashGridLevelBitNum = 10;
 static const HashKey kHashGridLevelBitMask = ((1u << kHashGridLevelBitNum) - 1);
 static const HashKey kHashGridNormalBitNum = 3;
 static const HashKey kHashGridNormalBitMask = ((1u << kHashGridNormalBitNum) - 1);
+static const float kHashCacheSceneScale = 60.0f;
 #endif
 static const HashKey kHashGridHashMapBucketSize = 32;
 static const HashKey kHashGridInvalidHashKey = 0;
@@ -31,7 +34,6 @@ static const HashKey kHashGridInvalidIdx = 0xffffffff;
 static const uint kHashGridLevelBias = 2; // positive bias adds extra levels with content magnification
 static const float3 kHashGridPositionOffset = float3(0.0f, 0.0f, 0.0f);
 static const float kHashCacheGridLogarithmBase = 2.0f;
-static const float kHashCacheSceneScale = 60.0f;
 static const uint kHashCacheCapacity = HC_HASHMAP_SIZE;
 
 RWByteAddressBuffer gHCHashGridEntriesBuffer;
@@ -92,20 +94,23 @@ struct HashMapData
         return angles;
     }
 
-    uint2 quantizeToBitRange(float2 input, uint max)
+    uint2 quantizePolarToBitRange(float2 input, uint newMax)
     {
-        return uint2(((input + 1.0) / 2.0) * float((max + 1) - 0.001));
+        uint2 result;
+        result.x = uint(((input.x + M_PI) / (M_PI + M_PI)) * float((newMax + 1) - 0.001));
+        result.y = uint((input.y / M_PI) * float((newMax + 1) - 0.001));
+        return result;
     }
 
-    uint3 quantizeToBitRange(float3 input, uint max)
+    uint3 quantizeCartesianToBitRange(float3 input, uint newMax)
     {
-        return uint3(((input + 1.0) / 2.0) * float((max + 1) - 0.001));
+        return uint3(((input + 1.0) / 2.0) * float((newMax + 1) - 0.001));
     }
 
     HashKey ComputeSpatialHash(float distance, float3 samplePosition, float3 sampleDirection, float3 sampleNormal, int levelOffset = 0)
     {
         uint4 gridPosition = asuint(CalculateGridPositionLog(distance, samplePosition, levelOffset));
-        uint3 quantizedDir = quantizeToBitRange(sampleDirection, kHashGridDirectionBitMask);
+        uint2 quantizedDir = quantizePolarToBitRange(convertDirToPolar(sampleDirection), kHashGridDirectionBitMask);
         // | normal bits | level | pos.z | pos.y | pos.x | dir.z | dir.y | dir.x |
         HashKey hashKey = (sampleNormal.x >= 0 ? 1 : 0) + (sampleNormal.y >= 0 ? 2 : 0) + (sampleNormal.z >= 0 ? 4 : 0);
         hashKey <<= kHashGridLevelBitNum;
@@ -116,8 +121,8 @@ struct HashMapData
         hashKey |= ((HashKey)gridPosition.y & kHashGridPositionBitMask);
         hashKey <<= kHashGridPositionBitNum;
         hashKey |= ((HashKey)gridPosition.x & kHashGridPositionBitMask);
-        hashKey <<= kHashGridDirectionBitNum;
-        hashKey |= ((HashKey)quantizedDir.z);
+        //hashKey <<= kHashGridDirectionBitNum;
+        //hashKey |= ((HashKey)quantizedDir.z);
         hashKey <<= kHashGridDirectionBitNum;
         hashKey |= ((HashKey)quantizedDir.y);
         hashKey <<= kHashGridDirectionBitNum;

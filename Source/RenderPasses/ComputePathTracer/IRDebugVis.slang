@@ -28,6 +28,7 @@ cbuffer CB
     uint gMLPIndex;
     bool gShowTransmission;
     bool gApplyBSDF;
+    bool gAccumulate;
 }
 
 // Inputs
@@ -408,7 +409,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     uint2 pixel = dispatchThreadId.xy;
     bool mainThread = true;
     const uint width = IR_DEBUG_OUTPUT_WIDTH;
-    uint height = IR_DEBUG_OUTPUT_HEIGHT;
+    const uint height = IR_DEBUG_OUTPUT_HEIGHT;
     if (any(pixel >= uint2(width, height))) mainThread = false;
     //if (any(pixel >= uint2(width, height)) && traceShadowRay(float3(0.0), float3(1.0, 0.0, 0.0), 0.0)) mainThread = false;
     printSetPixel(pixel);
@@ -439,13 +440,19 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         mi = gScene.materials.getMaterialInstance(sd, lod);
         BSDFProperties bsdfProperties = mi.getProperties(sd);
         pos = sd.posW;
-        normal = gShowTransmission ? -sd.getOrientedFaceNormal() : sd.getOrientedFaceNormal();
-        float pitch = -M_PI_2 + (float(pixel.x) / float(height)) * M_PI;
-        float yaw = -M_PI_2 + (float(pixel.y) / float(width)) * M_PI;
-        dir = float3(cos(yaw) * cos(pitch), sin(yaw) * cos(pitch), sin(pitch));
-        const matrix<float, 3, 3> rot = rotateAlign(float3(1.0, 0.0, 0.0), normal);
-        dir = mul(rot, dir);
+
         ScatterRayData rayData = ScatterRayData(sg);
+        rayData.direction = normalize(pos - gCamPos);
+        handleHit(hit, rayData);
+
+        normal = gShowTransmission ? -sd.getOrientedFaceNormal() : sd.getOrientedFaceNormal();
+        float pitch = -M_PI_2 + ((float(pixel.x) + 0.5) / float(height)) * M_PI;
+        float yaw = -M_PI_2 + ((float(pixel.y) + 0.5) / float(width)) * M_PI;
+        dir = normalize(float3(cos(yaw) * cos(pitch), sin(yaw) * cos(pitch), sin(pitch)));
+        const matrix<float, 3, 3> rot = rotateAlign(float3(1.0, 0.0, 0.0), normal);
+        dir = normalize(mul(rot, dir));
+        rayData = ScatterRayData(sg);
+        rayData.numBounces++;
         rayData.origin = sd.computeRayOrigin(!gShowTransmission);
         rayData.direction = dir;
         outputColor = tracePath(uint2(width, height), rayData);
@@ -455,14 +462,13 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     HalfFeature<32> output;
     if (gMLPIndex == 0)
     {
-        HalfFeature<32> feature = computeHashEncFeature(pos, dir, normal, featureHashGrid0);
-        //HalfFeature<32> feature = computeFreqEncFeature(nnHitInfoList[0].pos, nnHitInfoList[0].dir);
+        HalfFeature<32> feature = computeFeature(pos, dir, normal, featureHashGrid0);
         output = MLPModule0.forward(gMlp0, feature);
     }
 #if MLP_COUNT > 1
     else if (gMLPIndex == 1)
     {
-        HalfFeature<32> feature = computeHashEncFeature(pos, dir, normal, featureHashGrid1);
+        HalfFeature<32> feature = computeFeature(pos, dir, normal, featureHashGrid1);
         output = MLPModule1.forward(gMlp1, feature);
     }
 #endif
@@ -497,7 +503,12 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     if (mainThread)
     {
         gIRDebugOutputColor[pixel] = float4(outputColorIR, 1.0f);
-        gIRDebugOutputColorRef[pixel] = float4(outputColor, 1.0f);
+        float4 value = gIRDebugOutputColorRef[pixel];
+        value.xyz = value.xyz * value.w + outputColor;
+        value.w++;
+        value.xyz /= value.w;
+        if (gAccumulate) gIRDebugOutputColorRef[pixel] = value;
+        else gIRDebugOutputColorRef[pixel] = float4(outputColor, 1.0);
     }
 }
 

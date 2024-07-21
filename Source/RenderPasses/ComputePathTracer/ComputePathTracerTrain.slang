@@ -34,8 +34,7 @@ cbuffer CB
 Texture2D<PackedHitInfo> gVBuffer;
 Texture2D<float4> gViewW;
 
-static const uint kLowerBounceCount = LOWER_BOUNCE_COUNT;
-static const uint kUpperBounceCount = UPPER_BOUNCE_COUNT;
+static const uint kUpperBounceCount = 10;
 static const float kRRProbStartValue = RR_PROB_START_VALUE;
 static const float kRRProbReductionFactor = RR_PROB_REDUCTION_FACTOR;
 static const bool kUseNEE = USE_NEE;
@@ -63,8 +62,8 @@ struct NNHitInfo
     __init()
     {
         pos = float3(0.0);
-        normal = float3(0.0);
         dir = float3(0.0);
+        normal = float3(0.0);
         thp = float3(0.0);
         radiance = float3(0.0);
     }
@@ -75,29 +74,21 @@ static NNHitInfo nnNeeHitInfoList[kNNMaxTrainingBounces];
 
 typedef MLPHalf32X32<NN_LAYER_COUNT0, ReLU> MLPModule0;
 static MLPModule0 gMlp0;
-#if MLP_COUNT > 1
-typedef MLPHalf32X32<NN_LAYER_COUNT1, ReLU> MLPModule1;
-static MLPModule1 gMlp1;
-#endif
-#if MLP_COUNT > 2
-typedef MLPHalf32X32<NN_LAYER_COUNT2, ReLU> MLPModule2;
-static MLPModule2 gMlp2;
-#endif
 #endif
 
 #if NN_TRAIN
-void updateNNHitInfoRadiance(float3 radiance, int bounce)
+void updateNNHitInfoRadiance(in float3 radiance, int bounce)
 {
 #if USE_NIRC
     // in nirc emitted radiance is applied as incident radiance to the previous position
     bounce -= 1;
     // found light, propagate it through the path
-    for (int i = min(kNNMaxTrainingBounces - 2, bounce); i >= 0; i--)
+    for (int i = min(int(kNNMaxTrainingBounces) - 2, bounce); i >= 0; i--)
     {
         // light is emitted at current vertex; so, its not reflected by the bsdf
         if (i != bounce) radiance *= nnHitInfoList[i + 1].thp;
 #elif USE_NRC
-    for (int i = min(kNNMaxTrainingBounces - 1, bounce); i >= 0; i--)
+    for (int i = min(int(kNNMaxTrainingBounces) - 1, bounce); i >= 0; i--)
     {
         // light is emitted at current vertex; so, its not reflected by the bsdf
         if (i != bounce) radiance *= nnHitInfoList[i].thp;
@@ -260,7 +251,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     // # light hit by chance
     // always show directly visible lights
     // incorporate emission when: NEE is not active or could not sample this light at the last vertex, MIS is used
-    bool computeEmissive = rayData.numBounces >= kLowerBounceCount && kUseEmissiveLights && (!kUseNEE || kUseMIS || !rayData.isLightSampled() || rayData.isDeltaLobe());
+    bool computeEmissive = kUseEmissiveLights && (!kUseNEE || kUseMIS || !rayData.isLightSampled() || rayData.isDeltaLobe());
     if (computeEmissive && any(bsdfProperties.emission > 0.f))
     {
         float misWeight = 1.0;
@@ -287,7 +278,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     PathVertex vertex = PathVertex(sd.posW, sd.faceN, sd.frontFacing);
     const uint lobeTypes = mi.getLobeTypes(sd);
     // NEE not applicable to DeltaLobes, only apply if bounce falls in requested bounce range
-    const bool applyNEE = kUseNEE && ((lobeTypes & uint(LobeType::NonDelta)) != 0) && ((rayData.numBounces + 1) >= kLowerBounceCount && (rayData.numBounces + 1) <= kUpperBounceCount);
+    const bool applyNEE = kUseNEE && ((lobeTypes & uint(LobeType::NonDelta)) != 0);
     rayData.setLightSampled(false, false);
     if (applyNEE)
     {
@@ -394,10 +385,10 @@ bool traceScatterRay(inout ScatterRayData rayData)
     HitInfo hit;
     if (!rayQuery.traceRay(ray, hit, rayData.t, RAY_FLAG_NONE, 0xff))
     {
-        float3 Le;
+        float3 Le = float3(0.0);
         // add contribution from environment map
         bool computeEnv = kUseEnvLight && (!kUseNEE || kUseMIS || !rayData.isLightSampled() || rayData.isDeltaLobe());
-        if (computeEnv && rayData.numBounces >= kLowerBounceCount && rayData.numBounces <= kUpperBounceCount)
+        if (computeEnv)
         {
             float misWeight = 1.f;
             if (kUseNEE && kUseMIS && rayData.isLightSampled() && !rayData.isDeltaLobe())
@@ -417,10 +408,18 @@ bool traceScatterRay(inout ScatterRayData rayData)
             rayData.cur_radiance += misWeight * Le;
         }
 #if HC_UPDATE
+#if USE_RHC
         hc::hashCacheUpdateMiss(rayData.hashCacheState, rayData.cur_radiance);
+#elif USE_IRHC
+        hc::hashCacheUpdateMiss(rayData.hashCacheState, rayData.cur_radiance);
+#endif
 #endif // HC_UPDATE
 #if NN_TRAIN
-        updateNNHitInfoRadiance(Le, rayData.numBounces);
+#if USE_NRC
+        updateNNHitInfoRadiance(rayData.cur_radiance, rayData.numBounces);
+#elif USE_NIRC
+        updateNNHitInfoRadiance(rayData.cur_radiance, rayData.numBounces);
+#endif
 #endif // NN_TRAIN
         return false;
     }
@@ -512,10 +511,6 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     uint param_offset = 0; uint grad_offset = 0;
     gMlp0 = MLPModule0(param_offset, grad_offset, thread_info);
     FeatureHashGrid featureHashGrid0 = FeatureHashGrid(param_offset, grad_offset);
-#if MLP_COUNT > 1
-    gMlp1 = MLPModule1(param_offset, grad_offset, thread_info);
-    FeatureHashGrid featureHashGrid1 = FeatureHashGrid(param_offset, grad_offset);
-#endif
 #endif
     float3 outputColor = float3(0.0, 1.0, 0.0);
     if (mainThread) outputColor = tracePath(pixel, gFrameDim, rayData);
@@ -523,10 +518,18 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
 // NN
 #if NN_TRAIN
 #if 1
-    for (uint i = 0; i < kNNMaxTrainingBounces - 1; i++)
+    for (uint i = 0; i < kNNMaxTrainingBounces - 2; i++)
     {
-        HalfFeature<32> feature = computeHashEncFeature(nnHitInfoList[i].pos, nnHitInfoList[i].dir, nnHitInfoList[i].normal, featureHashGrid0);
-        //HalfFeature<32> feature = computeFreqEncFeature(nnHitInfoList[i].pos, nnHitInfoList[i].dir);
+        HalfFeature<32> feature;
+        if (length(nnHitInfoList[i].dir) < 0.1)
+        {
+            [ForceUnroll]
+            for (uint j = 0; j < 32; j++) feature.vals[j] = 0.0h;
+        }
+        else
+        {
+            feature = computeFeature(nnHitInfoList[i].pos, nnHitInfoList[i].dir, nnHitInfoList[i].normal, featureHashGrid0);
+        }
         HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
         HalfFeature<32>.Differential output_grad;
         float3 target_color = nnHitInfoList[i].radiance;
@@ -541,36 +544,38 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
         var input_feature_pair = diffPair(feature);
         bwd_diff(MLPModule0.forward)(gMlp0, input_feature_pair, output_grad);
-        bwd_diff(computeHashEncFeature)(nnHitInfoList[i].pos, nnHitInfoList[i].dir, nnHitInfoList[i].normal, featureHashGrid0, input_feature_pair.d);
+#if NN_USE_HASH_ENC
+        bwd_diff(computeFeature)(nnHitInfoList[i].pos, nnHitInfoList[i].dir, nnHitInfoList[i].normal, featureHashGrid0, input_feature_pair.d);
+#endif
     }
 #endif
-#if NN_DEBUG && USE_NIRC
+#if USE_NIRC && 0
     // nee training
     for (uint i = 0; i < kNNMaxTrainingBounces; i++)
     {
-        HalfFeature<32> feature = computeHashEncFeature(nnNeeHitInfoList[i].pos, nnNeeHitInfoList[i].dir, nnNeeHitInfoList[i].normal, featureHashGrid1);
-        //HalfFeature<32> feature = computeFreqEncFeature(nnNeeHitInfoList[i].pos, nnNeeHitInfoList[i].dir);
-        HalfFeature<32> output = MLPModule1.forward(gMlp1, feature);
+        HalfFeature<32> feature = computeFeature(nnNeeHitInfoList[i].pos, nnNeeHitInfoList[i].dir, nnNeeHitInfoList[i].normal, featureHashGrid0);
+        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
         HalfFeature<32>.Differential output_grad;
         float3 target_color = nnNeeHitInfoList[i].radiance;
         float3 color = float3(output.vals[0], output.vals[1], output.vals[2]);
         var color_pair = diffPair(color);
         float loss = L2Loss(color, target_color, color);
         bwd_diff(L2Loss)(color_pair, target_color, color, 1);
-        // set gradient to zero if current hitInfoList entry is invalid as it was never updated or if current thread is just helper thread
-        const float gradient_scalar = (!mainThread || length(nnNeeHitInfoList[i].dir) < 0.1) ? 0.0 : 1.0;
+        // set gradient to zero if current hitInfoList entry is not a valid light transport path
+        const float gradient_scalar = (mainThread && length(nnNeeHitInfoList[i].radiance) > 0.01) ? 1.0 : 0.0;
         output_grad.vals[0] = float16_t(color_pair.d.x * gradient_scalar);
         output_grad.vals[1] = float16_t(color_pair.d.y * gradient_scalar);
         output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
         var input_feature_pair = diffPair(feature);
-        bwd_diff(MLPModule1.forward)(gMlp1, input_feature_pair, output_grad);
-        bwd_diff(computeHashEncFeature)(nnNeeHitInfoList[i].pos, nnNeeHitInfoList[i].dir, nnNeeHitInfoList[i].normal, featureHashGrid1, input_feature_pair.d);
+        bwd_diff(MLPModule0.forward)(gMlp0, input_feature_pair, output_grad);
+#if NN_USE_HASH_ENC
+        bwd_diff(computeFeature)(nnNeeHitInfoList[i].pos, nnNeeHitInfoList[i].dir, nnNeeHitInfoList[i].normal, featureHashGrid0, input_feature_pair.d);
+#endif
     }
 #endif
 #if 0
     // use dummy normal for camera
-    HalfFeature<32> feature = computeHashEncFeature(gCamPos.xyz, -gViewW[pixel].xyz, float3(1.0), featureHashGrid0);
-    //HalfFeature<32> feature = computeFreqEncFeature(gCamPos.xyz, -gViewW[pixel].xyz);
+    HalfFeature<32> feature = computeFeature(gCamPos.xyz, -gViewW[pixel].xyz, float3(1.0), featureHashGrid0);
     HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
     HalfFeature<32>.Differential output_grad;
     float3 target_color = outputColor;
@@ -585,7 +590,9 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
     var input_feature_pair = diffPair(feature);
     bwd_diff(MLPModule0.forward)(gMlp0, input_feature_pair, output_grad);
-    bwd_diff(computeHashEncFeature)(gCamPos.xyz, -gViewW[pixel].xyz, float3(1.0), featureHashGrid0, input_feature_pair.d);
+#if NN_USE_HASH_ENC
+    bwd_diff(computeFeature)(gCamPos.xyz, -gViewW[pixel].xyz, float3(1.0), featureHashGrid0, input_feature_pair.d);
+#endif
 #endif
 #endif
 }

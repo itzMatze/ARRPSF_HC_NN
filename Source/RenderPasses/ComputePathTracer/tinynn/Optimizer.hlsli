@@ -34,12 +34,11 @@ float adam_optimizer(
     in float lr,
     in float param_0,
     in float param_1,
-    in float param_2
 ) {
     const int t = t + 1;
     const float beta_1 = param_0;
     const float beta_2 = param_1;
-    const float epsilon = param_2;
+    const float epsilon = 1e-15;
 
     device_exp_avgs = lerp(device_exp_avgs, device_grads, 1 - beta_1);
     device_exp_avg_sqs *= beta_2;

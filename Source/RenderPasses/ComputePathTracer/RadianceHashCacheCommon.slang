@@ -107,7 +107,10 @@ void hashCacheUpdateHit(inout HashCacheState hashCacheState, HashCacheHitData ha
     }
     hashCacheState.pathLength += 1;
     hashCacheState.pathLength = min(hashCacheState.pathLength, kHashCachePropagationDepth - 1);
-    hashCacheAddVoxelData(hashCacheState.voxelIndices[0], float3(0.0), true);
+#if USE_IRHC
+    radiance = float3(0.0);
+#endif
+    hashCacheAddVoxelData(hashCacheState.voxelIndices[0], radiance, true);
 #endif // HC_UPDATE
 }
 
@@ -146,12 +149,23 @@ void hashCacheCombine(uint idx)
     {
         voxelData.radiance = voxelDataPrev.radiance;
     }
+#if USE_IRHC
+    else if (voxelData.sampleNum < 32)
+    {
+        voxelData.radiance += voxelDataPrev.radiance * voxelDataPrev.sampleNum;
+        voxelData.radiance /= voxelData.sampleNum;
+    }
+#endif
     else
     {
         voxelData.radiance /= float(newSampleNum);
         if (voxelDataPrev.sampleNum > 0)
         {
-            float weight = min(newSampleNum * 0.0005, 0.025);
+#if USE_RHC
+            float weight = (newSampleNum * 0.001);
+#elif USE_IRHC
+            float weight = (newSampleNum * 0.0015);
+#endif
             voxelData.radiance = (1 - weight) * voxelDataPrev.radiance + weight * voxelData.radiance;
         }
     }

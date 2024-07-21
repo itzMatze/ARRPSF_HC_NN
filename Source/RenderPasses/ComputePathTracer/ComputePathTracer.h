@@ -102,7 +102,7 @@ private:
 
     // show contribution of specific bounce range, upper bound will terminate path
     uint mLowerBounceCount = 0;
-    uint mUpperBounceCount = 10;
+    uint mUpperBounceCount = 16;
     bool mUseNEE = true;
     bool mUseMIS = true;
     bool mMISUsePowerHeuristic = true;
@@ -119,14 +119,16 @@ private:
         float probStartValue = 1.2f;
         // factor by which the survival probability gets reduced
         float probReductionFactor = 0.9f;
+        // inject local radiance estimate on rr termination of path instead of using rr weight
+        bool injectRadiance = false;
 
         uint getOptionBits() { return optionsBits; }
         void update() { optionsBits = survivalProbOption | (requiresPCE() ? pathContribEstimateOption : 0u) | (requiresPME() ? pixelMeasurementEstimateOption : 0u); }
         bool requiresReductionParams() { return optionsBits & SP_USE_DEFAULT; }
-        bool requiresPCE() { return optionsBits & PCE_REQUIRED_MASK; }
-        bool requiresPME() { return optionsBits & PME_REQUIRED_MASK; }
-        bool requiresHC() { return (requiresPCE() && (optionsBits & PCE_USE_HC)) || (requiresPME() && (optionsBits & PME_USE_HC)); }
-        bool requiresNN() { return (requiresPCE() && (optionsBits & PCE_USE_NN)) || (requiresPME() && (optionsBits & PME_USE_NN)); }
+        bool requiresPCE() { return active && (optionsBits & PCE_REQUIRED_MASK); }
+        bool requiresPME() { return active && (optionsBits & PME_REQUIRED_MASK); }
+        bool requiresHC() { return active && ((requiresPCE() && (optionsBits & PCE_USE_HC)) || (requiresPME() && (optionsBits & PME_USE_HC))); }
+        bool requiresNN() { return active && ((requiresPCE() && (optionsBits & PCE_USE_NN)) || (requiresPME() && (optionsBits & PME_USE_NN))); }
     private:
         uint optionsBits = 0u;
         // how to determine the survival probability for rr
@@ -170,8 +172,6 @@ private:
         bool reset = true;
         uint hashMapSizeExp = 22;
         uint hashMapSize = std::pow(2u, hashMapSizeExp);
-        // inject radiance estimate of HC on rr termination of path instead of using rr weight
-        bool injectRadianceRR = false;
         // terminate the path if the roughness of surfaces blur the inaccuracy of the hc
         bool injectRadianceSpread = false;
         bool debugVoxels = false;
@@ -196,6 +196,7 @@ private:
     struct NNParams
     {
         bool active = false;
+        bool train = true;
         bool reset = true;
         enum OptimizerType {
             SGD = 0,
@@ -206,10 +207,9 @@ private:
             int step_count = 0;
             float learn_r = 0.01;
             float param_0 = 0.9;
-            float param_1 = 0.999;
-            float param_2 = 1e-08;
+            float param_1 = 0.99;
         } optimizerParams;
-        std::vector<int> nnLayerCount = {1, 1};
+        std::vector<int> nnLayerCount = {4};
         int mlpCount = nnLayerCount.size();
         Gui::DropdownList nnLayerWidthList{Gui::DropdownValue{16, "16"}, Gui::DropdownValue{32, "32"}};
         uint nnLayerWidth = 32;
@@ -220,12 +220,19 @@ private:
         };
         Gui::DropdownList nnMethodList{Gui::DropdownValue{USE_NIRC, "nirc"}, Gui::DropdownValue{USE_NRC, "nrc"}};
         uint nnMethod = USE_NIRC;
+        enum EncMethods {
+            USE_HASH_ENC = 0,
+            USE_FREQ_ENC = 1
+        };
+        Gui::DropdownList encMethodList{Gui::DropdownValue{USE_HASH_ENC, "hash enc"}, Gui::DropdownValue{USE_FREQ_ENC, "freq enc"}};
+        uint encMethod = USE_HASH_ENC;
         uint nnParamCount = 0;
         uint gradientAuxElements = 0;
         int gradOffset = 0;
         float2 weightInitBound = float2(0.001, 0.02);
         float filterAlpha = 0.99;
         int trainingBounces = 8;
+        bool injectRadianceSpread = false;
         bool debugOutput = false;
         bool keepThreads = false;
         const uint featureHashMapSize = std::pow(2, 22);
@@ -241,6 +248,7 @@ private:
             optimizerParams.step_count = 0;
             nnParamCount = ((nnLayerWidth * nnLayerWidth /*weights*/ + nnLayerWidth /*biases*/) * std::reduce(nnLayerCount.begin(), nnLayerCount.end()) + featureHashMapSize /*feature hash grid storage*/ * nnLayerCount.size() /*one feature hashmap per nn*/);
             featureHashMapPlacesPerElement = featureHashEncUseMultiLevelDir ? 1 : 2;
+            featureHashEncUseMultiLevelDir &= (nnMethod == USE_NIRC);
         }
     } mNNParams;
 
@@ -248,6 +256,7 @@ private:
         bool active = false;
         bool showTransmission = false;
         bool applyBSDF = false;
+        bool accumulate = false;
         int nircMLPIndex = 0;
 
         enum IRMethods {
