@@ -14,7 +14,7 @@ struct LinearHalf<let C : int> {
     no_diff TensorView weights_view;
     no_diff TensorView bias_view;
 
-    uint calcOffset<let N : int>() {
+    uint calcOffset<let N : int>() { // thread_idx.x = from 0 to 32,  = threadInfo.thread_idx.y from 0 tp 4
         return uint(((threadInfo.thread_idx.x / 32) + threadInfo.thread_idx.y *
             (threadInfo.block_dim.x * 1.0 / 32)) * N); }
 
@@ -147,7 +147,11 @@ struct LinearHalf32X32 : LinearHalf<32> {
 
     // move the weights from global memory to shared memory.
     void moveWeightsToSharedMem<let colMajor : bool>() {
-        const SharedMemRef wtPtr = 4096 + calcOffset<32 * 32>();
+        SharedMemRef wtPtr = 4096 + calcOffset<32 * 32>();
+
+        int n = 4096+threadInfo.thread_idx.y * 1024;
+        wtPtr = n;
+
         const int threadIdInWarp = threadInfo.thread_idx.x;
         const int warpId = threadInfo.thread_idx.y;
         // Copy weights to shared memory.
