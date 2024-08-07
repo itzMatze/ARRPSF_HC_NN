@@ -2,8 +2,8 @@
 
 import Utils.Debug.PixelDebug;
 
-RWStructuredBuffer<float> PrimalBuffer;
-RWStructuredBuffer<float> FilteredPrimalBuffer;
+RWStructuredBuffer<float16_t> PrimalBuffer;
+RWStructuredBuffer<float16_t> FilteredPrimalBuffer;
 RWStructuredBuffer<float> GradientBuffer;
 RWStructuredBuffer<float> GradientCountBuffer;
 RWStructuredBuffer<float> GradientAuxBuffer;
@@ -32,7 +32,7 @@ void main(int3 dtid: SV_DispatchThreadID) {
     if (tid >= kParamCount) return;
     printSetPixel(uint2(10000, dtid.x));
 
-    const float theta = PrimalBuffer[tid];
+    const float theta = float(PrimalBuffer[tid]);
     float count = GradientCountBuffer[kGradOffset + tid];
     float df_dtheta = count > 0.01 ? GradientBuffer[kGradOffset + tid] / float(count) : 0.0;
     if (isnan(df_dtheta) || isinf(df_dtheta)) df_dtheta = 0.0;
@@ -53,7 +53,7 @@ void main(int3 dtid: SV_DispatchThreadID) {
         GradientAuxBuffer[2 * (kGradOffset + tid) + 1] = v_t;
     }
     theta_new = clamp(theta_new, -65000.0, 65000.0);
-    PrimalBuffer[tid] = theta_new;
-    FilteredPrimalBuffer[tid] = (1 - kFilterAlpha) * theta_new + kFilterAlpha * FilteredPrimalBuffer[tid];
+    PrimalBuffer[tid] = (float16_t)theta_new;
+    FilteredPrimalBuffer[tid] = (float16_t)((1 - kFilterAlpha) * theta_new + kFilterAlpha * float(FilteredPrimalBuffer[tid]));
 }
 

@@ -28,6 +28,7 @@ cbuffer CB
     uint2 gFrameDim;
     float3 gCamPos;
     int gHashEncDebugLevel;
+    uint64_t gWeightsAddress;
 }
 
 // inputs
@@ -778,6 +779,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     const ThreadInfo thread_info = ThreadInfo(groupThreadId.xy, int2(32, 4));
     uint param_offset = 0; uint grad_offset = 0;
     gMlp0 = MLPModule0(param_offset, grad_offset, thread_info);
+    gMlp0.setWeightsAddress(gWeightsAddress);
     rayData.featureHashGrid0 = FeatureHashGrid(param_offset, grad_offset);
 #endif
     float3 outputColor = float3(0.0, 1.0, 0.0);

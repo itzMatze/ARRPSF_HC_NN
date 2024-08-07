@@ -2,8 +2,8 @@ import Utils.Debug.PixelDebug;
 import Utils.Sampling.SampleGenerator;
 import HashEncHashGridCommon;
 
-RWStructuredBuffer<float> PrimalBuffer;
-RWStructuredBuffer<float> FilteredPrimalBuffer;
+RWStructuredBuffer<float16_t> PrimalBuffer;
+RWStructuredBuffer<float16_t> FilteredPrimalBuffer;
 RWStructuredBuffer<float> GradientAuxBuffer;
 
 static const uint kParamCount = NN_PARAM_COUNT;
@@ -22,8 +22,8 @@ void main(int3 dtid: SV_DispatchThreadID) {
         float rnd = sampleNext1D(sg);
         rnd *= (kWeightInitUpperBound - kWeightInitLowerBound);
         rnd += kWeightInitLowerBound;
-        PrimalBuffer[dtid.x] = rnd;
-        FilteredPrimalBuffer[dtid.x] = rnd;
+        PrimalBuffer[dtid.x] = float16_t(rnd);
+        FilteredPrimalBuffer[dtid.x] = float16_t(rnd);
     }
     if (dtid.x < kGradientAuxElements)
     {

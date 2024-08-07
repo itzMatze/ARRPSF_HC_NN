@@ -44,6 +44,14 @@ struct MLPHalf32X32<let N:int, Act:IActivationFn> {
         }
     }
 
+    [mutating] void setWeightsAddress(uint64_t address)
+    {
+        [ForceUnroll] for (int i = 0; i < N; i++)
+        {
+            linears[i].setWeightsAddress(address);
+        }
+    }
+
     [Differentiable]
     Output _forward(Input input) {
         HalfFeature<32> out_feature = input;

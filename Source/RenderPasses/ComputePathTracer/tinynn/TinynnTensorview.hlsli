@@ -1,7 +1,7 @@
 #ifndef _SRENDERER_ADDON_TINYNN_COMMON_HLSLI_HEADER_
 #define _SRENDERER_ADDON_TINYNN_COMMON_HLSLI_HEADER_
 
-RWStructuredBuffer<float> PrimalBuffer;
+RWStructuredBuffer<float16_t> PrimalBuffer;
 RWByteAddressBuffer GradientBuffer;
 RWByteAddressBuffer GradientCountBuffer;
 
@@ -23,12 +23,14 @@ struct TensorView {
     uint stride;
     uint pitch;
 
+    float16_t* data() { return &PrimalBuffer[offset_prim]; }
+
     [BackwardDerivative(load_prim_idx1_bwd)]
-    float load_prim(int x) { return PrimalBuffer[offset_prim + x]; }
+    float16_t load_prim(int x) { return PrimalBuffer[offset_prim + x]; }
     [BackwardDerivative(load_prim_idx2_bwd)]
-    float load_prim(int x, int y) { return load_prim(x * stride + y); }
+    float16_t load_prim(int x, int y) { return load_prim(x * stride + y); }
     [BackwardDerivative(load_prim_idx3_bwd)]
-    float load_prim(int x, int y, int z) { return load_prim(x * stride + y * pitch + z); }
+    float16_t load_prim(int x, int y, int z) { return load_prim(x * stride + y * pitch + z); }
 
     void interlocked_add_grad(int x, float val) {
         GradientBuffer.InterlockedAddF32((offset_grad + x) * 4, val);

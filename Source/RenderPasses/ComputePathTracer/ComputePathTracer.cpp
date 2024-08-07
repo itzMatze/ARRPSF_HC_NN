@@ -299,8 +299,10 @@ void ComputePathTracer::setupData(RenderContext* pRenderContext)
     }
     if (mNNParams.active)
     {
-        if (!mBuffers[NN_PRIMAL_BUFFER]) mBuffers[NN_PRIMAL_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
-        if (!mBuffers[NN_FILTERED_PRIMAL_BUFFER]) mBuffers[NN_FILTERED_PRIMAL_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
+        if (!mBuffers[NN_PRIMAL_BUFFER]) mBuffers[NN_PRIMAL_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float16_t));
+        if (!mBuffers[NN_FILTERED_PRIMAL_BUFFER])
+            mBuffers[NN_FILTERED_PRIMAL_BUFFER] = mpDevice->createBuffer(
+                mNNParams.nnParamCount * sizeof(float16_t), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess | ResourceBindFlags::Shared);
         if (!mBuffers[NN_GRADIENT_BUFFER]) mBuffers[NN_GRADIENT_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
         if (!mBuffers[NN_GRADIENT_COUNT_BUFFER]) mBuffers[NN_GRADIENT_COUNT_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
         mNNParams.gradientAuxElements = mNNParams.nnParamCount * 4;
@@ -326,6 +328,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["CB"]["gFrameDim"] = frameDim;
         var["CB"]["gFrameCount"] = mFrameCount;
         var["CB"]["gCamPos"] = mCamPos;
+
         mpScene->bindShaderData(var["gScene"]);
         mpSampleGenerator->bindShaderData(var);
         if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
@@ -370,6 +373,9 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["CB"]["gFrameCount"] = mFrameCount;
         var["CB"]["gCamPos"] = mCamPos;
         var["CB"]["gHashEncDebugLevel"] = mNNParams.featureHashMapDebugShowLevel;
+        uint64_t address = mBuffers[NN_FILTERED_PRIMAL_BUFFER]->getGpuAddress();
+        var["CB"]["gWeightsAddress"] = address;
+
         mpScene->bindShaderData(var["gScene"]);
         mpSampleGenerator->bindShaderData(var);
         if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
@@ -383,6 +389,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         }
         if (mNNParams.active)
         {
+
             var["PrimalBuffer"] = mBuffers[NN_FILTERED_PRIMAL_BUFFER];
             var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
             var["GradientCountBuffer"] = mBuffers[NN_GRADIENT_COUNT_BUFFER];
@@ -430,6 +437,8 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["CB"]["gShowTransmission"] = mIRDebugPassParams.showTransmission;
         var["CB"]["gApplyBSDF"] = mIRDebugPassParams.applyBSDF;
         var["CB"]["gAccumulate"] = mIRDebugPassParams.accumulate;
+        uint64_t address = mBuffers[NN_FILTERED_PRIMAL_BUFFER]->getGpuAddress();
+        var["CB"]["gWeightsAddress"] = address;
         if (mHCParams.active)
         {
             var["gHCHashGridEntriesBuffer"] = mBuffers[HC_HASH_GRID_ENTRIES_BUFFER];

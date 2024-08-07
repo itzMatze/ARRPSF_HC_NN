@@ -338,8 +338,8 @@ if(FALCOR_WINDOWS)
     add_library(slang SHARED IMPORTED GLOBAL)
     set_target_properties(slang PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES ${SLANG_DIR}
-        IMPORTED_IMPLIB ${SLANG_DIR}/bin/windows-x64/${FALCOR_SLANG_CONFIG}/slang.lib
-        IMPORTED_LOCATION ${SLANG_DIR}/bin/windows-x64/${FALCOR_SLANG_CONFIG}/slang.dll
+        IMPORTED_IMPLIB ${SLANG_DIR}/build/${FALCOR_SLANG_CONFIG}/lib/slang.lib
+        IMPORTED_LOCATION ${SLANG_DIR}/build/${FALCOR_SLANG_CONFIG}/bin/slang.dll
     )
 elseif(FALCOR_LINUX)
     add_library(slang SHARED IMPORTED GLOBAL)
@@ -354,8 +354,8 @@ if(FALCOR_WINDOWS)
     add_library(slang-gfx SHARED IMPORTED GLOBAL)
     set_target_properties(slang-gfx PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES ${SLANG_DIR}
-        IMPORTED_IMPLIB ${SLANG_DIR}/bin/windows-x64/${FALCOR_SLANG_CONFIG}/gfx.lib
-        IMPORTED_LOCATION ${SLANG_DIR}/bin/windows-x64/${FALCOR_SLANG_CONFIG}/gfx.dll
+        IMPORTED_IMPLIB ${SLANG_DIR}/build/${FALCOR_SLANG_CONFIG}/lib/gfx.lib
+        IMPORTED_LOCATION ${SLANG_DIR}/build/${FALCOR_SLANG_CONFIG}/bin/gfx.dll
     )
 elseif(FALCOR_LINUX)
     add_library(slang-gfx SHARED IMPORTED GLOBAL)

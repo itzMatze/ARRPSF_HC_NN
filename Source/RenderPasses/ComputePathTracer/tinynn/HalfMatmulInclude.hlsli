@@ -31,6 +31,14 @@ void __inline_wmma_128_32_32() {
     __intrinsic_asm "glsl_wmma_128_32_32()";
 }
 
+void __inline_wmma_128_32_32_our(uint64_t pointer)
+{
+    __requirePrelude(R"(#extension GL_GOOGLE_include_directive : enable)");
+    __requirePrelude(R"(#include "HalfMatmulInclude.glsl")");
+    __intrinsic_asm "glsl_wmma_128_32_32_our($0)";
+}
+
+
 void __inline_wmma_32_128_32() {
     __requirePrelude(R"(#extension GL_GOOGLE_include_directive : enable)");
     __requirePrelude(R"(#include "HalfMatmulInclude.glsl")");

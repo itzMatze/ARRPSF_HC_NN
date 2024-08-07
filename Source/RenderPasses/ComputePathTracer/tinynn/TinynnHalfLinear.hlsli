@@ -4,6 +4,7 @@
 #include "HalfMatmulInclude.hlsli"
 #include "TinynnTensorview.hlsli"
 
+
 // Base of all half linear layers.
 struct LinearHalf<let C : int> {
     typedef HalfFeature<C> Input;
@@ -47,7 +48,7 @@ struct LinearHalf<let C : int> {
     void moveOutputsToLocalArray<let N : int>(SharedMemRef outPtr, out float16_t outputs[N]) {
         loadArray<N, false>(outPtr, outputs);
         [ForceUnroll] for (int i = 0; i < N; i++)
-            outputs[i] = outputs[i] + float16_t(bias_view.load_prim(i));
+            outputs[i] = outputs[i] + bias_view.load_prim(i);
     }
 }
 
@@ -137,39 +138,67 @@ struct LinearHalf16X16 : LinearHalf<16> {
 }
 
 struct LinearHalf32X32 : LinearHalf<32> {
+     no_diff uint64_t weightsAddress;
+
     __init(inout uint offset_prim, inout uint offset_grad, ThreadInfo threadInfo) {
         this.weights_view = TensorView(offset_prim, offset_grad, 32, 32);
         offset_prim += 1024; offset_grad += 1024;
         this.bias_view = TensorView(offset_prim, offset_grad, 32, 32);
         offset_prim += 32; offset_grad += 32;
+
         this.threadInfo = threadInfo;
+    }
+
+    [mutating]  void setWeightsAddress(uint64_t w) {
+        this.weightsAddress = w;
     }
 
     // move the weights from global memory to shared memory.
     void moveWeightsToSharedMem<let colMajor : bool>() {
         SharedMemRef wtPtr = 4096 + calcOffset<32 * 32>();
 
-        int n = 4096+threadInfo.thread_idx.y * 1024;
-        wtPtr = n;
 
+        int n = 4096+threadInfo.thread_idx.y * 1024;
+        if(n != 4096)
+            return;
+        wtPtr = n;
         const int threadIdInWarp = threadInfo.thread_idx.x;
         const int warpId = threadInfo.thread_idx.y;
+        /*
+
+        each thread processes its own row\column.
+        the weights in the memory are stored as row. each thread = its own thread.
+        then we transpose it
+        */
         // Copy weights to shared memory.
         [ForceUnroll] for (uint j = 0; j < 32; j++) {
-          const float16_t w = float16_t(weights_view.load_prim(threadIdInWarp, j));
+          const float16_t w = weights_view.load_prim(threadIdInWarp, j); // weights[threadIdInWarp*32+j]
           if (colMajor) __inline_set_half_shared_buffer(wtPtr + threadIdInWarp * 32 + j, w);
-          else __inline_set_half_shared_buffer(wtPtr + j * 32 + threadIdInWarp, w);
+          else __inline_set_half_shared_buffer(wtPtr + j * 32 + threadIdInWarp, w); // j*32+threadIdInWarp
         }
     }
+
+
 
     Output _eval(Input in_feature) {
         GroupMemoryBarrierWithGroupSync();
         // Move the input and weights to shared memory.
         moveInputsToSharedMem<32>(in_feature.vals);
+        
+        #if 0
         moveWeightsToSharedMem<false>();
         GroupMemoryBarrierWithGroupSync();
         // Do the matmul.
         __inline_wmma_128_32_32();
+        #else
+        //moveWeightsToSharedMem<true>();
+        GroupMemoryBarrierWithGroupSync();
+        // Do the matmul.
+        /*float16_t* ptr2data = weights_view.data();
+        ptr2data = 0;*/
+        __inline_wmma_128_32_32_our(weightsAddress);
+        #endif
+
         GroupMemoryBarrierWithGroupSync();
         // Move the output to local memory.
         Output out_feature;
