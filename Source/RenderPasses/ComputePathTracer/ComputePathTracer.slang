@@ -228,8 +228,10 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         sd = loadShadingData(triangleHit, rayData.direction, lod);
         mi = gScene.materials.getMaterialInstance(sd, lod);
         bsdfProperties = mi.getProperties(sd);
-        if (rayData.t == 0.0) rayData.distance = distance(sd.posW, gCamPos);
-        else rayData.distance += rayData.t;
+        if (rayData.t == 0.0)
+            rayData.distance = distance(sd.posW, gCamPos);
+        else
+            rayData.distance += rayData.t;
         float alpha = min(rayData.materialRoughness * rayData.materialRoughness, 0.99);
         rayData.materialRoughness = bsdfProperties.roughness;
         alpha *= alpha;
@@ -240,13 +242,16 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         }
         else if (rayData.pdf != 0.0f)
         {
-            rayData.spread[1] += sqrt(distance(sd.posW, rayData.origin) / (rayData.pdf * abs(dot(-rayData.direction, sd.getOrientedFaceNormal()))));
+            rayData.spread[1] +=
+                sqrt(distance(sd.posW, rayData.origin) / (rayData.pdf * abs(dot(-rayData.direction, sd.getOrientedFaceNormal()))));
         }
 
 #if NN_QUERY
         if (gHashEncDebugLevel >= 0)
         {
-            rayData.cur_radiance = rayData.featureHashGrid0.hashmap.DebugColoredHash(sd.posW, -gViewW[gPixel].xyz, sd.getOrientedFaceNormal(), gHashEncDebugLevel);
+            rayData.cur_radiance = rayData.featureHashGrid0.hashmap.DebugColoredHash(
+                sd.posW, -gViewW[gPixel].xyz, sd.getOrientedFaceNormal(), gHashEncDebugLevel
+            );
             TERMINATE_PATH_0;
         }
 #endif
@@ -261,15 +266,23 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         }
         else
         {
-            [ForceUnroll]
-            for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
+            [ForceUnroll] for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
         }
-        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
-        MASK_BLOCK
+
+        rayData.cur_radiance = float3(0.0, 0.0, 0.0);
+        for (uint32_t i = 0; i < 1; i++)
         {
-            if (isnan(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 0.0);
-            else if (isinf(output.vals[0])) rayData.cur_radiance = float3(1.0, 0.0, 1.0);
-            else rayData.cur_radiance = float3(output.vals[0], output.vals[1], output.vals[2]);
+
+           /* HalfFeature<32> output = MLPModule0.forward_fast(gMlp0, feature);
+            MASK_BLOCK
+            {
+                if (isnan(output.vals[0]))
+                    rayData.cur_radiance = float3(1.0, 0.0, 0.0);
+                else if (isinf(output.vals[0]))
+                    rayData.cur_radiance = float3(1.0, 0.0, 1.0);
+                else
+                    rayData.cur_radiance += float3(output.vals[0], output.vals[1], output.vals[2])/1.0f;
+            }*/
         }
         TERMINATE_PATH_0;
     }
@@ -285,15 +298,16 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         }
         else
         {
-            [ForceUnroll]
-            for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
+            [ForceUnroll] for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
         }
-        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
-        if (!gDone && validHit)
-        {
-            rayData.cur_radiance = float3(output.vals[0], output.vals[1], output.vals[2]);
-            TERMINATE_PATH_0;
-        }
+        
+            HalfFeature<32> output = MLPModule0.forward_fast(gMlp0, feature);
+            if (!gDone && validHit)
+            {
+                rayData.cur_radiance += float3(output.vals[0], output.vals[1], output.vals[2]);
+                TERMINATE_PATH_0;
+            }
+        
     }
 #endif
     MASK_BLOCK
@@ -452,7 +466,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             [ForceUnroll]
             for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
         }
-        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
+        HalfFeature<32> output = MLPModule0.forward_fast(gMlp0, feature);
         float3 color = float3(output.vals[0], output.vals[1], output.vals[2]) * bsdfSample.weight;
         MASK_BLOCK rayData.cur_radiance += color;
         TERMINATE_PATH_0;
@@ -471,7 +485,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             [ForceUnroll]
             for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
         }
-        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
+        HalfFeature<32> output = MLPModule0.forward_fast(gMlp0, feature);
         if (!gDone && validHit)
         {
             rayData.cur_radiance += float3(output.vals[0], output.vals[1], output.vals[2]) * bsdfSample.weight;
@@ -546,7 +560,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
                 [ForceUnroll]
                 for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
             }
-            HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
+            HalfFeature<32> output = MLPModule0.forward_fast(gMlp0, feature);
             float3 nnRadiance = float3(output.vals[0], output.vals[1], output.vals[2]) * bsdfSample.weight + rayData.cur_radiance;
             rayData.luminance_estimate = luminance(nnRadiance);
             print("nirc global estimate", nnRadiance);
@@ -561,7 +575,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
                 [ForceUnroll]
                 for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
             }
-            HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
+            HalfFeature<32> output = MLPModule0.forward_fast(gMlp0, feature);
             float3 nnRadiance = float3(output.vals[0], output.vals[1], output.vals[2]);
             rayData.luminance_estimate = luminance(nnRadiance);
             print("nrc global estimate", nnRadiance);
@@ -594,7 +608,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             [ForceUnroll]
             for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
         }
-        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
+        HalfFeature<32> output = MLPModule0.forward_fast(gMlp0, feature);
         radiance = float3(output.vals[0], output.vals[1], output.vals[2]) * bsdfSample.weight;
 #elif USE_NRC
         HalfFeature<32> feature;
@@ -607,7 +621,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             [ForceUnroll]
             for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
         }
-        HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
+        HalfFeature<32> output = MLPModule0.forward_fast(gMlp0, feature);
         radiance = float3(output.vals[0], output.vals[1], output.vals[2]);
 #endif
 #endif

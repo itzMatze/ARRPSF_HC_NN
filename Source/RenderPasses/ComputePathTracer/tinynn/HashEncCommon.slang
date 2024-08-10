@@ -1,4 +1,4 @@
-#include "TinynnTensorview.hlsli"
+#include "TinynnTensorview.slang"
 import HashEncHashGridCommon;
 import Utils.Debug.PixelDebug;
 

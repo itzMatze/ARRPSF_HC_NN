@@ -493,7 +493,7 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
 
     if (mOptionsChanged)
     {
-        reset();
+        //reset();
         renderData.getDictionary()[Falcor::kRenderPassRefreshFlags] = Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
         // activate hc if it is used somewhere
         mHCParams.active = mRRParams.requiresHC() | mHCParams.injectRadianceSpread | mHCParams.debugColor | mHCParams.debugLevels | mHCParams.debugVoxels | (mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_IRHC && mIRDebugPassParams.active);
@@ -690,6 +690,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     if (widget.button("Reload shader"))
     {
         mOptionsChanged = true;
+        //mPasses[PATH_TRACING_PASS] = nullptr;
         reset();
     }
 }

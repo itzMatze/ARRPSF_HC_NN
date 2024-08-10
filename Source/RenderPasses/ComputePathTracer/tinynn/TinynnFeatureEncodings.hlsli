@@ -3,7 +3,7 @@
 
 import Utils.Debug.PixelDebug;
 
-#include "TinynnHalfLinear.hlsli"
+#include "TinynnHalfLinear.slang"
 #include "HashEncCommon.slang"
 
 #if NN_TRAIN

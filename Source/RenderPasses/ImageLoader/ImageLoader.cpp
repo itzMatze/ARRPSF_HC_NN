@@ -72,7 +72,9 @@ ImageLoader::ImageLoader(ref<Device> pDevice, const Properties& props) : RenderP
     {
         if (!loadImage(mImagePath))
         {
-            FALCOR_THROW("ImageLoader: Failed to load image from '{}'", mImagePath);
+            logWarning("ImageLoader: Failed to load image from ");
+
+            //FALCOR_THROW("ImageLoader: Failed to load image from '{}'", mImagePath);
         }
     }
 }
@@ -103,7 +105,9 @@ Properties ImageLoader::getProperties() const
 
 void ImageLoader::compile(RenderContext* pRenderContext, const CompileData& compileData)
 {
-    FALCOR_CHECK(mpTex, "ImageLoader: No image loaded");
+    logWarning("ImageLoader: Failed to load image from ");
+
+    //FALCOR_CHECK(mpTex, "ImageLoader: No image loaded");
 }
 
 void ImageLoader::execute(RenderContext* pRenderContext, const RenderData& renderData)

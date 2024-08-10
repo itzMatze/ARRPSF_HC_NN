@@ -2,7 +2,8 @@
 #define _SRENDERER_ADDON_HALF_TINYNN_LINEAR_HLSLI_HEADER_
 
 #include "HalfMatmulInclude.hlsli"
-#include "TinynnTensorview.hlsli"
+#include "TinynnTensorview.slang"
+
 
 
 // Base of all half linear layers.
@@ -48,7 +49,7 @@ struct LinearHalf<let C : int> {
     void moveOutputsToLocalArray<let N : int>(SharedMemRef outPtr, out float16_t outputs[N]) {
         loadArray<N, false>(outPtr, outputs);
         [ForceUnroll] for (int i = 0; i < N; i++)
-            outputs[i] = outputs[i] + bias_view.load_prim(i);
+            outputs[i] = outputs[i];// + bias_view.load_prim(i);
     }
 }
 
@@ -112,6 +113,7 @@ struct LinearHalf16X16 : LinearHalf<16> {
                 outPtr + i * 32 + threadInfo.thread_idx.x,
                 float16_t(in_feature_pair.p.vals[i]));
             __inline_wmma_16_128_16();
+
             uint wtPtr = 4096 + calcOffset<16 * 16>();
             // Copy weights to shared memory.
             const int i_base = threadInfo.thread_idx.x % 16;
@@ -143,8 +145,9 @@ struct LinearHalf32X32 : LinearHalf<32> {
     __init(inout uint offset_prim, inout uint offset_grad, ThreadInfo threadInfo) {
         this.weights_view = TensorView(offset_prim, offset_grad, 32, 32);
         offset_prim += 1024; offset_grad += 1024;
+        /*
         this.bias_view = TensorView(offset_prim, offset_grad, 32, 32);
-        offset_prim += 32; offset_grad += 32;
+        offset_prim += 32; offset_grad += 32;*/
 
         this.threadInfo = threadInfo;
     }
@@ -158,46 +161,72 @@ struct LinearHalf32X32 : LinearHalf<32> {
         SharedMemRef wtPtr = 4096 + calcOffset<32 * 32>();
 
 
-        int n = 4096+threadInfo.thread_idx.y * 1024;
-        if(n != 4096)
-            return;
-        wtPtr = n;
         const int threadIdInWarp = threadInfo.thread_idx.x;
         const int warpId = threadInfo.thread_idx.y;
-        /*
 
+        /*
         each thread processes its own row\column.
         the weights in the memory are stored as row. each thread = its own thread.
         then we transpose it
         */
         // Copy weights to shared memory.
         [ForceUnroll] for (uint j = 0; j < 32; j++) {
-          const float16_t w = weights_view.load_prim(threadIdInWarp, j); // weights[threadIdInWarp*32+j]
+            const float16_t w = weights_view.load_prim(threadIdInWarp, j); // weights[threadIdInWarp*32+j]
           if (colMajor) __inline_set_half_shared_buffer(wtPtr + threadIdInWarp * 32 + j, w);
           else __inline_set_half_shared_buffer(wtPtr + j * 32 + threadIdInWarp, w); // j*32+threadIdInWarp
         }
     }
 
+    // move the weights from global memory to shared memory.
+    void moveWeightsToSharedMemOur<let colMajor : bool>()
+    {
+        SharedMemRef wtPtr = 4096 + calcOffset<32 * 32>();
+
+        
+          int n = 4096 + threadInfo.thread_idx.y * 1024;
+          if (n != 4096)
+            return;
+          wtPtr = n;
+        
+        const int threadIdInWarp = threadInfo.thread_idx.x;
+        const int warpId = threadInfo.thread_idx.y;
+
+        /*
+        each thread processes its own row\column.
+        the weights in the memory are stored as row. each thread = its own thread.
+        then we transpose it
+        */
+        // Copy weights to shared memory.
+        [ForceUnroll] for (uint j = 0; j < 32; j++)
+        {
+          const float16_t w = weights_view.load_prim(threadIdInWarp, j); // weights[threadIdInWarp*32+j]
+          if (colMajor)
+            __inline_set_half_shared_buffer(wtPtr + threadIdInWarp * 32 + j, w);
+          else
+            __inline_set_half_shared_buffer(wtPtr + j * 32 + threadIdInWarp, w); // j*32+threadIdInWarp
+        }
+    }
 
 
-    Output _eval(Input in_feature) {
+
+    Output _eval(Input in_feature, bool inference) {
         GroupMemoryBarrierWithGroupSync();
         // Move the input and weights to shared memory.
         moveInputsToSharedMem<32>(in_feature.vals);
-        
-        #if 0
-        moveWeightsToSharedMem<false>();
-        GroupMemoryBarrierWithGroupSync();
-        // Do the matmul.
-        __inline_wmma_128_32_32();
-        #else
-        //moveWeightsToSharedMem<true>();
-        GroupMemoryBarrierWithGroupSync();
-        // Do the matmul.
-        /*float16_t* ptr2data = weights_view.data();
-        ptr2data = 0;*/
-        __inline_wmma_128_32_32_our(weightsAddress);
-        #endif
+
+      
+        if (!inference)
+        {
+          moveWeightsToSharedMem<false>();
+          GroupMemoryBarrierWithGroupSync();
+            // Do the matmul.
+          __inline_wmma_128_32_32();
+        }
+        else
+        {
+         __inline_wmma_128_32_32_our(weightsAddress + this.weights_view.offset_prim*2);
+        }
+      
 
         GroupMemoryBarrierWithGroupSync();
         // Move the output to local memory.
@@ -211,6 +240,7 @@ struct LinearHalf32X32 : LinearHalf<32> {
     void _eval_bwd(inout DifferentialPair<Input> in_feature_pair, Output.Differential d_output) {
         // Accumulate input derivatives. dodi
         // which is simply do*W^T
+
         GroupMemoryBarrierWithGroupSync();
         { moveInputsToSharedMem<32>(d_output.vals);
           moveWeightsToSharedMem<true>();
@@ -242,16 +272,24 @@ struct LinearHalf32X32 : LinearHalf<32> {
             weights_view.interlocked_add_grad(j, threadIdInWarp, weight_grad); }
         }
         // Accumulate bias derivatives.
-        { [ForceUnroll] for (int i = 0; i < 32; i++) {
+        /*{
+            [ForceUnroll] for (int i = 0; i < 32; i++) {
             const float total_d_bias = WaveActiveSum(d_output.vals[i]);
             if (WaveIsFirstLane()) bias_view.interlocked_add_grad(i, total_d_bias);
           }
-        }
+        }*/
     }
 
     [BackwardDerivative(eval_bwd)]
     static Output eval(LinearHalf32X32 layer, Input in_feature) {
-        return layer._eval(in_feature); }
+        return layer._eval(in_feature, false);
+    }
+
+    static Output eval_fast(LinearHalf32X32 layer, Input in_feature)
+    {
+        return layer._eval(in_feature, true);
+    }
+
     static void eval_bwd(LinearHalf32X32 layer,
         inout DifferentialPair<Input> in_feature_pair,
         Output.Differential d_output) {

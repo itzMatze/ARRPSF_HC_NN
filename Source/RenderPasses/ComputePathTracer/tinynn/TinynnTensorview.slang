@@ -25,6 +25,8 @@ struct TensorView {
 
     float16_t* data() { return &PrimalBuffer[offset_prim]; }
 
+    float16_t load_prim_special(int x, int y) { return PrimalBuffer[x * stride + y]; }
+
     [BackwardDerivative(load_prim_idx1_bwd)]
     float16_t load_prim(int x) { return PrimalBuffer[offset_prim + x]; }
     [BackwardDerivative(load_prim_idx2_bwd)]

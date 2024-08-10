@@ -2,7 +2,7 @@
 #define _SRENDERER_ADDON_HALF_TINYNN_MLP_HLSLI_HEADER_
 
 #include "TinynnActivations.hlsli"
-#include "TinynnHalfLinear.hlsli"
+#include "TinynnHalfLinear.slang"
 
 struct MLPHalf16X16<let N:int, Act:IActivationFn> {
     typedef HalfFeature<16> Input;
@@ -62,11 +62,12 @@ struct MLPHalf32X32<let N:int, Act:IActivationFn> {
         return out_feature; }
 
     Output _forward_fast(Input input) {
+
         HalfFeature<32> out_feature = input;
-        [ForceUnroll] for (int i = 0; i < N; i++) {
-            out_feature = LinearHalf32X32.eval(linears[i], out_feature);
-            [ForceUnroll] for (int j = 0; j < 32; j++)
-            out_feature.vals[j] = Act.eval(out_feature.vals[j]);
+        [ForceUnroll] for (int i = 0; i < 1; i++) {
+            out_feature = LinearHalf32X32.eval_fast(linears[i], out_feature);
+//            [ForceUnroll] for (int j = 0; j < 32; j++)
+//            out_feature.vals[j] = Act.eval(out_feature.vals[j]);
         }
         return out_feature; }
 
@@ -74,9 +75,11 @@ struct MLPHalf32X32<let N:int, Act:IActivationFn> {
     static Output forward(no_diff MLPHalf32X32<N, Act> mlp, Input input) {
         return mlp._forward(input); }
 
-    // [Differentiable]
-    // static Output forward_fast(no_diff MLPHalf32X32<N, Act> mlp, Input input) {
-    //     return mlp._forward_fast(input); }
+    static Output forward_fast(no_diff MLPHalf32X32<N, Act> mlp, Input input) {
+        
+            return mlp._forward_fast(input);
+
+    }
 }
 
 #endif // !_SRENDERER_ADDON_HALF_TINYNN_LINEAR_HLSLI_HEADER_
