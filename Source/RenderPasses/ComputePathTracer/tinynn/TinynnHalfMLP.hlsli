@@ -58,18 +58,16 @@ struct MLPHalf32X32<let N:int, Act:IActivationFn> {
         [ForceUnroll] for (int i = 0; i < N; i++) {
             out_feature = LinearHalf32X32.eval(linears[i], out_feature);
             [ForceUnroll] for (int j = 0; j < 32; j++)
-            out_feature.vals[j] = Act.eval(out_feature.vals[j]); }
-        return out_feature; }
+            out_feature.vals[j] = Act.eval(out_feature.vals[j]);
+            }
+        return out_feature;
+        }
 
     Output _forward_fast(Input input) {
-
         HalfFeature<32> out_feature = input;
-        [ForceUnroll] for (int i = 0; i < 1; i++) {
-            out_feature = LinearHalf32X32.eval_fast(linears[i], out_feature);
-//            [ForceUnroll] for (int j = 0; j < 32; j++)
-//            out_feature.vals[j] = Act.eval(out_feature.vals[j]);
-        }
-        return out_feature; }
+        out_feature = LinearHalf32X32.eval_fast(linears[0], out_feature);
+        return out_feature;
+    }
 
     [Differentiable]
     static Output forward(no_diff MLPHalf32X32<N, Act> mlp, Input input) {

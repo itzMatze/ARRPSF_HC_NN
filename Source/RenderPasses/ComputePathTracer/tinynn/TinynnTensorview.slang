@@ -1,6 +1,7 @@
 #ifndef _SRENDERER_ADDON_TINYNN_COMMON_HLSLI_HEADER_
 #define _SRENDERER_ADDON_TINYNN_COMMON_HLSLI_HEADER_
 
+
 RWStructuredBuffer<float16_t> PrimalBuffer;
 RWByteAddressBuffer GradientBuffer;
 RWByteAddressBuffer GradientCountBuffer;

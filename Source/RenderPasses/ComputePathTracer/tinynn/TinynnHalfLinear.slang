@@ -217,6 +217,7 @@ struct LinearHalf32X32 : LinearHalf<32> {
       
         if (!inference)
         {
+           // the OLD ONE
           moveWeightsToSharedMem<false>();
           GroupMemoryBarrierWithGroupSync();
             // Do the matmul.
@@ -224,6 +225,8 @@ struct LinearHalf32X32 : LinearHalf<32> {
         }
         else
         {
+
+            // NEW ONE
          __inline_wmma_128_32_32_our(weightsAddress + this.weights_view.offset_prim*2);
         }
       

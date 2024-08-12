@@ -270,10 +270,8 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         }
 
         rayData.cur_radiance = float3(0.0, 0.0, 0.0);
-        for (uint32_t i = 0; i < 1; i++)
-        {
-
-           /* HalfFeature<32> output = MLPModule0.forward_fast(gMlp0, feature);
+        
+            HalfFeature<32> output = MLPModule0.forward_fast(gMlp0, feature);
             MASK_BLOCK
             {
                 if (isnan(output.vals[0]))
@@ -281,9 +279,9 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
                 else if (isinf(output.vals[0]))
                     rayData.cur_radiance = float3(1.0, 0.0, 1.0);
                 else
-                    rayData.cur_radiance += float3(output.vals[0], output.vals[1], output.vals[2])/1.0f;
-            }*/
-        }
+                    rayData.cur_radiance += float3(output.vals[0], output.vals[1], output.vals[2]);
+            }
+        
         TERMINATE_PATH_0;
     }
 #endif
