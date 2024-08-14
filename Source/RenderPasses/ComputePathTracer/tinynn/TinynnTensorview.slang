@@ -63,6 +63,11 @@ struct TensorView {
 // Thus the input and output are also half precision.
 struct HalfFeature<let C : int> : IDifferentiable {
     float16_t vals[C];
+
+    [mutating] void init(float16_t v) {
+        for (int i = 0; i < 16; i++)
+            vals[i] = v;
+    }
 }
 
 #endif // !_SRENDERER_ADDON_TINYNN_COMMON_HLSLI_HEADER_

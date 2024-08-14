@@ -328,7 +328,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["CB"]["gFrameDim"] = frameDim;
         var["CB"]["gFrameCount"] = mFrameCount;
         var["CB"]["gCamPos"] = mCamPos;
-
+        var["CB"]["gWeightsAddress"] = mBuffers[NN_PRIMAL_BUFFER]->getGpuAddress();
         mpScene->bindShaderData(var["gScene"]);
         mpSampleGenerator->bindShaderData(var);
         if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);

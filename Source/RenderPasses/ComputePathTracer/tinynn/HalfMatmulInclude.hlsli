@@ -31,12 +31,20 @@ void __inline_wmma_128_32_32() {
     __intrinsic_asm "glsl_wmma_128_32_32()";
 }
 
-void __inline_wmma_128_32_32_our(uint64_t pointer)
+void __inline_wmma_128_32_32_fused(uint64_t weights_address, uint32_t num_layers)
 {
     __requirePrelude(R"(#extension GL_GOOGLE_include_directive : enable)");
     __requirePrelude(R"(#include "HalfMatmulInclude.glsl")");
-    __intrinsic_asm "glsl_wmma_128_32_32_our($0)";
+    __intrinsic_asm "glsl_wmma_128_32_32_fused($0, $1)";
 }
+
+void __inline_wmma_128_32_32_weightsvram(uint64_t weights_address)
+{
+    __requirePrelude(R"(#extension GL_GOOGLE_include_directive : enable)");
+    __requirePrelude(R"(#include "HalfMatmulInclude.glsl")");
+    __intrinsic_asm "glsl_wmma_128_32_32_weightsvram($0)";
+}
+
 
 void __inline_wmma_128_32_32_our2()
 {

@@ -1,5 +1,5 @@
 #if NN_TRAIN
-#include "tinynn/TinynnHalfMLP.hlsli"
+#include "tinynn/TinynnHalfMLP.slang"
 #include "tinynn/TinynnFeatureEncodings.hlsli"
 #endif
 #include "Scene/SceneDefines.slangh"
@@ -28,7 +28,10 @@ cbuffer CB
     uint gTrainIteration;
     uint2 gFrameDim;
     float3 gCamPos;
+    uint64_t gWeightsAddress;
 }
+
+#define GLSL_SHARED_MEMORY_SIZE 8192
 
 // inputs
 Texture2D<PackedHitInfo> gVBuffer;
@@ -509,7 +512,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     for (uint i = 0; i < kNNMaxTrainingBounces; i++) nnNeeHitInfoList[i] = NNHitInfo();
     const ThreadInfo thread_info = ThreadInfo(groupThreadId.xy, int2(32, 4));
     uint param_offset = 0; uint grad_offset = 0;
-    gMlp0 = MLPModule0(param_offset, grad_offset, thread_info);
+    gMlp0 = MLPModule0(param_offset, grad_offset, thread_info, gWeightsAddress);
     FeatureHashGrid featureHashGrid0 = FeatureHashGrid(param_offset, grad_offset);
 #endif
     float3 outputColor = float3(0.0, 1.0, 0.0);

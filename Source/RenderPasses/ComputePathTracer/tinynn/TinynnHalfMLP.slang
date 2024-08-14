@@ -4,14 +4,17 @@
 #include "TinynnActivations.hlsli"
 #include "TinynnHalfLinear.slang"
 
-struct MLPHalf16X16<let N:int, Act:IActivationFn> {
+struct MLPHalf16X16<let N : int, Act : IActivationFn> : ISharedMem<16>
+{
     typedef HalfFeature<16> Input;
     typedef HalfFeature<16> Output;
     LinearHalf16X16 linears[N];
 
     __init(inout uint offset_prim, inout uint offset_grad, ThreadInfo threadInfo) {
+        this.threadInfo = threadInfo;
         [ForceUnroll] for (int i = 0; i < N; i++)
-        linears[i] = LinearHalf16X16(offset_prim, offset_grad, threadInfo); }
+        linears[i] = LinearHalf16X16(offset_prim, offset_grad, threadInfo);
+    }
 
     [Differentiable]
     Output _forward(Input input) {
@@ -27,31 +30,29 @@ struct MLPHalf16X16<let N:int, Act:IActivationFn> {
         return mlp._forward(input); }
 }
 
-struct MLPHalf32X32<let N:int, Act:IActivationFn> {
+struct MLPHalf32X32<let N : int, Act : IActivationFn>: ISharedMem<32>
+{
     typedef HalfFeature<32> Input;
     typedef HalfFeature<32> Output;
     LinearHalf32X32 linears[N];
+    uint64_t weights_address;
 
-    //FastMLP fastMLP;
 
-    __init(inout uint offset_prim, inout uint offset_grad, ThreadInfo threadInfo) {
-
-        //fastMLP = FastMLP();
-
-        [ForceUnroll] for (int i = 0; i < N; i++){
-            linears[i] = LinearHalf32X32(offset_prim, offset_grad, threadInfo);
-            //fastMLP.add_layer(linears[i]);
-        }
-    }
-
-    [mutating] void setWeightsAddress(uint64_t address)
+    __init(inout uint offset_prim, inout uint offset_grad, ThreadInfo threadInfo, uint64_t weights_address=0)
     {
-        [ForceUnroll] for (int i = 0; i < N; i++)
-        {
-            linears[i].setWeightsAddress(address);
+        this.threadInfo = threadInfo;
+        
+        this.weights_address = weights_address + offset_prim*2;
+        if (weights_address == 0)
+            this.weights_address = 0;
+        [ForceUnroll] for (int i = 0; i < N; i++){
+            uint prevOffset = offset_prim;
+            linears[i] = LinearHalf32X32(offset_prim, offset_grad, threadInfo);
+            linears[i].setWeightsAddress(weights_address + prevOffset * 2);
         }
     }
 
+    
     [Differentiable]
     Output _forward(Input input) {
         HalfFeature<32> out_feature = input;
@@ -61,12 +62,32 @@ struct MLPHalf32X32<let N:int, Act:IActivationFn> {
             out_feature.vals[j] = Act.eval(out_feature.vals[j]);
             }
         return out_feature;
-        }
+    }
 
     Output _forward_fast(Input input) {
+        /*Output dummy;
+        return dummy;*/
+        if (this.weights_address == 0)
+        {
+            Output dummy;
+            dummy.init(-1);
+
+            return dummy;
+        }
+
         HalfFeature<32> out_feature = input;
-        out_feature = LinearHalf32X32.eval_fast(linears[0], out_feature);
-        return out_feature;
+
+        GroupMemoryBarrierWithGroupSync();
+        moveInputsToSharedMem<32>(input.vals);
+        __inline_wmma_128_32_32_fused(this.weights_address, N);
+
+        GroupMemoryBarrierWithGroupSync();
+        // Move the output to local memory.
+        Output output;
+        const SharedMemRef outPtr = calcOffset<32 * 32>();
+        moveOutputsToLocalArray<32>(outPtr, output.vals);
+
+        return output;
     }
 
     [Differentiable]
@@ -74,9 +95,7 @@ struct MLPHalf32X32<let N:int, Act:IActivationFn> {
         return mlp._forward(input); }
 
     static Output forward_fast(no_diff MLPHalf32X32<N, Act> mlp, Input input) {
-        
             return mlp._forward_fast(input);
-
     }
 }
 

@@ -5,60 +5,144 @@
 #include "TinynnTensorview.slang"
 
 
-
-// Base of all half linear layers.
-struct LinearHalf<let C : int> {
-    typedef HalfFeature<C> Input;
-    typedef HalfFeature<C> Output;
+struct ISharedMem<let C : int>
+{
     typedef uint SharedMemRef;
 
     no_diff ThreadInfo threadInfo;
-    no_diff TensorView weights_view;
-    no_diff TensorView bias_view;
 
-    uint calcOffset<let N : int>() { // thread_idx.x = from 0 to 32,  = threadInfo.thread_idx.y from 0 tp 4
-        return uint(((threadInfo.thread_idx.x / 32) + threadInfo.thread_idx.y *
-            (threadInfo.block_dim.x * 1.0 / 32)) * N); }
+    uint calcOffset<let N : int>()
+    { // thread_idx.x = from 0 to 32,  = threadInfo.thread_idx.y from 0 tp 4
+        return uint(((threadInfo.thread_idx.x / 32) + threadInfo.thread_idx.y * (threadInfo.block_dim.x * 1.0 / 32)) * N);
+    }
 
     // Load the output array from shared memory.
-    void loadArray<let N : int, let colMajor : bool>(SharedMemRef memptr, out float16_t input[N]) {
+    void loadArray<let N : int, let colMajor : bool>(SharedMemRef memptr, out float16_t input[N])
+    {
         const uint threadIdInWarp = threadInfo.thread_idx.x % 32;
         // Each thread in the warp will move N contiguous elements from their corresponding shared memory.
-        if (!colMajor) { [ForceUnroll] for (int i = 0; i < N; i++) // rowMajor matrix loading
-            input[i] = __inline_get_half_shared_buffer(memptr + threadIdInWarp * N + i);
-        } else { [ForceUnroll] for (int i = 0; i < N; i++) // colMajor matrix loading
-            input[i] = __inline_get_half_shared_buffer(memptr + i * 32 + threadIdInWarp); }}
+        if (!colMajor)
+        {
+            [ForceUnroll] for (int i = 0; i < N; i++) // rowMajor matrix loading
+                input[i] = __inline_get_half_shared_buffer(memptr + threadIdInWarp * N + i);
+        }
+        else
+        {
+            [ForceUnroll] for (int i = 0; i < N; i++) // colMajor matrix loading
+                input[i] = __inline_get_half_shared_buffer(memptr + i * 32 + threadIdInWarp);
+        }
+    }
 
     // Store the input array to the shared memory.
-    void storeArray<let N : int, let colMajor : bool>(SharedMemRef memptr, float16_t input[N]) {
+    void storeArray<let N : int, let colMajor : bool>(SharedMemRef memptr, float16_t input[N])
+    {
         const uint threadIdInWarp = threadInfo.thread_idx.x % 32;
         // Each thread in the warp will move N contiguous elements to their corresponding shared memory.
-        if (!colMajor) { [ForceUnroll] for (int i = 0; i < N; i++) // rowMajor matrix writing
-            __inline_set_half_shared_buffer(memptr + (threadIdInWarp * N + i), float16_t(input[i]));
-        } else { [ForceUnroll] for (int i = 0; i < N; i++) // colMajor matrix writing
-            __inline_set_half_shared_buffer(memptr + (i * 32 + threadIdInWarp), float16_t(input[i])); }}
+        if (!colMajor)
+        {
+            [ForceUnroll] for (int i = 0; i < N; i++) // rowMajor matrix writing
+                __inline_set_half_shared_buffer(memptr + (threadIdInWarp * N + i), float16_t(input[i]));
+        }
+        else
+        {
+            [ForceUnroll] for (int i = 0; i < N; i++) // colMajor matrix writing
+                __inline_set_half_shared_buffer(memptr + (i * 32 + threadIdInWarp), float16_t(input[i]));
+        }
+    }
 
     // Move the input array to the shared memory.
-    void moveInputsToSharedMem<let N : int>(float16_t input[N]) {
+    void moveInputsToSharedMem<let N : int>(float16_t input[N])
+    {
         // Pack in row-major format.
-        SharedMemRef inPtr = calcOffset<32 * C>(); ;
+        SharedMemRef inPtr = calcOffset<32 * C>();
+        ;
         storeArray<N, false>(inPtr, input);
     }
 
     // Load the output array from the shared memory.
-    void moveOutputsToLocalArray<let N : int>(SharedMemRef outPtr, out float16_t outputs[N]) {
+    void moveOutputsToLocalArray<let N : int>(SharedMemRef outPtr, out float16_t outputs[N])
+    {
         loadArray<N, false>(outPtr, outputs);
-        [ForceUnroll] for (int i = 0; i < N; i++)
-            outputs[i] = outputs[i];// + bias_view.load_prim(i);
+        [ForceUnroll] for (int i = 0; i < N; i++) outputs[i] = outputs[i]; 
     }
+
+};
+
+
+// Base of all half linear layers.
+struct LinearHalf<let C : int> 
+{
+    typedef HalfFeature<C> Input;
+    typedef HalfFeature<C> Output;
+ 
+    no_diff TensorView weights_view;
+    no_diff TensorView bias_view;
+
+    typedef uint SharedMemRef;
+
+    no_diff ThreadInfo threadInfo;
+
+    uint calcOffset<let N : int>()
+    { // thread_idx.x = from 0 to 32,  = threadInfo.thread_idx.y from 0 tp 4 
+        return uint(((threadInfo.thread_idx.x / 32) + threadInfo.thread_idx.y * (threadInfo.block_dim.x * 1.0 / 32)) * N);
+    }
+
+    // Load the output array from shared memory.
+    void loadArray<let N : int, let colMajor : bool>(SharedMemRef memptr, out float16_t input[N])
+    {
+        const uint threadIdInWarp = threadInfo.thread_idx.x % 32;
+        // Each thread in the warp will move N contiguous elements from their corresponding shared memory.
+        if (!colMajor)
+        {
+            [ForceUnroll] for (int i = 0; i < N; i++) // rowMajor matrix loading
+                input[i] = __inline_get_half_shared_buffer(memptr + threadIdInWarp * N + i);
+        }
+        else
+        {
+            [ForceUnroll] for (int i = 0; i < N; i++) // colMajor matrix loading
+                input[i] = __inline_get_half_shared_buffer(memptr + i * 32 + threadIdInWarp);
+        }
+    }
+
+    // Store the input array to the shared memory.
+    void storeArray<let N : int, let colMajor : bool>(SharedMemRef memptr, float16_t input[N])
+    {
+        const uint threadIdInWarp = threadInfo.thread_idx.x % 32;
+        // Each thread in the warp will move N contiguous elements to their corresponding shared memory.
+        if (!colMajor)
+        {
+            [ForceUnroll] for (int i = 0; i < N; i++) // rowMajor matrix writing
+                __inline_set_half_shared_buffer(memptr + (threadIdInWarp * N + i), float16_t(input[i]));
+        }
+        else
+        {
+            [ForceUnroll] for (int i = 0; i < N; i++) // colMajor matrix writing
+                __inline_set_half_shared_buffer(memptr + (i * 32 + threadIdInWarp), float16_t(input[i]));
+        }
+    }
+
+    // Move the input array to the shared memory.
+    void moveInputsToSharedMem<let N : int>(float16_t input[N])
+    {
+        // Pack in row-major format.
+        SharedMemRef inPtr = calcOffset<32 * C>();
+        ;
+        storeArray<N, false>(inPtr, input);
+    }
+
+    // Load the output array from the shared memory.
+    void moveOutputsToLocalArray<let N : int>(SharedMemRef outPtr, out float16_t outputs[N])
+    {
+        loadArray<N, false>(outPtr, outputs);
+        [ForceUnroll] for (int i = 0; i < N; i++) outputs[i] = outputs[i];
+    }
+
 }
 
 struct LinearHalf16X16 : LinearHalf<16> {
     __init(inout uint offset_prim, inout uint offset_grad, ThreadInfo threadInfo) {
         this.weights_view = TensorView(offset_prim, offset_grad, 16, 16);
         offset_prim += 256; offset_grad += 256;
-        this.bias_view = TensorView(offset_prim, offset_grad, 16, 16);
-        offset_prim += 16; offset_grad += 16;
         this.threadInfo = threadInfo;
     }
 
@@ -122,12 +206,7 @@ struct LinearHalf16X16 : LinearHalf<16> {
               float weight_grad = __inline_get_half_shared_buffer(wtPtr + i_base * 16 + j + j_base);
               weights_view.interlocked_add_grad(j + j_base, i_base, weight_grad); }
         }
-        // Accumulate bias derivatives.
-        { [ForceUnroll] for (int i = 0; i < 16; i++) {
-            float total_d_bias = WaveActiveSum(d_output.vals[i]);
-            if (WaveIsFirstLane()) bias_view.interlocked_add_grad(i, total_d_bias);
-          }
-        }
+        
     }
 
     [BackwardDerivative(eval_bwd)]
@@ -140,22 +219,15 @@ struct LinearHalf16X16 : LinearHalf<16> {
 }
 
 struct LinearHalf32X32 : LinearHalf<32> {
-     no_diff uint64_t weightsAddress;
 
     __init(inout uint offset_prim, inout uint offset_grad, ThreadInfo threadInfo) {
         this.weights_view = TensorView(offset_prim, offset_grad, 32, 32);
         offset_prim += 1024; offset_grad += 1024;
-        /*
-        this.bias_view = TensorView(offset_prim, offset_grad, 32, 32);
-        offset_prim += 32; offset_grad += 32;*/
 
         this.threadInfo = threadInfo;
     }
 
-    [mutating]  void setWeightsAddress(uint64_t w) {
-        this.weightsAddress = w;
-    }
-
+    
     // move the weights from global memory to shared memory.
     void moveWeightsToSharedMem<let colMajor : bool>() {
         SharedMemRef wtPtr = 4096 + calcOffset<32 * 32>();
@@ -207,28 +279,28 @@ struct LinearHalf32X32 : LinearHalf<32> {
         }
     }
 
+    uint64_t weights_address;
 
+    [mutating] void setWeightsAddress(uint64_t address) {
+        weights_address = address;
+    }
 
-    Output _eval(Input in_feature, bool inference) {
+    Output _eval(Input in_feature) {
         GroupMemoryBarrierWithGroupSync();
         // Move the input and weights to shared memory.
         moveInputsToSharedMem<32>(in_feature.vals);
 
       
-        if (!inference)
-        {
-           // the OLD ONE
-          moveWeightsToSharedMem<false>();
-          GroupMemoryBarrierWithGroupSync();
-            // Do the matmul.
-          __inline_wmma_128_32_32();
-        }
-        else
-        {
-
-            // NEW ONE
-         __inline_wmma_128_32_32_our(weightsAddress + this.weights_view.offset_prim*2);
-        }
+        
+        // Do the matmul.
+        #if 0
+        moveWeightsToSharedMem<false>();
+        GroupMemoryBarrierWithGroupSync();
+        __inline_wmma_128_32_32();
+        #else
+        GroupMemoryBarrierWithGroupSync();
+        __inline_wmma_128_32_32_weightsvram(weights_address);
+        #endif
       
 
         GroupMemoryBarrierWithGroupSync();
@@ -274,23 +346,12 @@ struct LinearHalf32X32 : LinearHalf<32> {
             float weight_grad = __inline_get_half_shared_buffer(wtPtr + threadIdInWarp * 32 + j);
             weights_view.interlocked_add_grad(j, threadIdInWarp, weight_grad); }
         }
-        // Accumulate bias derivatives.
-        /*{
-            [ForceUnroll] for (int i = 0; i < 32; i++) {
-            const float total_d_bias = WaveActiveSum(d_output.vals[i]);
-            if (WaveIsFirstLane()) bias_view.interlocked_add_grad(i, total_d_bias);
-          }
-        }*/
+        
     }
 
     [BackwardDerivative(eval_bwd)]
     static Output eval(LinearHalf32X32 layer, Input in_feature) {
-        return layer._eval(in_feature, false);
-    }
-
-    static Output eval_fast(LinearHalf32X32 layer, Input in_feature)
-    {
-        return layer._eval(in_feature, true);
+        return layer._eval(in_feature);
     }
 
     static void eval_bwd(LinearHalf32X32 layer,
