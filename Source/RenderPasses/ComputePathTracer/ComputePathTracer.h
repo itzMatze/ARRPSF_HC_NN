@@ -209,7 +209,7 @@ private:
             float param_0 = 0.9;
             float param_1 = 0.99;
         } optimizerParams;
-        std::vector<int> nnLayerCount = {1};
+        std::vector<int> nnLayerCount = {2};
         int mlpCount = nnLayerCount.size();
         Gui::DropdownList nnLayerWidthList{Gui::DropdownValue{16, "16"}, Gui::DropdownValue{32, "32"}};
         uint nnLayerWidth = 32;
@@ -219,13 +219,13 @@ private:
             USE_NRC = 1
         };
         Gui::DropdownList nnMethodList{Gui::DropdownValue{USE_NIRC, "nirc"}, Gui::DropdownValue{USE_NRC, "nrc"}};
-        uint nnMethod = USE_NRC;
+        uint nnMethod = USE_NIRC;
         enum EncMethods {
             USE_HASH_ENC = 0,
             USE_FREQ_ENC = 1
         };
         Gui::DropdownList encMethodList{Gui::DropdownValue{USE_HASH_ENC, "hash enc"}, Gui::DropdownValue{USE_FREQ_ENC, "freq enc"}};
-        uint encMethod = USE_FREQ_ENC;
+        uint encMethod = USE_HASH_ENC;
         uint nnParamCount = 0;
         uint gradientAuxElements = 0;
         int gradOffset = 0;
