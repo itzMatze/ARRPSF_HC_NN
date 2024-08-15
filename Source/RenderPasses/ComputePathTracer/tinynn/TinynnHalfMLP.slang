@@ -1,7 +1,7 @@
 #ifndef _SRENDERER_ADDON_HALF_TINYNN_MLP_HLSLI_HEADER_
 #define _SRENDERER_ADDON_HALF_TINYNN_MLP_HLSLI_HEADER_
 
-#include "TinynnActivations.hlsli"
+#include "TinynnActivations.slang"
 #include "TinynnHalfLinear.slang"
 
 struct MLPHalf16X16<let N : int, Act : IActivationFn> : ISharedMem<16>
@@ -74,18 +74,17 @@ struct MLPHalf32X32<let N : int, Act : IActivationFn>: ISharedMem<32>
 
             return dummy;
         }
-
         HalfFeature<32> out_feature = input;
 
         GroupMemoryBarrierWithGroupSync();
-        moveInputsToSharedMem<32>(input.vals);
+        moveInputsToSharedMem<32, true>(input.vals);
         __inline_wmma_128_32_32_fused(this.weights_address, N);
 
         GroupMemoryBarrierWithGroupSync();
         // Move the output to local memory.
         Output output;
         const SharedMemRef outPtr = calcOffset<32 * 32>();
-        moveOutputsToLocalArray<32>(outPtr, output.vals);
+        moveOutputsToLocalArray<32, true>(outPtr, output.vals);
 
         return output;
     }

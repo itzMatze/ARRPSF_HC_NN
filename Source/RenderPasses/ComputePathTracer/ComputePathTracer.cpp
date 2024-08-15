@@ -185,7 +185,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["NN_GRAD_OFFSET"] = std::to_string(mNNParams.gradOffset);
     defineList["NN_GRADIENT_AUX_ELEMENTS"] = std::to_string(mNNParams.gradientAuxElements);
     defineList["NN_OPTIMIZER_TYPE"] = std::to_string(mNNParams.optimizerParams.type);
-    defineList["NN_LEARNING_RATE"] = fmt::format("{:.12f}", mNNParams.optimizerParams.learn_r);
+    
     defineList["NN_PARAM_0"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_0);
     defineList["NN_PARAM_1"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_1);
     defineList["NN_LAYER_WIDTH"] = std::to_string(mNNParams.nnLayerWidth);
@@ -253,7 +253,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     }
     if (!mPasses[NN_GRADIENT_DESCENT_PASS] && mNNParams.active)
     {
-        defineList["NN_FILTER_ALPHA"] = fmt::format("{:.12f}", mNNParams.filterAlpha);
+        
         ProgramDesc desc;
         desc.addShaderLibrary(kGradientDescentShaderFile).csEntry("main");
         mPasses[NN_GRADIENT_DESCENT_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
@@ -410,6 +410,8 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
     {
         auto var = mPasses[NN_GRADIENT_DESCENT_PASS]->getRootVar();
         var["CB"]["t"] = mNNParams.optimizerParams.step_count;
+        var["CB"]["lr"] = mNNParams.optimizerParams.learn_r;
+        var["CB"]["filter_alpha"] = mNNParams.filterAlpha;
         var["PrimalBuffer"] = mBuffers[NN_PRIMAL_BUFFER];
         var["FilteredPrimalBuffer"] = mBuffers[NN_FILTERED_PRIMAL_BUFFER];
         var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];

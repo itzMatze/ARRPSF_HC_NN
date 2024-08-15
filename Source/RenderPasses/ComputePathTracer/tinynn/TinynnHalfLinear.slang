@@ -42,35 +42,44 @@ struct ISharedMem<let C : int>
         {
             [ForceUnroll] for (int i = 0; i < N; i++) // rowMajor matrix writing
                 __inline_set_half_shared_buffer(memptr + (threadIdInWarp * N + i), float16_t(input[i]));
+            // checking for the bank conflicts:
+            // 0th thread = [0, 1, 2, 3, 4, 5, 6, 7, 8,....]
+            // 1th thread = [32, 33, 34, 35, 36.....]
+            // BANK CONFLICTS
         }
         else
         {
             [ForceUnroll] for (int i = 0; i < N; i++) // colMajor matrix writing
                 __inline_set_half_shared_buffer(memptr + (i * 32 + threadIdInWarp), float16_t(input[i]));
+            // checking for the bank conflicts:
+            // 0th thread = [0, 32, 64, 96....]
+            // 1th thread = [1, 33, 65, 97]
+            // NO BANK CONFLICTS
         }
     }
 
+
     // Move the input array to the shared memory.
-    void moveInputsToSharedMem<let N : int>(float16_t input[N])
+    void moveInputsToSharedMem<let N : int, let colMajor : bool>(float16_t input[N])
     {
         // Pack in row-major format.
         SharedMemRef inPtr = calcOffset<32 * C>();
         ;
-        storeArray<N, false>(inPtr, input);
+        storeArray<N, colMajor>(inPtr, input);
     }
 
     // Load the output array from the shared memory.
-    void moveOutputsToLocalArray<let N : int>(SharedMemRef outPtr, out float16_t outputs[N])
+    void moveOutputsToLocalArray<let N : int, let colMajor : bool>(SharedMemRef outPtr, out float16_t outputs[N])
     {
-        loadArray<N, false>(outPtr, outputs);
-        [ForceUnroll] for (int i = 0; i < N; i++) outputs[i] = outputs[i]; 
+        loadArray<N, colMajor>(outPtr, outputs);
+        [ForceUnroll] for (int i = 0; i < N; i++) outputs[i] = outputs[i];
     }
 
 };
 
-
+// TODO: FIX CODE DUPLICATION ISharedMem. It is caused by some unexepected compilations errors if we inheret ISharedMem
 // Base of all half linear layers.
-struct LinearHalf<let C : int> 
+struct LinearHalf<let C : int> // : ISharedMem<C>
 {
     typedef HalfFeature<C> Input;
     typedef HalfFeature<C> Output;
@@ -90,6 +99,7 @@ struct LinearHalf<let C : int>
     // Load the output array from shared memory.
     void loadArray<let N : int, let colMajor : bool>(SharedMemRef memptr, out float16_t input[N])
     {
+
         const uint threadIdInWarp = threadInfo.thread_idx.x % 32;
         // Each thread in the warp will move N contiguous elements from their corresponding shared memory.
         if (!colMajor)
@@ -113,6 +123,9 @@ struct LinearHalf<let C : int>
         {
             [ForceUnroll] for (int i = 0; i < N; i++) // rowMajor matrix writing
                 __inline_set_half_shared_buffer(memptr + (threadIdInWarp * N + i), float16_t(input[i]));
+            // checking for the bank conflicts:
+            // 0th thread = [0, 1, 2, 3, 4, 5, 6, 7, 8,....]
+            // 1th thread = [32, 33, 34, 35, 36.....]
         }
         else
         {
@@ -315,7 +328,7 @@ struct LinearHalf32X32 : LinearHalf<32> {
     void _eval_bwd(inout DifferentialPair<Input> in_feature_pair, Output.Differential d_output) {
         // Accumulate input derivatives. dodi
         // which is simply do*W^T
-
+        // TO DO: ACCELERATE IT FUTHER!!!
         GroupMemoryBarrierWithGroupSync();
         { moveInputsToSharedMem<32>(d_output.vals);
           moveWeightsToSharedMem<true>();

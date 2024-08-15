@@ -1,6 +1,6 @@
 #if NN_TRAIN
 #include "tinynn/TinynnHalfMLP.slang"
-#include "tinynn/TinynnFeatureEncodings.hlsli"
+#include "tinynn/TinynnFeatureEncodings.slang"
 #endif
 #include "Scene/SceneDefines.slangh"
 #include "Utils/Math/MathConstants.slangh"

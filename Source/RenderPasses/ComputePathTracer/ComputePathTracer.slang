@@ -1,6 +1,6 @@
 #if NN_QUERY
 #include "tinynn/TinynnHalfMLP.slang"
-#include "tinynn/TinynnFeatureEncodings.hlsli"
+#include "tinynn/TinynnFeatureEncodings.slang"
 #endif
 #include "Scene/SceneDefines.slangh"
 #include "Utils/Math/MathConstants.slangh"
@@ -270,19 +270,16 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         {
             [ForceUnroll] for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
         }
-
-        rayData.cur_radiance = float3(0.0, 0.0, 0.0);
-        
-            HalfFeature<32> output = MLPModule0.forward_fast(gMlp0, feature);
-            MASK_BLOCK
-            {
-                if (isnan(output.vals[0]))
-                    rayData.cur_radiance = float3(1.0, 0.0, 0.0);
-                else if (isinf(output.vals[0]))
-                    rayData.cur_radiance = float3(1.0, 0.0, 1.0);
-                else
-                    rayData.cur_radiance += float3(output.vals[0], output.vals[1], output.vals[2]);
-            }
+        HalfFeature<32> output = MLPModule0.forward_fast(gMlp0, feature);
+        MASK_BLOCK
+        {
+           if (isnan(output.vals[0]))
+                rayData.cur_radiance = float3(1.0, 0.0, 0.0);
+           else if (isinf(output.vals[0]))
+                rayData.cur_radiance = float3(1.0, 0.0, 1.0);
+           else
+                rayData.cur_radiance = float3(output.vals[0], output.vals[1], output.vals[2]);
+        }
         
         TERMINATE_PATH_0;
     }
