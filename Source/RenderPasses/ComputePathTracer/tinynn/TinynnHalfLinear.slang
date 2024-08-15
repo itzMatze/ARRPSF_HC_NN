@@ -28,6 +28,7 @@ struct ISharedMem<let C : int>
         }
         else
         {
+
             [ForceUnroll] for (int i = 0; i < N; i++) // colMajor matrix loading
                 input[i] = __inline_get_half_shared_buffer(memptr + i * 32 + threadIdInWarp);
         }
@@ -74,6 +75,7 @@ struct ISharedMem<let C : int>
         loadArray<N, colMajor>(outPtr, outputs);
         [ForceUnroll] for (int i = 0; i < N; i++) outputs[i] = outputs[i];
     }
+
 
 };
 

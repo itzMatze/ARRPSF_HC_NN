@@ -604,8 +604,6 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         }
     }
 #endif
-
-
     if (kUseRR)
     {
         if (rayData.numBounces == 0)
