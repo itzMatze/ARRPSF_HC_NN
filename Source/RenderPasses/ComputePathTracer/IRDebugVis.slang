@@ -1,5 +1,5 @@
-#include "tinynn/TinynnHalfMLP.hlsli"
-#include "tinynn/TinynnFeatureEncodings.hlsli"
+#include "tinynn/TinynnHalfMLP.slang"
+#include "tinynn/TinynnFeatureEncodings.slang"
 #include "Scene/SceneDefines.slangh"
 #include "Utils/Math/MathConstants.slangh"
 
@@ -29,6 +29,7 @@ cbuffer CB
     bool gShowTransmission;
     bool gApplyBSDF;
     bool gAccumulate;
+    uint64_t gWeightsAddress;
 }
 
 // Inputs
@@ -417,10 +418,10 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
 #if SHOW_NIRC
     const ThreadInfo thread_info = ThreadInfo(groupThreadId.xy, int2(32, 4));
     uint param_offset = 0; uint grad_offset = 0;
-    gMlp0 = MLPModule0(param_offset, grad_offset, thread_info);
+    gMlp0 = MLPModule0(param_offset, grad_offset, thread_info, gWeightsAddress);
     FeatureHashGrid featureHashGrid0 = FeatureHashGrid(param_offset, grad_offset);
 #if MLP_COUNT > 1
-    gMlp1 = MLPModule1(param_offset, grad_offset, thread_info);
+    gMlp1 = MLPModule1(param_offset, grad_offset, thread_info, gWeightsAddress);
     FeatureHashGrid featureHashGrid1 = FeatureHashGrid(param_offset, grad_offset);
 #endif
 #endif
