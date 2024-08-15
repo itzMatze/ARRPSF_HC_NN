@@ -5,6 +5,10 @@
 #include "Scene/SceneDefines.slangh"
 #include "Utils/Math/MathConstants.slangh"
 
+#if NN_RESTIR
+#include "Reservoir.slang"
+#endif
+
 import Scene.Scene;
 import Scene.RaytracingInline;
 import Scene.Shading;
@@ -28,8 +32,13 @@ cbuffer CB
     uint2 gFrameDim;
     float3 gCamPos;
     int gHashEncDebugLevel;
+    uint gReSTIRSamples;
     uint64_t gWeightsAddress;
 }
+
+
+
+
 
 #define GLSL_SHARED_MEMORY_SIZE 5120
 
@@ -69,11 +78,13 @@ static MLPModule0 gMlp0;
 
 #if KEEP_THREADS
 static bool gDone = false;
-#define MASK_BLOCK if(!gDone)
+#define MASK_BLOCK if(!gDone) 
+#define MASK_BLOCK_DONE if (gDone)
 #define TERMINATE_PATH_0 gDone = true
 #define TERMINATE_PATH_1 gDone = true
 #else
-#define MASK_BLOCK
+#define MASK_BLOCK  
+#define MASK_BLOCK_DONE if (false)
 #define TERMINATE_PATH_0 return false
 #define TERMINATE_PATH_1 return rayData.cur_radiance
 #endif
@@ -430,12 +441,82 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
     }
 
     BSDFSample bsdfSample;
-    MASK_BLOCK
-    {
+
+
+    
+    #if NN_RESTIR && USE_NIRC    
         // generate scatter ray for the next path segment.
         // Sample material.
-        if (!mi.sample(sd, rayData.sg, bsdfSample, kUseImportanceSampling)) TERMINATE_PATH_0;
+
+        Reservoir reservoir;
+        bool bSampledAny = false;
+        bool bSkipResampling = gReSTIRSamples == 1 || rayData.numBounces != 0;
+
+        
+        for (uint32_t i = 0; i < gReSTIRSamples; i++)
+        {
+            BSDFSample bsdfSampleTmp;
+            HalfFeature<32> feature;
+
+            
+            bool bSampled = false;
+            MASK_BLOCK
+            {
+                bSampled = mi.sample(sd, rayData.sg, bsdfSampleTmp, kUseImportanceSampling);
+                bSampledAny |= bSampled;
+            }
+
+            if (i == 0)
+            {
+                bsdfSample = bsdfSampleTmp;
+            }
+
+            if (bSkipResampling)
+                break;
+            
+
+            if (!gDone && bSampled)
+            {                
+                feature = computeFeature(sd.posW, bsdfSampleTmp.wo, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
+            }
+            else
+            {
+                [ForceUnroll] for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
+            }
+
+            HalfFeature<32> output = MLPModule0.forward_fast(gMlp0, feature);
+
+            if (!gDone && bSampled)
+            {
+                float3 incident_radiance = float3(output.vals[0], output.vals[1], output.vals[2]) * bsdfSampleTmp.weight;
+                float g = dot(incident_radiance, float3(0.33, 0.33, 0.33));
+                const float eps = 0.001;
+                g += eps;
+
+                reservoir.update(bsdfSampleTmp, bsdfSampleTmp.pdf, g, sampleNext1D(rayData.sg));
+            }
+
+        }
+
+
+        if (!bSkipResampling)
+        {
+            MASK_BLOCK
+            {
+                bsdfSample = reservoir.getSample();
+                bsdfSample.weight = bsdfSample.weight * bsdfSample.pdf * reservoir.getShadingWeight();
+            }
+        }
+
+        if (!bSampledAny)
+            TERMINATE_PATH_0;
+    #else
+    MASK_BLOCK
+    {
+        if (!mi.sample(sd, rayData.sg, bsdfSample, kUseImportanceSampling))
+            TERMINATE_PATH_0;
     }
+    #endif
 
     MASK_BLOCK
     {

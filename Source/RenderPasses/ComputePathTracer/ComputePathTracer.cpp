@@ -173,6 +173,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["USE_ENV_BACKGROUND"] = mpScene->useEnvBackground() ? "1" : "0";
     defineList["USE_NRC"] = mNNParams.nnMethod == NNParams::USE_NRC ? "1" : "0";
     defineList["USE_NIRC"] = mNNParams.nnMethod == NNParams::USE_NIRC ? "1" : "0";
+    
     defineList["NN_USE_HASH_ENC"] = mNNParams.encMethod == NNParams::USE_HASH_ENC ? "1" : "0";
     defineList["NN_USE_FREQ_ENC"] = mNNParams.encMethod == NNParams::USE_FREQ_ENC ? "1" : "0";
     defineList["USE_MULTI_LEVEL_DIR"] = mNNParams.featureHashEncUseMultiLevelDir ? "1" : "0";
@@ -196,6 +197,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["FEATURE_HASH_GRID_PLACES_PER_ELEMENT"] = std::to_string(mNNParams.featureHashMapPlacesPerElement);
     defineList["FEATURE_HASH_GRID_PROBING_SIZE"] = std::to_string(mNNParams.featureHashMapProbingSize);
 
+
     if (!mPasses[TRAIN_NN_FILL_CACHE_PASS] && (mHCParams.active || mNNParams.active))
     {
         defineList["HC_UPDATE"] = mHCParams.active ? "1" : "0";
@@ -205,12 +207,14 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         // use default rr for training
         defineList["RR_OPTION_BITS"] = "0";
         defineList["HC_INJECT_RADIANCE_SPREAD"] = "0";
+        defineList["NN_RESTIR"] = "0";
         ProgramDesc desc;
         desc.addShaderModules(mpScene->getShaderModules());
         desc.addShaderLibrary(kPTTrainShaderFile).csEntry("main");
         desc.addTypeConformances(mpScene->getTypeConformances());
         mPasses[TRAIN_NN_FILL_CACHE_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
     }
+
     if (!mPasses[PATH_TRACING_PASS])
     {
         defineList["HC_UPDATE"] = "0";
@@ -223,6 +227,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
         defineList["INJECT_RADIANCE_RR"] = mRRParams.injectRadiance ? "1" : "0";
         defineList["HC_INJECT_RADIANCE_SPREAD"] = mHCParams.injectRadianceSpread ? "1" : "0";
         defineList["NN_INJECT_RADIANCE_SPREAD"] = mNNParams.injectRadianceSpread ? "1" : "0";
+        defineList["NN_RESTIR"] = mNNReSTIRParams.active ? "1" : "0";
         ProgramDesc desc;
         desc.addShaderModules(mpScene->getShaderModules());
         desc.addShaderLibrary(kPTShaderFile).csEntry("main");
@@ -268,6 +273,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     {
         defineList["SHOW_NIRC"] = mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_NIRC ? "1" : "0";
         defineList["SHOW_IRHC"] = mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_IRHC ? "1" : "0";
+        defineList["NN_RESTIR"] = "0";
         ProgramDesc desc;
         desc.addShaderModules(mpScene->getShaderModules());
         desc.addShaderLibrary(kIRDebugVisShaderFile).csEntry("main");
@@ -373,8 +379,9 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["CB"]["gFrameCount"] = mFrameCount;
         var["CB"]["gCamPos"] = mCamPos;
         var["CB"]["gHashEncDebugLevel"] = mNNParams.featureHashMapDebugShowLevel;
-        uint64_t address = mBuffers[NN_FILTERED_PRIMAL_BUFFER]->getGpuAddress();
-        var["CB"]["gWeightsAddress"] = address;
+
+        
+        var["CB"]["gReSTIRSamples"] = mNNReSTIRParams.numResamplings;
 
         mpScene->bindShaderData(var["gScene"]);
         mpSampleGenerator->bindShaderData(var);
@@ -389,7 +396,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         }
         if (mNNParams.active)
         {
-
+            var["CB"]["gWeightsAddress"] = mBuffers[NN_FILTERED_PRIMAL_BUFFER]->getGpuAddress();
             var["PrimalBuffer"] = mBuffers[NN_FILTERED_PRIMAL_BUFFER];
             var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
             var["GradientCountBuffer"] = mBuffers[NN_GRADIENT_COUNT_BUFFER];
@@ -439,8 +446,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["CB"]["gShowTransmission"] = mIRDebugPassParams.showTransmission;
         var["CB"]["gApplyBSDF"] = mIRDebugPassParams.applyBSDF;
         var["CB"]["gAccumulate"] = mIRDebugPassParams.accumulate;
-        uint64_t address = mBuffers[NN_FILTERED_PRIMAL_BUFFER]->getGpuAddress();
-        var["CB"]["gWeightsAddress"] = address;
+        var["CB"]["gWeightsAddress"] = mBuffers[NN_FILTERED_PRIMAL_BUFFER]->getGpuAddress();
         if (mHCParams.active)
         {
             var["gHCHashGridEntriesBuffer"] = mBuffers[HC_HASH_GRID_ENTRIES_BUFFER];
@@ -500,8 +506,14 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
         // activate hc if it is used somewhere
         mHCParams.active = mRRParams.requiresHC() | mHCParams.injectRadianceSpread | mHCParams.debugColor | mHCParams.debugLevels | mHCParams.debugVoxels | (mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_IRHC && mIRDebugPassParams.active);
         // activate nn if it is used somewhere
-        mNNParams.active = mRRParams.requiresNN() | mNNParams.debugOutput | (mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_NIRC && mIRDebugPassParams.active) | mNNParams.injectRadianceSpread;
+        mNNParams.active = mNNReSTIRParams.requiresNN() || mRRParams.requiresNN() | mNNParams.debugOutput | (mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_NIRC && mIRDebugPassParams.active) | mNNParams.injectRadianceSpread;
         mNNParams.keepThreads = mNNParams.active;
+
+        if (mNNReSTIRParams.requiresIncidentNN())
+        {
+            mNNParams.nnMethod == NNParams::USE_NIRC;
+        }
+
         // only allow activation of ir debug pass if either nn or hc is using incident radiance
         mIRDebugPassParams.active &= ((mNNParams.nnMethod == NNParams::USE_NIRC && mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_NIRC)
             | (mHCParams.hcMethod == HCParams::USE_IRHC && mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_IRHC));
@@ -672,6 +684,19 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         mNNParams.reset |= widget.button("Reset nn");
         ImGui::Separator();
     }
+
+    if (Gui::Group nn_restir_group = widget.group("Resampling"))
+    {
+        ImGui::Separator();
+        ImGui::Text("NIRC Resampling");
+        nn_restir_group.checkbox("enable", mNNReSTIRParams.active);
+        if (ImGui::InputInt("# resamplings", &mNNReSTIRParams.numResamplings, 1, 1))
+        {
+            mNNReSTIRParams.numResamplings = mNNReSTIRParams.numResamplings < 0 ? 0 : mNNReSTIRParams.numResamplings;
+        }
+        ImGui::Separator();
+    }
+
     if (Gui::Group debug_group = widget.group("Debug"))
     {
         ImGui::Separator();
@@ -686,6 +711,9 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         debug_group.checkbox("path length", mDebugPathLength);
         mpPixelDebug->renderUI(debug_group);
     }
+
+  
+
 
     // reload shader and set options change flag (explicitly apply changes)
     // In execute() we will pass the flag to other passes for reset of temporal data etc.

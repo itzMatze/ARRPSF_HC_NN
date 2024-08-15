@@ -28,6 +28,7 @@ cbuffer CB
     uint gTrainIteration;
     uint2 gFrameDim;
     float3 gCamPos;
+    uint gReSTIRSamples;
     uint64_t gWeightsAddress;
 }
 

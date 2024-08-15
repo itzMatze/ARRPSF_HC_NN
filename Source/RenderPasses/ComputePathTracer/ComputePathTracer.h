@@ -155,6 +155,16 @@ private:
         };
     } mRRParams;
 
+    struct NNReSTIRParams
+    {
+        bool active = true;
+        int numResamplings = 2;
+
+        bool requiresNN() { return active; }
+        bool requiresIncidentNN() { return active; }
+
+    } mNNReSTIRParams;
+
     // Use importance sampling for materials.
     bool mUseImportanceSampling = true;
     bool mDebugPathLength = false;
@@ -233,7 +243,7 @@ private:
         float filterAlpha = 0.99;
         int trainingBounces = 8;
         bool injectRadianceSpread = false;
-        bool debugOutput = true;
+        bool debugOutput = false;
         bool keepThreads = false;
         const uint featureHashMapSize = std::pow(2, 22);
         int featureHashMapDebugShowLevel = -1;
