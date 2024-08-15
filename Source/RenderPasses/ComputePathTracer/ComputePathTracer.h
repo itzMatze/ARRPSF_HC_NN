@@ -209,7 +209,7 @@ private:
             float param_0 = 0.9;
             float param_1 = 0.99;
         } optimizerParams;
-        std::vector<int> nnLayerCount = {4};
+        std::vector<int> nnLayerCount = {2};
         int mlpCount = nnLayerCount.size();
         Gui::DropdownList nnLayerWidthList{Gui::DropdownValue{16, "16"}, Gui::DropdownValue{32, "32"}};
         uint nnLayerWidth = 32;
@@ -233,7 +233,7 @@ private:
         float filterAlpha = 0.99;
         int trainingBounces = 8;
         bool injectRadianceSpread = false;
-        bool debugOutput = false;
+        bool debugOutput = true;
         bool keepThreads = false;
         const uint featureHashMapSize = std::pow(2, 22);
         int featureHashMapDebugShowLevel = -1;

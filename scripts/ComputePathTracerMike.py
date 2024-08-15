@@ -2,7 +2,7 @@ from falcor import *
 
 def render_graph_ComputePathTracer(options = {}):
     passes = {}
-    passes['ImageLoader'] = createPass("ImageLoader", {'filename': 'D:/GradientDiffusion/gradientdiffusion/Experiments/FinalEX2/BistroDirection/nirc_1_converged.png'})
+    passes['ImageLoader'] = createPass("ImageLoader")
     passes['VBufferRT'] = createPass("VBufferRT", {'samplePattern': 'Stratified', 'sampleCount': 16})
     passes['ComputePathTracer'] = createPass("ComputePathTracer", options)
     passes['AccumulatePass'] = createPass("AccumulatePass", {'enabled': False, 'precisionMode': 'Single'})

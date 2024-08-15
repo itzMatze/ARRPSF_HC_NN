@@ -15,9 +15,9 @@ target_sources(ComputePathTracer PRIVATE
     tinynn/Optimizer.hlsli
     tinynn/TinynnActivations.hlsli
     tinynn/TinynnFeatureEncodings.hlsli
-    tinynn/TinynnHalfLinear.hlsli
+    tinynn/TinynnHalfLinear.slang
     tinynn/TinynnHalfMLP.hlsli
-    tinynn/TinynnTensorview.hlsli
+    tinynn/TinynnTensorview.slang
     IRDebugVis.slang
 )
 

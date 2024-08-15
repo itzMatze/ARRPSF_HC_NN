@@ -185,7 +185,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["NN_GRAD_OFFSET"] = std::to_string(mNNParams.gradOffset);
     defineList["NN_GRADIENT_AUX_ELEMENTS"] = std::to_string(mNNParams.gradientAuxElements);
     defineList["NN_OPTIMIZER_TYPE"] = std::to_string(mNNParams.optimizerParams.type);
-    defineList["NN_LEARNING_RATE"] = fmt::format("{:.12f}", mNNParams.optimizerParams.learn_r);
+    
     defineList["NN_PARAM_0"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_0);
     defineList["NN_PARAM_1"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_1);
     defineList["NN_LAYER_WIDTH"] = std::to_string(mNNParams.nnLayerWidth);
@@ -253,7 +253,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     }
     if (!mPasses[NN_GRADIENT_DESCENT_PASS] && mNNParams.active)
     {
-        defineList["NN_FILTER_ALPHA"] = fmt::format("{:.12f}", mNNParams.filterAlpha);
+        
         ProgramDesc desc;
         desc.addShaderLibrary(kGradientDescentShaderFile).csEntry("main");
         mPasses[NN_GRADIENT_DESCENT_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
@@ -299,8 +299,10 @@ void ComputePathTracer::setupData(RenderContext* pRenderContext)
     }
     if (mNNParams.active)
     {
-        if (!mBuffers[NN_PRIMAL_BUFFER]) mBuffers[NN_PRIMAL_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
-        if (!mBuffers[NN_FILTERED_PRIMAL_BUFFER]) mBuffers[NN_FILTERED_PRIMAL_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
+        if (!mBuffers[NN_PRIMAL_BUFFER]) mBuffers[NN_PRIMAL_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float16_t));
+        if (!mBuffers[NN_FILTERED_PRIMAL_BUFFER])
+            mBuffers[NN_FILTERED_PRIMAL_BUFFER] = mpDevice->createBuffer(
+                mNNParams.nnParamCount * sizeof(float16_t), ResourceBindFlags::ShaderResource | ResourceBindFlags::UnorderedAccess | ResourceBindFlags::Shared);
         if (!mBuffers[NN_GRADIENT_BUFFER]) mBuffers[NN_GRADIENT_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
         if (!mBuffers[NN_GRADIENT_COUNT_BUFFER]) mBuffers[NN_GRADIENT_COUNT_BUFFER] = mpDevice->createBuffer(mNNParams.nnParamCount * sizeof(float));
         mNNParams.gradientAuxElements = mNNParams.nnParamCount * 4;
@@ -326,6 +328,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["CB"]["gFrameDim"] = frameDim;
         var["CB"]["gFrameCount"] = mFrameCount;
         var["CB"]["gCamPos"] = mCamPos;
+        var["CB"]["gWeightsAddress"] = mBuffers[NN_PRIMAL_BUFFER]->getGpuAddress();
         mpScene->bindShaderData(var["gScene"]);
         mpSampleGenerator->bindShaderData(var);
         if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
@@ -370,6 +373,9 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["CB"]["gFrameCount"] = mFrameCount;
         var["CB"]["gCamPos"] = mCamPos;
         var["CB"]["gHashEncDebugLevel"] = mNNParams.featureHashMapDebugShowLevel;
+        uint64_t address = mBuffers[NN_FILTERED_PRIMAL_BUFFER]->getGpuAddress();
+        var["CB"]["gWeightsAddress"] = address;
+
         mpScene->bindShaderData(var["gScene"]);
         mpSampleGenerator->bindShaderData(var);
         if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
@@ -383,6 +389,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         }
         if (mNNParams.active)
         {
+
             var["PrimalBuffer"] = mBuffers[NN_FILTERED_PRIMAL_BUFFER];
             var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
             var["GradientCountBuffer"] = mBuffers[NN_GRADIENT_COUNT_BUFFER];
@@ -403,6 +410,8 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
     {
         auto var = mPasses[NN_GRADIENT_DESCENT_PASS]->getRootVar();
         var["CB"]["t"] = mNNParams.optimizerParams.step_count;
+        var["CB"]["lr"] = mNNParams.optimizerParams.learn_r;
+        var["CB"]["filter_alpha"] = mNNParams.filterAlpha;
         var["PrimalBuffer"] = mBuffers[NN_PRIMAL_BUFFER];
         var["FilteredPrimalBuffer"] = mBuffers[NN_FILTERED_PRIMAL_BUFFER];
         var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
@@ -430,6 +439,8 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["CB"]["gShowTransmission"] = mIRDebugPassParams.showTransmission;
         var["CB"]["gApplyBSDF"] = mIRDebugPassParams.applyBSDF;
         var["CB"]["gAccumulate"] = mIRDebugPassParams.accumulate;
+        uint64_t address = mBuffers[NN_FILTERED_PRIMAL_BUFFER]->getGpuAddress();
+        var["CB"]["gWeightsAddress"] = address;
         if (mHCParams.active)
         {
             var["gHCHashGridEntriesBuffer"] = mBuffers[HC_HASH_GRID_ENTRIES_BUFFER];
@@ -484,7 +495,7 @@ void ComputePathTracer::execute(RenderContext* pRenderContext, const RenderData&
 
     if (mOptionsChanged)
     {
-        reset();
+        //reset();
         renderData.getDictionary()[Falcor::kRenderPassRefreshFlags] = Falcor::RenderPassRefreshFlags::RenderOptionsChanged;
         // activate hc if it is used somewhere
         mHCParams.active = mRRParams.requiresHC() | mHCParams.injectRadianceSpread | mHCParams.debugColor | mHCParams.debugLevels | mHCParams.debugVoxels | (mIRDebugPassParams.irMethod == IRDebugPassParam::SHOW_IRHC && mIRDebugPassParams.active);
@@ -681,6 +692,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
     if (widget.button("Reload shader"))
     {
         mOptionsChanged = true;
+        //mPasses[PATH_TRACING_PASS] = nullptr;
         reset();
     }
 }

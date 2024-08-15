@@ -4,14 +4,13 @@ cmake_policy(SET CMP0077 NEW)
 cmake_policy(SET CMP0091 NEW)
 cmake_policy(SET CMP0104 NEW)
 cmake_policy(SET CMP0057 NEW)
-
+set(CMAKE_COMPILE_WARNING_AS_ERROR OFF)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake)
 
 project(Falcor
     DESCRIPTION "Falcor Realtime Rendering Framework"
     LANGUAGES CXX C
 )
-
 # -----------------------------------------------------------------------------
 # Configuration options
 # -----------------------------------------------------------------------------
@@ -57,7 +56,7 @@ endif()
 message(STATUS "Platform: ${FALCOR_PLATFORM}")
 
 # Check if D3D12/Vulkan are available.
-set(FALCOR_HAS_D3D12 ${FALCOR_WINDOWS})
+set(FALCOR_HAS_D3D12 OFF)
 set(FALCOR_HAS_VULKAN ON)
 
 # -----------------------------------------------------------------------------
@@ -117,6 +116,7 @@ if(FALCOR_LINUX)
     set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
     set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} -D_GLIBCXX_USE_CXX11_ABI=0)
 endif()
+
 
 
 # -----------------------------------------------------------------------------
@@ -344,6 +344,8 @@ endfunction()
 
 set(source_dir ${CMAKE_SOURCE_DIR})
 set(output_dir ${FALCOR_OUTPUT_DIRECTORY})
+
+
 file(TO_NATIVE_PATH ${source_dir} source_dir)
 file(TO_NATIVE_PATH ${output_dir} output_dir)
 

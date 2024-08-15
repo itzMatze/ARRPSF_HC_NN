@@ -1,3 +1,6 @@
+set(CMAKE_COMPILE_WARNING_AS_ERROR OFF)
+
+
 add_library(Falcor SHARED)
 
 target_sources(Falcor PRIVATE
@@ -818,10 +821,9 @@ target_compile_options(Falcor
             /Zi                             # generate debug symbols
             /MP                             # enable multi-processor compilation
             # Configure warnings
-            /WX                             # warnings as errors
             /W4                             # increase warning level
             /wd4251                         # 'type' : class 'type1' needs to have dll-interface to be used by clients of class 'type2'
-            /wd4819                         # The file contains a character that cannot be represented in the current code page(936)             
+            /wd4819                         # The file contains a character that cannot be represented in the current code page(936)
             /wd4244                         # 'conversion' conversion from 'type1' to 'type2', possible loss of data
             /wd4267                         # 'var' : conversion from 'size_t' to 'type', possible loss of data
             /wd4100                         # unreferenced formal parameter
@@ -998,7 +1000,12 @@ target_include_directories(Falcor
 set_target_properties(Falcor PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${FALCOR_RUNTIME_OUTPUT_DIRECTORY}
     LIBRARY_OUTPUT_DIRECTORY ${FALCOR_LIBRARY_OUTPUT_DIRECTORY}
+    COMPILE_WARNING_AS_ERROR OFF
 )
+
+set_property(TARGET Falcor PROPERTY COMPILE_WARNING_AS_ERROR OFF)
+
+
 
 add_dependencies(Falcor packman_dependencies)
 
