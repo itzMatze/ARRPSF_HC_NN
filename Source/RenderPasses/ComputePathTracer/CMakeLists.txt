@@ -12,11 +12,11 @@ target_sources(ComputePathTracer PRIVATE
     tinynn/GradientClear.slang
     tinynn/GradientDescentPrimal.slang
     tinynn/HalfMatmulInclude.hlsli
-    tinynn/Optimizer.hlsli
-    tinynn/TinynnActivations.hlsli
-    tinynn/TinynnFeatureEncodings.hlsli
+    tinynn/Optimizer.slang
+    tinynn/TinynnActivations.slang
+    tinynn/TinynnFeatureEncodings.slang
     tinynn/TinynnHalfLinear.slang
-    tinynn/TinynnHalfMLP.hlsli
+    tinynn/TinynnHalfMLP.slang
     tinynn/TinynnTensorview.slang
     IRDebugVis.slang
 )
