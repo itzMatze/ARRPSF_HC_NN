@@ -76,10 +76,6 @@ struct MLPHalf32X32<let N : int, Act : IActivationFn>: ISharedMem<32>
         }
         HalfFeature<32> out_feature = input;
 
-
-
-
-
         moveInputsToSharedMem<32, true>(input.vals);
         __inline_wmma_128_32_32_fused(this.weights_address, N);
 
@@ -87,7 +83,6 @@ struct MLPHalf32X32<let N : int, Act : IActivationFn>: ISharedMem<32>
         Output output;
         const SharedMemRef outPtr = calcOffset<32 * 32>();
         moveOutputsToLocalArray<32, true>(outPtr, output.vals);
-
         return output;
     }
 

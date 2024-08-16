@@ -452,64 +452,59 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         bool bSampledAny = false;
         bool bSkipResampling = gReSTIRSamples == 1 || rayData.numBounces != 0;
 
-        
-        for (uint32_t i = 0; i < gReSTIRSamples; i++)
+        if (bSkipResampling)
         {
-            BSDFSample bsdfSampleTmp;
-            HalfFeature<32> feature;
-
-            
-            bool bSampled = false;
-            MASK_BLOCK
+            if (!mi.sample(sd, rayData.sg, bsdfSample, kUseImportanceSampling))
+                TERMINATE_PATH_0;
+        }
+        else
+        {
+            for (uint32_t i = 0; i < gReSTIRSamples; i++)
             {
+                BSDFSample bsdfSampleTmp;
+                HalfFeature<32> feature;
+
+                bool bSampled = false;
+                MASK_BLOCK
+                {
                 bSampled = mi.sample(sd, rayData.sg, bsdfSampleTmp, kUseImportanceSampling);
                 bSampledAny |= bSampled;
+                }
+
+                if (i == 0)
+                {
+                    bsdfSample = bsdfSampleTmp;
+                }
+
+                if (!gDone && bSampled)
+                {
+                    feature = computeFeature(sd.posW, bsdfSampleTmp.wo, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
+                }
+                else
+                {
+                    [ForceUnroll] for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
+                }
+
+                HalfFeature<32> output = MLPModule0.forward_fast(gMlp0, feature);
+
+                if (!gDone && bSampled)
+                {
+                    float3 incident_radiance = float3(output.vals[0], output.vals[1], output.vals[2]) * bsdfSampleTmp.weight;
+                    float g = dot(incident_radiance, float3(0.33, 0.33, 0.33));
+                    const float eps = 0.001;
+                    g += eps;
+
+                    reservoir.update(bsdfSampleTmp, bsdfSampleTmp.pdf, g, sampleNext1D(rayData.sg));
+                }
+                
             }
 
-            if (i == 0)
-            {
-                bsdfSample = bsdfSampleTmp;
-            }
-
-            if (bSkipResampling)
-                break;
-            
-
-            if (!gDone && bSampled)
-            {                
-                feature = computeFeature(sd.posW, bsdfSampleTmp.wo, sd.getOrientedFaceNormal(), rayData.featureHashGrid0);
-            }
-            else
-            {
-                [ForceUnroll] for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
-            }
-
-            HalfFeature<32> output = MLPModule0.forward_fast(gMlp0, feature);
-
-            if (!gDone && bSampled)
-            {
-                float3 incident_radiance = float3(output.vals[0], output.vals[1], output.vals[2]) * bsdfSampleTmp.weight;
-                float g = dot(incident_radiance, float3(0.33, 0.33, 0.33));
-                const float eps = 0.001;
-                g += eps;
-
-                reservoir.update(bsdfSampleTmp, bsdfSampleTmp.pdf, g, sampleNext1D(rayData.sg));
-            }
-
-        }
-
-
-        if (!bSkipResampling)
-        {
             MASK_BLOCK
             {
                 bsdfSample = reservoir.getSample();
                 bsdfSample.weight = bsdfSample.weight * bsdfSample.pdf * reservoir.getShadingWeight();
             }
         }
-
-        if (!bSampledAny)
-            TERMINATE_PATH_0;
     #else
     MASK_BLOCK
     {
@@ -604,6 +599,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         }
     }
 #endif
+
     if (kUseRR)
     {
         if (rayData.numBounces == 0)
@@ -812,6 +808,7 @@ float3 tracePath(const uint2 frameDim, ScatterRayData rayData)
     float3 outColor = float3(0.f);
     const HitInfo hit = HitInfo(gVBuffer[gPixel]);
 
+    uint actualNumBounces = rayData.numBounces;
     if (!hit.isValid() || hit.getType() != HitType::Triangle)
     {
         // Background pixel.
@@ -838,7 +835,11 @@ float3 tracePath(const uint2 frameDim, ScatterRayData rayData)
 #else
         if (!traceScatterRay(rayData)) break;
 #endif
-        MASK_BLOCK rayData.numBounces++;
+        //MASK_BLOCK rayData.numBounces++;
+        rayData.numBounces++;
+
+        if(!gDone || i == 1)
+            actualNumBounces = rayData.numBounces;
     }
     // Store contribution from scatter ray.
     rayData.radiance += rayData.thp * rayData.cur_radiance;
@@ -846,8 +847,8 @@ float3 tracePath(const uint2 frameDim, ScatterRayData rayData)
     outColor += rayData.radiance;
     if (kDebugPathLength)
     {
-        print("Path Length:", rayData.numBounces);
-        return colormapViridis(float(rayData.numBounces) / float(kUpperBounceCount));
+        print("Path Length:", actualNumBounces);
+        return colormapViridis(float(actualNumBounces) / float(kUpperBounceCount));
     }
     return outColor;
 }
