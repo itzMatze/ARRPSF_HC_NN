@@ -832,14 +832,21 @@ float3 tracePath(const uint2 frameDim, ScatterRayData rayData)
 #if KEEP_THREADS
         if (WaveActiveAllTrue(gDone)) break;
         traceScatterRay(rayData);
+
+        if (gDone)
+            break;
 #else
         if (!traceScatterRay(rayData)) break;
 #endif
         //MASK_BLOCK rayData.numBounces++;
         rayData.numBounces++;
 
+#if KEEP_THREADS
         if(!gDone || i == 1)
             actualNumBounces = rayData.numBounces;
+#else
+        actualNumBounces = rayData.numBounces;
+#endif
     }
     // Store contribution from scatter ray.
     rayData.radiance += rayData.thp * rayData.cur_radiance;
