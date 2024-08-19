@@ -76,11 +76,8 @@ struct MLPHalf32X32<let N : int, Act : IActivationFn>: ISharedMem<32>
         }
         HalfFeature<32> out_feature = input;
 
-        GroupMemoryBarrierWithGroupSync();
         moveInputsToSharedMem<32, true>(input.vals);
         __inline_wmma_128_32_32_fused(this.weights_address, N);
-
-        GroupMemoryBarrierWithGroupSync();
         // Move the output to local memory.
         Output output;
         const SharedMemRef outPtr = calcOffset<32 * 32>();

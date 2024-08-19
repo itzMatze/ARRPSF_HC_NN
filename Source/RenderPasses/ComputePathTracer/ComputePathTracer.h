@@ -219,7 +219,7 @@ private:
             USE_NRC = 1
         };
         Gui::DropdownList nnMethodList{Gui::DropdownValue{USE_NIRC, "nirc"}, Gui::DropdownValue{USE_NRC, "nrc"}};
-        uint nnMethod = USE_NIRC;
+        uint nnMethod = USE_NRC;
         enum EncMethods {
             USE_HASH_ENC = 0,
             USE_FREQ_ENC = 1
@@ -232,6 +232,7 @@ private:
         float2 weightInitBound = float2(0.001, 0.02);
         float filterAlpha = 0.99;
         int trainingBounces = 8;
+        int impactingTrainBounces = 6;
         bool injectRadianceSpread = false;
         bool debugOutput = true;
         bool keepThreads = false;
@@ -266,6 +267,16 @@ private:
         Gui::DropdownList irMethodList{Gui::DropdownValue{SHOW_NIRC, "nirc"}, Gui::DropdownValue{SHOW_IRHC, "irhc"}};
         uint irMethod = SHOW_NIRC;
     } mIRDebugPassParams;
+
+    struct UncertaintyParam
+    {
+        bool active = false;
+
+        bool requiresNN()
+        {
+            return active;
+        }
+    } mUncertaintyParam;
 
     uint mFrameCount = 0;
     bool mOptionsChanged = true;

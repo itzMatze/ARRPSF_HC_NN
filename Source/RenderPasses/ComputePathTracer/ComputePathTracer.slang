@@ -29,6 +29,7 @@ cbuffer CB
     float3 gCamPos;
     int gHashEncDebugLevel;
     uint64_t gWeightsAddress;
+    int gShowUncertainy;
 }
 
 #define GLSL_SHARED_MEMORY_SIZE 5120
@@ -271,16 +272,55 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
             [ForceUnroll] for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
         }
         HalfFeature<32> output = MLPModule0.forward_fast(gMlp0, feature);
-        MASK_BLOCK
+
+        if (gShowUncertainy == 0)
         {
-           if (isnan(output.vals[0]))
-                rayData.cur_radiance = float3(1.0, 0.0, 0.0);
-           else if (isinf(output.vals[0]))
-                rayData.cur_radiance = float3(1.0, 0.0, 1.0);
-           else
-                rayData.cur_radiance = float3(output.vals[0], output.vals[1], output.vals[2]);
+            MASK_BLOCK
+            {
+                if (isnan(output.vals[0]))
+                    rayData.cur_radiance = float3(1.0, 0.0, 0.0);
+                else if (isinf(output.vals[0]))
+                    rayData.cur_radiance = float3(1.0, 0.0, 1.0);
+                else
+                    rayData.cur_radiance = float3(output.vals[0], output.vals[1], output.vals[2]);
+            }
         }
-        
+        else
+        {
+            float3 predictedColor = float3(1.0, 1.0, 1.0);
+            MASK_BLOCK
+            predictedColor = float3(output.vals[0], output.vals[1], output.vals[2]);
+
+            HalfFeature<32> feature2;
+            if (!gDone)
+            {
+                feature2 = computeFeature(sd.posW, rayData.direction, sd.getOrientedFaceNormal(), rayData.featureHashGrid0, predictedColor);
+            }
+            else
+            {
+                [ForceUnroll] for (uint i = 0; i < 32; i++) feature2.vals[i] = 0.0h;
+            }
+
+            HalfFeature<32> output2 = MLPModule0.forward_fast(gMlp0, feature2);
+
+            MASK_BLOCK
+            {
+                if (isnan(output.vals[0]))
+                    rayData.cur_radiance = float3(1.0, 0.0, 0.0);
+                else if (isinf(output.vals[0]))
+                    rayData.cur_radiance = float3(1.0, 0.0, 1.0);
+                else
+                {
+                    float3 predictedColor2 = float3(output2.vals[0], output2.vals[1], output2.vals[2]);
+                    float3 difference = predictedColor2 - predictedColor;
+                    float av_uncertainty = dot(difference, difference);
+
+                    
+                    av_uncertainty = av_uncertainty / (0.001 + dot(predictedColor, predictedColor));
+                    rayData.cur_radiance = float3(av_uncertainty, av_uncertainty, av_uncertainty)*100;
+                }
+            }
+        }
         TERMINATE_PATH_0;
     }
 #endif
@@ -465,7 +505,54 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         }
         HalfFeature<32> output = MLPModule0.forward_fast(gMlp0, feature);
         float3 color = float3(output.vals[0], output.vals[1], output.vals[2]) * bsdfSample.weight;
-        MASK_BLOCK rayData.cur_radiance += color;
+
+        if (gShowUncertainy == 0)
+        {
+            MASK_BLOCK
+            {
+                if (isnan(output.vals[0]))
+                    rayData.cur_radiance = float3(1.0, 0.0, 0.0);
+                else if (isinf(output.vals[0]))
+                    rayData.cur_radiance = float3(1.0, 0.0, 1.0);
+                else
+                    rayData.cur_radiance += color;
+            }
+        }
+        else
+        {
+            float3 predictedColor = float3(1.0, 1.0, 1.0);
+            MASK_BLOCK
+            predictedColor = float3(output.vals[0], output.vals[1], output.vals[2]);
+
+            HalfFeature<32> feature2;
+            if (!gDone)
+            {
+                feature2 = computeFeature(sd.posW, rayData.direction, sd.getOrientedFaceNormal(), rayData.featureHashGrid0, predictedColor);
+            }
+            else
+            {
+                [ForceUnroll] for (uint i = 0; i < 32; i++) feature2.vals[i] = 0.0h;
+            }
+
+            HalfFeature<32> output2 = MLPModule0.forward_fast(gMlp0, feature2);
+
+            MASK_BLOCK
+            {
+                if (isnan(output.vals[0]))
+                    rayData.cur_radiance = float3(1.0, 0.0, 0.0);
+                else if (isinf(output.vals[0]))
+                    rayData.cur_radiance = float3(1.0, 0.0, 1.0);
+                else
+                {
+                    float3 predictedColor2 = float3(output2.vals[0], output2.vals[1], output2.vals[2]);
+                    float3 difference = predictedColor2 - predictedColor;
+                    float av_uncertainty = dot(difference, difference);
+
+                    av_uncertainty = av_uncertainty / (0.001 + dot(predictedColor, predictedColor));
+                    rayData.cur_radiance = float3(av_uncertainty, av_uncertainty, av_uncertainty);
+                }
+            }
+        }
         TERMINATE_PATH_0;
     }
 #elif NN_INJECT_RADIANCE_SPREAD

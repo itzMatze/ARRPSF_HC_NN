@@ -98,7 +98,9 @@ HalfFeature<32> computeFeature(
     no_diff float3 dir,
     no_diff float3 normal,
     no_diff FeatureHashGrid featureHashGrid,
-) {
+    no_diff float3 previous_prediction = float3(1.0, 1.0, 1.0)
+    ) {
+        dir = float3(1.0, 1.0, 1.0);
     HalfFeature<32> feature;
     uint offset = 0;
     [ForceUnroll]
@@ -169,10 +171,10 @@ HalfFeature<32> computeFeature(
 #endif
 #if 1
     // shDegree^2 values
-    float16_t shVals[16];
-    shEnc<4, 16>(dir, shVals);
+    float16_t shVals[4];
+    shEnc<2, 4>(dir, shVals);
     [ForceUnroll]
-    for (uint i = 0; i < 16; i++) feature.vals[offset++] = shVals[i];
+    for (uint i = 0; i < 4; i++) feature.vals[offset++] = shVals[i];
 #else
     feature.vals[offset++] = float16_t(dir.x);
     feature.vals[offset++] = float16_t(dir.y);
@@ -186,6 +188,11 @@ HalfFeature<32> computeFeature(
     }
 #endif
 #endif
+
+    feature.vals[29] = float16_t(previous_prediction.x);
+    feature.vals[30] = float16_t(previous_prediction.y);
+    feature.vals[31] = float16_t(previous_prediction.z);
+
     return feature;
 }
 #endif // !_SRENDERER_ADDON_HALF_TINYNN_FEATUREGRID_HLSLI_HEADER_

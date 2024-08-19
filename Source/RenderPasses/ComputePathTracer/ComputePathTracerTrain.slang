@@ -26,9 +26,11 @@ cbuffer CB
 {
     uint gFrameCount;
     uint gTrainIteration;
+    uint gImpactingTrainBounces;
     uint2 gFrameDim;
     float3 gCamPos;
     uint64_t gWeightsAddress;
+    int gShowUncertainy;
 }
 
 #define GLSL_SHARED_MEMORY_SIZE 8192
@@ -491,7 +493,7 @@ float3 tracePath(const uint2 pixel, const uint2 frameDim, ScatterRayData rayData
 
 [Differentiable]
 float L2Loss(float3 value, no_diff float3 target, no_diff float3 normValue) {
-    return dot((value - target), (value - target)) / (dot(normValue, normValue) + 0.01);
+    return dot((value - target), (value - target)) / (dot(normValue, normValue) + 0.001);
 }
 
 [numthreads(32, 4, 1)]
@@ -521,7 +523,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
 // NN
 #if NN_TRAIN
 #if 1
-    for (uint i = 0; i < kNNMaxTrainingBounces - 2; i++)
+    for (uint i = 0; i < gImpactingTrainBounces; i++)
     {
         HalfFeature<32> feature;
         if (length(nnHitInfoList[i].dir) < 0.1)
@@ -534,10 +536,13 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
             feature = computeFeature(nnHitInfoList[i].pos, nnHitInfoList[i].dir, nnHitInfoList[i].normal, featureHashGrid0);
         }
         HalfFeature<32> output = MLPModule0.forward(gMlp0, feature);
-        HalfFeature<32>.Differential output_grad;
         float3 target_color = nnHitInfoList[i].radiance;
         float3 color = float3(output.vals[0], output.vals[1], output.vals[2]);
         var color_pair = diffPair(color);
+
+
+
+        HalfFeature<32>.Differential output_grad;
         float loss = L2Loss(color, target_color, color);
         bwd_diff(L2Loss)(color_pair, target_color, color, 1);
         // set gradient to zero if current hitInfoList entry is invalid as it was never updated or if current thread is just helper thread
@@ -547,9 +552,38 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
         var input_feature_pair = diffPair(feature);
         bwd_diff(MLPModule0.forward)(gMlp0, input_feature_pair, output_grad);
-#if NN_USE_HASH_ENC
-        bwd_diff(computeFeature)(nnHitInfoList[i].pos, nnHitInfoList[i].dir, nnHitInfoList[i].normal, featureHashGrid0, input_feature_pair.d);
-#endif
+
+
+        bwd_diff(computeFeature)(
+            nnHitInfoList[i].pos, nnHitInfoList[i].dir, nnHitInfoList[i].normal, featureHashGrid0, float3(1.0, 1.0, 1.0), input_feature_pair.d
+        );
+
+        HalfFeature<32> feature2;
+        if (length(nnHitInfoList[i].dir) < 0.1)
+        {
+            [ForceUnroll] for (uint j = 0; j < 32; j++) feature2.vals[j] = 0.0h;
+        }
+        else
+        {
+            feature2 = computeFeature(nnHitInfoList[i].pos, nnHitInfoList[i].dir, nnHitInfoList[i].normal, featureHashGrid0, color);
+        }
+        HalfFeature<32> output2 = MLPModule0.forward(gMlp0, feature2);
+        float3 color2 = float3(output2.vals[0], output2.vals[1], output2.vals[2]);
+        var color_pair2 = diffPair(color2);
+        HalfFeature<32>.Differential output_grad2;
+
+        float loss2 = L2Loss(color2, target_color, color2);
+        bwd_diff(L2Loss)(color_pair2, target_color, color2, 1);
+        // set gradient to zero if current hitInfoList entry is invalid as it was never updated or if current thread is just helper thread
+        output_grad2.vals[0] = float16_t(color_pair2.d.x * gradient_scalar);
+        output_grad2.vals[1] = float16_t(color_pair2.d.y * gradient_scalar);
+        output_grad2.vals[2] = float16_t(color_pair2.d.z * gradient_scalar);
+        var input_feature_pair2 = diffPair(feature2);
+        bwd_diff(MLPModule0.forward)(gMlp0, input_feature_pair2, output_grad2);
+
+        bwd_diff(computeFeature)(
+            nnHitInfoList[i].pos, nnHitInfoList[i].dir, nnHitInfoList[i].normal, featureHashGrid0, color, input_feature_pair2.d
+        );
     }
 #endif
 #if USE_NIRC && 0

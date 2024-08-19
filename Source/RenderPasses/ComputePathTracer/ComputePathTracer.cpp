@@ -328,7 +328,8 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["CB"]["gFrameDim"] = frameDim;
         var["CB"]["gFrameCount"] = mFrameCount;
         var["CB"]["gCamPos"] = mCamPos;
-        var["CB"]["gWeightsAddress"] = mBuffers[NN_PRIMAL_BUFFER]->getGpuAddress();
+        var["CB"]["gImpactingTrainBounces"] = mNNParams.impactingTrainBounces;
+
         mpScene->bindShaderData(var["gScene"]);
         mpSampleGenerator->bindShaderData(var);
         if (mpEnvMapSampler) mpEnvMapSampler->bindShaderData(mpSamplerBlock->getRootVar()["envMapSampler"]);
@@ -340,8 +341,10 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
             var["gHCVoxelDataBuffer"] = mFrameCount % 2 == 0 ? mBuffers[HC_VOXEL_DATA_BUFFER_0] : mBuffers[HC_VOXEL_DATA_BUFFER_1];
             var["gHCVoxelDataBufferPrev"] = mFrameCount % 2 == 1 ? mBuffers[HC_VOXEL_DATA_BUFFER_0] : mBuffers[HC_VOXEL_DATA_BUFFER_1];
         }
+
         if (mNNParams.active)
         {
+            var["CB"]["gWeightsAddress"] = mBuffers[NN_PRIMAL_BUFFER]->getGpuAddress();
             var["PrimalBuffer"] = mBuffers[NN_PRIMAL_BUFFER];
             var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
             var["GradientCountBuffer"] = mBuffers[NN_GRADIENT_COUNT_BUFFER];
@@ -373,8 +376,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         var["CB"]["gFrameCount"] = mFrameCount;
         var["CB"]["gCamPos"] = mCamPos;
         var["CB"]["gHashEncDebugLevel"] = mNNParams.featureHashMapDebugShowLevel;
-        uint64_t address = mBuffers[NN_FILTERED_PRIMAL_BUFFER]->getGpuAddress();
-        var["CB"]["gWeightsAddress"] = address;
+        var["CB"]["gShowUncertainy"] = int(mUncertaintyParam.active);
 
         mpScene->bindShaderData(var["gScene"]);
         mpSampleGenerator->bindShaderData(var);
@@ -389,7 +391,7 @@ void ComputePathTracer::bindData(const RenderData& renderData, uint2 frameDim)
         }
         if (mNNParams.active)
         {
-
+            var["CB"]["gWeightsAddress"] = mBuffers[NN_FILTERED_PRIMAL_BUFFER]->getGpuAddress();
             var["PrimalBuffer"] = mBuffers[NN_FILTERED_PRIMAL_BUFFER];
             var["GradientBuffer"] = mBuffers[NN_GRADIENT_BUFFER];
             var["GradientCountBuffer"] = mBuffers[NN_GRADIENT_COUNT_BUFFER];
@@ -603,6 +605,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
             rr_group.dropdown("pixel measurement estimation", mRRParams.pixelMeasurementEstimateOptionList, mRRParams.pixelMeasurementEstimateOption);
             rr_group.tooltip("Estimate the total measurement of a pixel for adrrs.\nhc: use estimate from hc\nnn: use estimate from nn", true);
             ImGui::PopItemWidth();
+
         }
     }
     if (Gui::Group emissive_sampler_group = widget.group("EmissiveSampler"))
@@ -661,6 +664,11 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         ImGui::InputFloat("min", &mNNParams.weightInitBound.x, 0.0f, 0.0f, "%.6f");
         ImGui::InputFloat("max", &mNNParams.weightInitBound.y, 0.0f, 0.0f, "%.6f");
         ImGui::InputInt("training bounces", &mNNParams.trainingBounces);
+        if (ImGui::InputInt("impacting training bounces", &mNNParams.impactingTrainBounces))
+        {
+            mNNParams.impactingTrainBounces =
+                (mNNParams.impactingTrainBounces > mNNParams.trainingBounces) ? mNNParams.trainingBounces : mNNParams.impactingTrainBounces;
+        }
         ImGui::Separator();
         ImGui::Text("input encoding");
         nn_group.checkbox("hash enc use multi level dir", mNNParams.featureHashEncUseMultiLevelDir);
@@ -672,6 +680,14 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         mNNParams.reset |= widget.button("Reset nn");
         ImGui::Separator();
     }
+
+    if (Gui::Group uncertainty_group = widget.group("Uncertainty"))
+    {
+        ImGui::Separator();
+        uncertainty_group.checkbox("active", mUncertaintyParam.active);
+        ImGui::Separator();
+    }
+
     if (Gui::Group debug_group = widget.group("Debug"))
     {
         ImGui::Separator();
