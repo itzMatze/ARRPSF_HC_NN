@@ -98,6 +98,8 @@ struct LinearHalf<let C : int> // : ISharedMem<C>
         return uint(((threadInfo.thread_idx.x / 32) + threadInfo.thread_idx.y * (threadInfo.block_dim.x * 1.0 / 32)) * N);
     }
 
+
+
     // Load the output array from shared memory.
     void loadArray<let N : int, let colMajor : bool>(SharedMemRef memptr, out float16_t input[N])
     {
@@ -113,6 +115,19 @@ struct LinearHalf<let C : int> // : ISharedMem<C>
         {
             [ForceUnroll] for (int i = 0; i < N; i++) // colMajor matrix loading
                 input[i] = __inline_get_half_shared_buffer(memptr + i * 32 + threadIdInWarp);
+        }
+    }
+
+    void preload_weights<let N : int, let NWarps : int>(SharedMemRef memptr)
+    {
+        const uint num_elements_per_warp = N / NWarps;
+        const uint warp_offset = num_elements_per_warp * (threadInfo.thread_idx.y % NWarps);
+        const uint threadIdInWarp = threadInfo.thread_idx.x % 32;
+        [ForceUnroll] for (int i = 0; i < num_elements_per_warp; i++)
+        { // colMajor matrix writing
+
+            uint element_id = (i + warp_offset) * 32 + threadIdInWarp;
+            __inline_set_half_shared_buffer(memptr + element_id, weights_view.load_prim(element_id));
         }
     }
 
@@ -153,6 +168,8 @@ struct LinearHalf<let C : int> // : ISharedMem<C>
     }
 
 }
+
+
 
 struct LinearHalf16X16 : LinearHalf<16> {
     __init(inout uint offset_prim, inout uint offset_grad, ThreadInfo threadInfo) {

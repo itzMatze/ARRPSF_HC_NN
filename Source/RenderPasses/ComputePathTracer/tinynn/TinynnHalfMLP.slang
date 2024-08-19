@@ -36,11 +36,13 @@ struct MLPHalf32X32<let N : int, Act : IActivationFn>: ISharedMem<32>
     typedef HalfFeature<32> Output;
     LinearHalf32X32 linears[N];
     uint64_t weights_address;
+    bool     bWeightsPreloaded;
 
 
     __init(inout uint offset_prim, inout uint offset_grad, ThreadInfo threadInfo, uint64_t weights_address=0)
     {
         this.threadInfo = threadInfo;
+        bWeightsPreloaded = false;
         
         this.weights_address = weights_address + offset_prim*2;
         if (weights_address == 0)
@@ -64,7 +66,24 @@ struct MLPHalf32X32<let N : int, Act : IActivationFn>: ISharedMem<32>
         return out_feature;
     }
 
-    Output _forward_fast(Input input) {
+
+    [mutating] void preload_weights<let NWarps : int>()
+    {
+        [ForceUnroll] 
+        for (int p = 0; p < N; p++)
+        {   
+            uint inputs_offset = 32 * 32 * NWarps;
+            uint layer_offset = p * 32 * 32;
+            uint offset = inputs_offset+layer_offset;
+            linears[p].preload_weights<32, NWarps>(offset);       
+        }
+        GroupMemoryBarrierWithGroupSync();
+        bWeightsPreloaded = true;
+    }
+
+    
+    Output _forward_fast(Input input)
+    {
         /*Output dummy;
         return dummy;*/
         if (this.weights_address == 0)
@@ -77,7 +96,10 @@ struct MLPHalf32X32<let N : int, Act : IActivationFn>: ISharedMem<32>
         HalfFeature<32> out_feature = input;
 
         moveInputsToSharedMem<32, true>(input.vals);
-        __inline_wmma_128_32_32_fused(this.weights_address, N);
+        if (bWeightsPreloaded)
+            __inline_wmma_128_32_32_fused_preloadedweights(this.weights_address, N);
+        else
+            __inline_wmma_128_32_32_fused(this.weights_address, N);
 
         // Move the output to local memory.
         Output output;

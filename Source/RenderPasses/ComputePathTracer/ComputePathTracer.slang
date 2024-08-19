@@ -878,6 +878,12 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     const ThreadInfo thread_info = ThreadInfo(groupThreadId.xy, int2(32, 4));
     uint param_offset = 0; uint grad_offset = 0;
     gMlp0 = MLPModule0(param_offset, grad_offset, thread_info, gWeightsAddress);
+
+#if NN_RESTIR && 1
+    gMlp0.preload_weights<4>(); // MAKE SURE YOU HAVE ENOUGH LOCAL SHARED MEMORY!! it costs 1024 per each MLP layer
+#endif
+
+
     rayData.featureHashGrid0 = FeatureHashGrid(param_offset, grad_offset);
 #endif
     float3 outputColor = float3(0.0, 1.0, 0.0);
