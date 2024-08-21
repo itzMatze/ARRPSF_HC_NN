@@ -4,7 +4,7 @@
 import Utils.Debug.PixelDebug;
 
 #include "TinynnHalfLinear.slang"
-#include "HashEncCommon.slang"
+#include "HashEnc.slang"
 
 #if NN_TRAIN
 [Differentiable]

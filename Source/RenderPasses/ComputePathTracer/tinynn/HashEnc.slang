@@ -1,5 +1,10 @@
 import Utils.Debug.PixelDebug;
 #include "Utils/Math/MathConstants.slangh"
+#include "TinynnTensorview.slang"
+
+static const uint kFeatureHashGridSize = FEATURE_HASH_GRID_SIZE;
+static const uint kFeatureHashGridPlacesPerElement = FEATURE_HASH_GRID_PLACES_PER_ELEMENT;
+static const uint kFeatureHashGridCapacity = kFeatureHashGridSize / kFeatureHashGridPlacesPerElement;
 
 typedef uint64_t HashKey;
 static const uint sizeofHashKey = 8;
@@ -32,22 +37,8 @@ static const HashKey kHashGridInvalidHashKey = 0;
 RWByteAddressBuffer gFeatureHashGridEntriesBuffer;
 #endif
 
-void FeatureHashMapReset(const uint idx)
-{
-#if FEATURE_HASH_GRID_PROBING_SIZE > 0
-    gFeatureHashGridEntriesBuffer.Store(idx * sizeofHashKey, HashKey(0));
-#endif
-}
-
 struct FeatureHashGridData
 {
-    uint capacity;
-
-    __init(uint capacity)
-    {
-        this.capacity = capacity;
-    }
-
     float LogBase(float x, float base)
     {
         return log(x) / log(base);
@@ -144,12 +135,12 @@ struct FeatureHashGridData
     {
         const HashKey hashKey = ComputeSpatialHash(samplePosition, sampleDirection, sampleNormal, level, multiLevelDir);
         uint hash = Hash32(hashKey);
-        uint slot = (hash % capacity);
+        uint slot = (hash % kFeatureHashGridCapacity);
 #if FEATURE_HASH_GRID_PROBING_SIZE > 0
         HashKey prevHashKey = kHashGridInvalidHashKey;
         // search for slot that is empty or occupied with the same hash
         // if no such slot is found, produce collision on the first slot
-        for (uint bucketOffset = 0; (bucketOffset <= kFeatureHashGridProbingSize) && (slot + bucketOffset < capacity); ++bucketOffset)
+        for (uint bucketOffset = 0; (bucketOffset <= kFeatureHashGridProbingSize) && (slot + bucketOffset < kFeatureHashGridCapacity); ++bucketOffset)
         {
             gFeatureHashGridEntriesBuffer.InterlockedCompareExchangeU64((slot + bucketOffset) * sizeofHashKey, kHashGridInvalidHashKey, hashKey, prevHashKey);
             if (prevHashKey == kHashGridInvalidHashKey || prevHashKey == hashKey)
@@ -166,12 +157,12 @@ struct FeatureHashGridData
     {
         const HashKey hashKey = ComputeSpatialHash(samplePosition, sampleDirection, sampleNormal, level, multiLevelDir);
         uint hash = Hash32(hashKey);
-        uint slot = (hash % capacity);
+        uint slot = (hash % kFeatureHashGridCapacity);
 #if FEATURE_HASH_GRID_PROBING_SIZE > 0
         HashKey prevHashKey = kHashGridInvalidHashKey;
         // search for slot that is empty or occupied with the same hash
         // if no such slot is found, produce collision on the first slot
-        for (uint bucketOffset = 0; (bucketOffset <= kFeatureHashGridProbingSize) && (slot + bucketOffset < capacity); ++bucketOffset)
+        for (uint bucketOffset = 0; (bucketOffset <= kFeatureHashGridProbingSize) && (slot + bucketOffset < kFeatureHashGridCapacity); ++bucketOffset)
         {
             HashKey storedHashKey = gFeatureHashGridEntriesBuffer.Load<HashKey>((slot + bucketOffset) * sizeofHashKey);
             if (storedHashKey == hashKey)
@@ -202,3 +193,26 @@ struct FeatureHashGridData
     }
 }
 
+struct FeatureHashGrid
+{
+    FeatureHashGridData hashmap;
+    TensorView dataView;
+
+    __init(inout uint param_offset, inout uint grad_offset)
+    {
+        hashmap = FeatureHashGridData();
+        dataView = TensorView(param_offset, grad_offset, 32, 32);
+        param_offset += kFeatureHashGridSize;
+        grad_offset += kFeatureHashGridSize;
+    }
+
+    uint InsertEntry(float3 samplePosition, float3 sampleDirection, float3 sampleNormal, uint level, bool multiLevelDir)
+    {
+        return hashmap.InsertEntry(samplePosition, sampleDirection, sampleNormal, level, multiLevelDir) * kFeatureHashGridPlacesPerElement;
+    }
+
+    uint FindEntry(float3 samplePosition, float3 sampleDirection, float3 sampleNormal, uint level, bool multiLevelDir)
+    {
+        return hashmap.FindEntry(samplePosition, sampleDirection, sampleNormal, level, multiLevelDir) * kFeatureHashGridPlacesPerElement;
+    }
+}
