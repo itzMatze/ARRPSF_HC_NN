@@ -4,7 +4,12 @@
 import Utils.Debug.PixelDebug;
 
 #include "TinynnHalfLinear.slang"
+#if NN_USE_HASH_ENC_INTERPOLATION
+#include "HashEncInterpolate.slang"
+#endif
+#if NN_USE_HASH_ENC
 #include "HashEnc.slang"
+#endif
 
 #if NN_TRAIN
 [Differentiable]
@@ -103,7 +108,70 @@ HalfFeature<32> computeFeature(
     uint offset = 0;
     [ForceUnroll]
     for (uint i = 0; i < 32; i++) feature.vals[i] = 1.0h;
-#if NN_USE_HASH_ENC
+
+#if NN_USE_HASH_ENC || NN_USE_HASH_ENC_INTERPOLATION
+    feature.vals[offset++] = float16_t(pos.x);
+    feature.vals[offset++] = float16_t(pos.y);
+    feature.vals[offset++] = float16_t(pos.z);
+    [ForceUnroll]
+    for (uint i = 0; i < 1; i++)
+    {
+        feature.vals[offset++] = sin(float16_t(pos.x) * float16_t(3.1415926f * pow(2.0, (i))));
+        feature.vals[offset++] = sin(float16_t(pos.y) * float16_t(3.1415926f * pow(2.0, (i))));
+        feature.vals[offset++] = sin(float16_t(pos.z) * float16_t(3.1415926f * pow(2.0, (i))));
+    }
+    // shDegree^2 values
+    float16_t shVals[9];
+    shEnc<3, 9>(dir, shVals);
+    [ForceUnroll]
+    for (uint i = 0; i < 9; i++) feature.vals[offset++] = shVals[i];
+#endif
+
+#if NN_USE_HASH_ENC_INTERPOLATION
+    [ForceUnroll]
+    for (uint i = 0; i < 8; i++)
+    {
+        float value0 = 0.0;
+        float value1 = 0.0;
+#if USE_MULTI_LEVEL_DIR && USE_NIRC
+        uint[8] indices0;
+        float[8] weights0;
+        uint[8] indices1;
+        float[8] weights1;
+#if NN_TRAIN
+        no_diff featureHashGrid.InsertEntry(pos, dir, normal, i, true, indices0, weights0);
+        no_diff featureHashGrid.InsertEntry(pos, dir, normal, i, false, indices1, weights1);
+#else
+        featureHashGrid.FindEntry(pos, dir, normal, i, true, indices0, weights0);
+        featureHashGrid.FindEntry(pos, dir, normal, i, false, indices1, weights1);
+#endif
+        for (uint j = 0; j < 8; j++)
+        {
+            value0 += featureHashGrid.dataView.load_prim(indices0[j]) * weights0[j];
+        }
+        for (uint j = 0; j < 8; j++)
+        {
+            value1 += featureHashGrid.dataView.load_prim(indices1[j]) * weights1[j];
+        }
+#else
+        uint[8] indices;
+        float[8] weights;
+#if NN_TRAIN
+        no_diff featureHashGrid.InsertEntry(pos, dir, normal, i, false, indices, weights);
+#else
+        featureHashGrid.FindEntry(pos, dir, normal, i, false, indices, weights);
+#endif
+        for (uint j = 0; j < 8; j++)
+        {
+            value0 += float16_t(featureHashGrid.dataView.load_prim(indices[j] * 2) * weights[j]);
+            value1 += float16_t(featureHashGrid.dataView.load_prim(indices[j] * 2 + 1) * weights[j]);
+        }
+#endif
+        feature.vals[offset++] = float16_t(value0);
+        feature.vals[offset++] = float16_t(value1);
+    }
+
+#elif NN_USE_HASH_ENC
     [ForceUnroll]
     for (uint i = 0; i < 8; i++)
     {
@@ -127,23 +195,6 @@ HalfFeature<32> computeFeature(
         feature.vals[offset++] = float16_t(featureHashGrid.dataView.load_prim(idx + 1));
 #endif
     }
-#if 1
-    feature.vals[offset++] = float16_t(pos.x);
-    feature.vals[offset++] = float16_t(pos.y);
-    feature.vals[offset++] = float16_t(pos.z);
-    [ForceUnroll]
-    for (uint i = 0; i < 1; i++)
-    {
-        feature.vals[offset++] = sin(float16_t(pos.x) * float16_t(3.1415926f * pow(2.0, (i))));
-        feature.vals[offset++] = sin(float16_t(pos.y) * float16_t(3.1415926f * pow(2.0, (i))));
-        feature.vals[offset++] = sin(float16_t(pos.z) * float16_t(3.1415926f * pow(2.0, (i))));
-    }
-    // shDegree^2 values
-    float16_t shVals[9];
-    shEnc<3, 9>(dir, shVals);
-    [ForceUnroll]
-    for (uint i = 0; i < 9; i++) feature.vals[offset++] = shVals[i];
-#endif
 
 #elif NN_USE_FREQ_ENC
     feature.vals[offset++] = float16_t(pos.x);

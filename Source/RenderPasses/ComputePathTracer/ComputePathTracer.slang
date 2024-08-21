@@ -251,9 +251,6 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 #if NN_QUERY
         if (gHashEncDebugLevel >= 0)
         {
-            rayData.cur_radiance = rayData.featureHashGrid0.hashmap.DebugColoredHash(
-                sd.posW, -gViewW[gPixel].xyz, sd.getOrientedFaceNormal(), gHashEncDebugLevel
-            );
             TERMINATE_PATH_0;
         }
 #endif
@@ -280,7 +277,7 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
            else
                 rayData.cur_radiance = float3(output.vals[0], output.vals[1], output.vals[2]);
         }
-        
+
         TERMINATE_PATH_0;
     }
 #endif
@@ -297,14 +294,14 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
         {
             [ForceUnroll] for (uint i = 0; i < 32; i++) feature.vals[i] = 0.0h;
         }
-        
+
             HalfFeature<32> output = MLPModule0.forward_fast(gMlp0, feature);
             if (!gDone && validHit)
             {
                 rayData.cur_radiance += float3(output.vals[0], output.vals[1], output.vals[2]);
                 TERMINATE_PATH_0;
             }
-        
+
     }
 #endif
     MASK_BLOCK

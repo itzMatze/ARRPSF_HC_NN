@@ -222,10 +222,11 @@ private:
         uint nnMethod = USE_NIRC;
         enum EncMethods {
             USE_HASH_ENC = 0,
-            USE_FREQ_ENC = 1
+            USE_HASH_ENC_INTERPOLATION = 1,
+            USE_FREQ_ENC = 2
         };
-        Gui::DropdownList encMethodList{Gui::DropdownValue{USE_HASH_ENC, "hash enc"}, Gui::DropdownValue{USE_FREQ_ENC, "freq enc"}};
-        uint encMethod = USE_HASH_ENC;
+        Gui::DropdownList encMethodList{Gui::DropdownValue{USE_HASH_ENC, "hash enc"}, Gui::DropdownValue{USE_HASH_ENC_INTERPOLATION, "hash enc with interpolation"}, Gui::DropdownValue{USE_FREQ_ENC, "freq enc"}};
+        uint encMethod = USE_HASH_ENC_INTERPOLATION;
         uint nnParamCount = 0;
         uint gradientAuxElements = 0;
         int gradOffset = 0;

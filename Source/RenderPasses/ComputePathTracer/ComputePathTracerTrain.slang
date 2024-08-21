@@ -547,7 +547,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
         var input_feature_pair = diffPair(feature);
         bwd_diff(MLPModule0.forward)(gMlp0, input_feature_pair, output_grad);
-#if NN_USE_HASH_ENC
+#if NN_USE_HASH_ENC || NN_USE_HASH_ENC_INTERPOLATION
         bwd_diff(computeFeature)(nnHitInfoList[i].pos, nnHitInfoList[i].dir, nnHitInfoList[i].normal, featureHashGrid0, input_feature_pair.d);
 #endif
     }
@@ -571,7 +571,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
         output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
         var input_feature_pair = diffPair(feature);
         bwd_diff(MLPModule0.forward)(gMlp0, input_feature_pair, output_grad);
-#if NN_USE_HASH_ENC
+#if NN_USE_HASH_ENC || NN_USE_HASH_ENC_INTERPOLATION
         bwd_diff(computeFeature)(nnNeeHitInfoList[i].pos, nnNeeHitInfoList[i].dir, nnNeeHitInfoList[i].normal, featureHashGrid0, input_feature_pair.d);
 #endif
     }
@@ -593,7 +593,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     output_grad.vals[2] = float16_t(color_pair.d.z * gradient_scalar);
     var input_feature_pair = diffPair(feature);
     bwd_diff(MLPModule0.forward)(gMlp0, input_feature_pair, output_grad);
-#if NN_USE_HASH_ENC
+#if NN_USE_HASH_ENC || NN_USE_HASH_ENC_INTERPOLATION
     bwd_diff(computeFeature)(gCamPos.xyz, -gViewW[pixel].xyz, float3(1.0), featureHashGrid0, input_feature_pair.d);
 #endif
 #endif
