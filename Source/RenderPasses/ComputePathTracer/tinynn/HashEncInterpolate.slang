@@ -100,12 +100,10 @@ struct FeatureHashGridData
         int3 gridPosition;
         float3 weightsAxis;
 #if USE_NRC
-        CalculateGridPositionLog(samplePosition, level, gridPosition, weightsAxis);
-        uint3 quantizedDir = quantizeCartesianToBitRange(sampleDirection, kHashGridDirectionBitMask);
-        const HashKey positionBitNum = kHashGridPositionBitNum;
-        const HashKey positionBitMask = kHashGridPositionBitMask;
         const HashKey directionBitNum = kHashGridDirectionBitNum;
         const HashKey directionBitMask = kHashGridDirectionBitMask;
+        const HashKey positionBitNum = kHashGridPositionBitNum;
+        const HashKey positionBitMask = kHashGridPositionBitMask;
 #elif USE_NIRC
         // range of used bits for directional encoding: [1, 8]
         const HashKey directionBitNum = multiLevelDir ? level + 1 : kHashGridDirectionBitNum;
@@ -113,9 +111,9 @@ struct FeatureHashGridData
         const HashKey positionBitNum = 18 - directionBitNum;
         const HashKey positionBitMask = ((1u << positionBitNum) - 1);
         if (multiLevelDir) level = 5;
+#endif
         CalculateGridPositionLog(samplePosition, level, gridPosition, weightsAxis);
         uint2 quantizedDir = quantizePolarToBitRange(convertDirToPolar(sampleDirection), directionBitMask);
-#endif
         uint3[8] gridPositionCorners;
         gridPositionCorners[0] = asuint(gridPosition);
         weights[0] = (1.0 - weightsAxis.x) * (1.0 - weightsAxis.y) * (1.0 - weightsAxis.z);
