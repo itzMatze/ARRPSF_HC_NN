@@ -148,9 +148,6 @@ HalfFeature<32> computeFeature(
         for (uint j = 0; j < 8; j++)
         {
             value0 += featureHashGrid.dataView.load_prim(indices0[j]) * weights0[j];
-        }
-        for (uint j = 0; j < 8; j++)
-        {
             value1 += featureHashGrid.dataView.load_prim(indices1[j]) * weights1[j];
         }
 #else
