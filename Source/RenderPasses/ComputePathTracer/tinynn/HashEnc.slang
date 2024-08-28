@@ -4,7 +4,13 @@ import Utils.Debug.PixelDebug;
 
 static const uint kFeatureHashGridSize = FEATURE_HASH_GRID_SIZE;
 static const uint kFeatureHashGridPlacesPerElement = FEATURE_HASH_GRID_PLACES_PER_ELEMENT;
+#if FEATURE_HASH_ENC_SEPARATE_LEVEL_GRIDS
+static const uint kFeatureHashGridCapacity = (kFeatureHashGridSize / kFeatureHashGridPlacesPerElement) / 8;
+static const uint kFeatureHashGridLevelOffset = kFeatureHashGridCapacity;
+#else
 static const uint kFeatureHashGridCapacity = kFeatureHashGridSize / kFeatureHashGridPlacesPerElement;
+static const uint kFeatureHashGridLevelOffset = 0;
+#endif
 
 typedef uint64_t HashKey;
 static const uint sizeofHashKey = 8;
@@ -114,7 +120,9 @@ struct FeatureHashGridData
         // | normal bits | level | pos.z | pos.y | pos.x | dir.z | dir.y | dir.x |
         HashKey hashKey = (sampleNormal.x >= 0 ? 1 : 0) + (sampleNormal.y >= 0 ? 2 : 0) + (sampleNormal.z >= 0 ? 4 : 0);
         hashKey <<= kHashGridLevelBitNum;
+#if !FEATURE_HASH_ENC_SEPARATE_LEVEL_GRIDS
         hashKey |= ((HashKey)level & kHashGridLevelBitMask);
+#endif
         hashKey <<= positionBitNum;
         hashKey |= ((HashKey)gridPosition.z & positionBitMask);
         hashKey <<= positionBitNum;
@@ -139,7 +147,7 @@ struct FeatureHashGridData
         // if no such slot is found, produce collision on the first slot
         for (uint bucketOffset = 0; (bucketOffset <= kFeatureHashGridProbingSize) && (slot + bucketOffset < kFeatureHashGridCapacity); ++bucketOffset)
         {
-            gFeatureHashGridEntriesBuffer.InterlockedCompareExchangeU64((slot + bucketOffset) * sizeofHashKey, kHashGridInvalidHashKey, hashKey, prevHashKey);
+            gFeatureHashGridEntriesBuffer.InterlockedCompareExchangeU64((slot + bucketOffset + kFeatureHashGridLevelOffset * level) * sizeofHashKey, kHashGridInvalidHashKey, hashKey, prevHashKey);
             if (prevHashKey == kHashGridInvalidHashKey || prevHashKey == hashKey)
             {
                 slot += bucketOffset;
@@ -147,7 +155,7 @@ struct FeatureHashGridData
             }
         }
 #endif
-        return slot;
+        return slot + kFeatureHashGridLevelOffset * level;
     }
 
     uint FindEntry(float3 samplePosition, float3 sampleDirection, float3 sampleNormal, uint level, bool multiLevelDir)
@@ -161,7 +169,7 @@ struct FeatureHashGridData
         // if no such slot is found, produce collision on the first slot
         for (uint bucketOffset = 0; (bucketOffset <= kFeatureHashGridProbingSize) && (slot + bucketOffset < kFeatureHashGridCapacity); ++bucketOffset)
         {
-            HashKey storedHashKey = gFeatureHashGridEntriesBuffer.Load<HashKey>((slot + bucketOffset) * sizeofHashKey);
+            HashKey storedHashKey = gFeatureHashGridEntriesBuffer.Load<HashKey>((slot + bucketOffset + kFeatureHashGridLevelOffset * level) * sizeofHashKey);
             if (storedHashKey == hashKey)
             {
                 slot += bucketOffset;
@@ -169,7 +177,7 @@ struct FeatureHashGridData
             }
         }
 #endif
-        return slot;
+        return slot + kFeatureHashGridLevelOffset * level;
     }
 
     // Debug functions

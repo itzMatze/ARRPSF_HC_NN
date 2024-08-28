@@ -239,6 +239,7 @@ private:
         const uint featureHashMapSize = std::pow(2, 22);
         int featureHashMapDebugShowLevel = -1;
         bool featureHashEncUseMultiLevelDir = true;
+        bool featureHashEncSeparateLevelGrids = true;
         // how many numbers one element in the hash map contains (how many feature values for each level)
         uint featureHashMapPlacesPerElement = 1;
         int featureHashMapProbingSize = 0;

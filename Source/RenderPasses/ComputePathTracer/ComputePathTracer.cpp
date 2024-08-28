@@ -195,6 +195,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["NN_TRAINING_BOUNCES"] = std::to_string(mNNParams.trainingBounces);
     defineList["FEATURE_HASH_GRID_SIZE"] = std::to_string(mNNParams.featureHashMapSize);
     defineList["FEATURE_HASH_GRID_PLACES_PER_ELEMENT"] = std::to_string(mNNParams.featureHashMapPlacesPerElement);
+    defineList["FEATURE_HASH_ENC_SEPARATE_LEVEL_GRIDS"] = mNNParams.featureHashEncSeparateLevelGrids ? "1" : "0";
     defineList["FEATURE_HASH_GRID_PROBING_SIZE"] = std::to_string(mNNParams.featureHashMapProbingSize);
 
     if (!mPasses[TRAIN_NN_FILL_CACHE_PASS] && (mHCParams.active || mNNParams.active))
@@ -664,6 +665,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         ImGui::InputInt("training bounces", &mNNParams.trainingBounces);
         ImGui::Separator();
         ImGui::Text("input encoding");
+        nn_group.checkbox("hash enc separate level grids", mNNParams.featureHashEncSeparateLevelGrids);
         nn_group.checkbox("hash enc use multi level dir", mNNParams.featureHashEncUseMultiLevelDir);
         ImGui::InputInt("hash enc debug show level", &mNNParams.featureHashMapDebugShowLevel);
         ImGui::InputInt("hash enc probing size", &mNNParams.featureHashMapProbingSize);
