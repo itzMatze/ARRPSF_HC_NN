@@ -134,6 +134,19 @@ struct LinearHalf<let C : int> // : ISharedMem<C>
         }
     }
 
+    void preload_weights<let N : int, let NWarps : int>(SharedMemRef memptr)
+    {
+        const uint num_elements_per_warp = N / NWarps;
+        const uint warp_offset = num_elements_per_warp * (threadInfo.thread_idx.y % NWarps);
+        const uint threadIdInWarp = threadInfo.thread_idx.x % 32;
+        [ForceUnroll] for (int i = 0; i < num_elements_per_warp; i++)
+        { // colMajor matrix writing
+
+            uint element_id = (i + warp_offset) * 32 + threadIdInWarp;
+            __inline_set_half_shared_buffer(memptr + element_id, weights_view.load_prim(element_id));
+        }
+    }
+
     // Move the input array to the shared memory.
     void moveInputsToSharedMem<let N : int>(float16_t input[N])
     {
