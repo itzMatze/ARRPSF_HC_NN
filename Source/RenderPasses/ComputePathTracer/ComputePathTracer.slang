@@ -251,9 +251,6 @@ bool handleHit(const HitInfo hit, inout ScatterRayData rayData)
 #if NN_QUERY
         if (gHashEncDebugLevel >= 0)
         {
-            rayData.cur_radiance = rayData.featureHashGrid0.hashmap.DebugColoredHash(
-                sd.posW, -gViewW[gPixel].xyz, sd.getOrientedFaceNormal(), gHashEncDebugLevel
-            );
             TERMINATE_PATH_0;
         }
 #endif

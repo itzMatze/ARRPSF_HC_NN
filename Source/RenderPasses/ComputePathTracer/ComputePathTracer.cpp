@@ -174,6 +174,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["USE_NRC"] = mNNParams.nnMethod == NNParams::USE_NRC ? "1" : "0";
     defineList["USE_NIRC"] = mNNParams.nnMethod == NNParams::USE_NIRC ? "1" : "0";
     defineList["NN_USE_HASH_ENC"] = mNNParams.encMethod == NNParams::USE_HASH_ENC ? "1" : "0";
+    defineList["NN_USE_HASH_ENC_INTERPOLATION"] = mNNParams.encMethod == NNParams::USE_HASH_ENC_INTERPOLATION ? "1" : "0";
     defineList["NN_USE_FREQ_ENC"] = mNNParams.encMethod == NNParams::USE_FREQ_ENC ? "1" : "0";
     defineList["USE_MULTI_LEVEL_DIR"] = mNNParams.featureHashEncUseMultiLevelDir ? "1" : "0";
     defineList["NN_DEBUG"] = mNNParams.debugOutput ? "1" : "0";
@@ -185,7 +186,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["NN_GRAD_OFFSET"] = std::to_string(mNNParams.gradOffset);
     defineList["NN_GRADIENT_AUX_ELEMENTS"] = std::to_string(mNNParams.gradientAuxElements);
     defineList["NN_OPTIMIZER_TYPE"] = std::to_string(mNNParams.optimizerParams.type);
-    
+
     defineList["NN_PARAM_0"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_0);
     defineList["NN_PARAM_1"] = fmt::format("{:.12f}", mNNParams.optimizerParams.param_1);
     defineList["NN_LAYER_WIDTH"] = std::to_string(mNNParams.nnLayerWidth);
@@ -194,6 +195,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     defineList["NN_TRAINING_BOUNCES"] = std::to_string(mNNParams.trainingBounces);
     defineList["FEATURE_HASH_GRID_SIZE"] = std::to_string(mNNParams.featureHashMapSize);
     defineList["FEATURE_HASH_GRID_PLACES_PER_ELEMENT"] = std::to_string(mNNParams.featureHashMapPlacesPerElement);
+    defineList["FEATURE_HASH_ENC_SEPARATE_LEVEL_GRIDS"] = mNNParams.featureHashEncSeparateLevelGrids ? "1" : "0";
     defineList["FEATURE_HASH_GRID_PROBING_SIZE"] = std::to_string(mNNParams.featureHashMapProbingSize);
 
     if (!mPasses[TRAIN_NN_FILL_CACHE_PASS] && (mHCParams.active || mNNParams.active))
@@ -253,7 +255,7 @@ void ComputePathTracer::createPasses(const RenderData& renderData)
     }
     if (!mPasses[NN_GRADIENT_DESCENT_PASS] && mNNParams.active)
     {
-        
+
         ProgramDesc desc;
         desc.addShaderLibrary(kGradientDescentShaderFile).csEntry("main");
         mPasses[NN_GRADIENT_DESCENT_PASS] = ComputePass::create(mpDevice, desc, defineList, true);
@@ -663,6 +665,7 @@ void ComputePathTracer::renderUI(Gui::Widgets& widget)
         ImGui::InputInt("training bounces", &mNNParams.trainingBounces);
         ImGui::Separator();
         ImGui::Text("input encoding");
+        nn_group.checkbox("hash enc separate level grids", mNNParams.featureHashEncSeparateLevelGrids);
         nn_group.checkbox("hash enc use multi level dir", mNNParams.featureHashEncUseMultiLevelDir);
         ImGui::InputInt("hash enc debug show level", &mNNParams.featureHashMapDebugShowLevel);
         ImGui::InputInt("hash enc probing size", &mNNParams.featureHashMapProbingSize);

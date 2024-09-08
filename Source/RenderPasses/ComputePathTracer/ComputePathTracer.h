@@ -222,10 +222,11 @@ private:
         uint nnMethod = USE_NIRC;
         enum EncMethods {
             USE_HASH_ENC = 0,
-            USE_FREQ_ENC = 1
+            USE_HASH_ENC_INTERPOLATION = 1,
+            USE_FREQ_ENC = 2
         };
-        Gui::DropdownList encMethodList{Gui::DropdownValue{USE_HASH_ENC, "hash enc"}, Gui::DropdownValue{USE_FREQ_ENC, "freq enc"}};
-        uint encMethod = USE_HASH_ENC;
+        Gui::DropdownList encMethodList{Gui::DropdownValue{USE_HASH_ENC, "hash enc"}, Gui::DropdownValue{USE_HASH_ENC_INTERPOLATION, "hash enc with interpolation"}, Gui::DropdownValue{USE_FREQ_ENC, "freq enc"}};
+        uint encMethod = USE_HASH_ENC_INTERPOLATION;
         uint nnParamCount = 0;
         uint gradientAuxElements = 0;
         int gradOffset = 0;
@@ -238,6 +239,7 @@ private:
         const uint featureHashMapSize = std::pow(2, 22);
         int featureHashMapDebugShowLevel = -1;
         bool featureHashEncUseMultiLevelDir = true;
+        bool featureHashEncSeparateLevelGrids = true;
         // how many numbers one element in the hash map contains (how many feature values for each level)
         uint featureHashMapPlacesPerElement = 1;
         int featureHashMapProbingSize = 0;
