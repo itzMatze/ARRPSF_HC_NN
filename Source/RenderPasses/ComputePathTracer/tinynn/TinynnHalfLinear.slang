@@ -1,7 +1,7 @@
 #ifndef _SRENDERER_ADDON_HALF_TINYNN_LINEAR_HLSLI_HEADER_
 #define _SRENDERER_ADDON_HALF_TINYNN_LINEAR_HLSLI_HEADER_
 
-#include "HalfMatmulInclude.hlsli"
+#include "HalfMatmulInclude.glsl"
 #include "TinynnTensorview.slang"
 
 

@@ -3,6 +3,7 @@
 
 #include "TinynnActivations.slang"
 #include "TinynnHalfLinear.slang"
+#include "HalfMatmulInclude.glsl"
 
 struct MLPHalf16X16<let N : int, Act : IActivationFn> : ISharedMem<16>
 {
