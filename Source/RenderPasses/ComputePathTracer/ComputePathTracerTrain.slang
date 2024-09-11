@@ -499,6 +499,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     int3 groupThreadId: SV_GroupThreadID,
     int3 groupId: SV_GroupID)
 {
+
     SampleGenerator sg = SampleGenerator(dispatchThreadId.xy + gFrameDim * gTrainIteration, gFrameCount);
     uint2 pixel = dispatchThreadId.xy * 10 + uint2(sampleNext2D(sg) * 10.99);
 

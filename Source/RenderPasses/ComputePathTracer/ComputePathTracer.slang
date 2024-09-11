@@ -775,6 +775,7 @@ void main(uint3 dispatchThreadId: SV_DispatchThreadID,
     int3 groupThreadId: SV_GroupThreadID,
     int3 groupId: SV_GroupID)
 {
+
     gPixel = dispatchThreadId.xy;
 #if NN_QUERY
     if (any(gPixel >= gFrameDim)) gDone = true;

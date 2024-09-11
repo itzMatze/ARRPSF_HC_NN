@@ -1,7 +1,7 @@
 #ifndef _SRENDERER_ADDON_HALF_TINYNN_LINEAR_HLSLI_HEADER_
 #define _SRENDERER_ADDON_HALF_TINYNN_LINEAR_HLSLI_HEADER_
 
-#include "HalfMatmulInclude.hlsli"
+#include "HalfMatmulInclude.glsl"
 #include "TinynnTensorview.slang"
 
 
@@ -131,6 +131,19 @@ struct LinearHalf<let C : int> // : ISharedMem<C>
         {
             [ForceUnroll] for (int i = 0; i < N; i++) // colMajor matrix writing
                 __inline_set_half_shared_buffer(memptr + (i * 32 + threadIdInWarp), float16_t(input[i]));
+        }
+    }
+
+    void preload_weights<let N : int, let NWarps : int>(SharedMemRef memptr)
+    {
+        const uint num_elements_per_warp = N / NWarps;
+        const uint warp_offset = num_elements_per_warp * (threadInfo.thread_idx.y % NWarps);
+        const uint threadIdInWarp = threadInfo.thread_idx.x % 32;
+        [ForceUnroll] for (int i = 0; i < num_elements_per_warp; i++)
+        { // colMajor matrix writing
+
+            uint element_id = (i + warp_offset) * 32 + threadIdInWarp;
+            __inline_set_half_shared_buffer(memptr + element_id, weights_view.load_prim(element_id));
         }
     }
 
