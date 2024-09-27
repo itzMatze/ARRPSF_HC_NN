@@ -11,7 +11,7 @@ target_sources(ComputePathTracer PRIVATE
     RadianceHashCacheCommon.slang
     tinynn/GradientClear.slang
     tinynn/GradientDescentPrimal.slang
-    tinynn/HalfMatmulInclude.hlsli
+    tinynn/HalfMatmulInclude.glsl
     tinynn/Optimizer.slang
     tinynn/TinynnActivations.slang
     tinynn/TinynnFeatureEncodings.slang

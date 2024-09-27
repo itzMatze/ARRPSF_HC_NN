@@ -237,7 +237,7 @@ add_custom_command(
 # -----------------------------------------------------------------------------
 
 # Regex for matching shader files.
-set(SHADER_EXTENSION_REGEX "\.(slang|slangh|hlsli|hlsl)$")
+set(SHADER_EXTENSION_REGEX "\.(slang|slangh|hlsli|hlsl|glsl)$")
 
 # Setup build rules to copy all shaders of a target to the output directory.
 # The specified output_dir is relative to the global shader output directory (FALCOR_SHADER_OUTPUT_DIRECTORY).
