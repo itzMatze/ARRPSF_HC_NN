@@ -12,6 +12,8 @@ static const uint kFeatureHashGridCapacity = kFeatureHashGridSize / kFeatureHash
 static const uint kFeatureHashGridLevelOffset = 0;
 #endif
 
+#define USE_HASH_INSTANT_NGP 0
+
 typedef uint64_t HashKey;
 static const uint sizeofHashKey = 8;
 
@@ -60,6 +62,11 @@ struct FeatureHashGridData
         a = (a + 0xfd7046c5) + (a << 3);
         a = (a ^ 0xb55a4f09) ^ (a >> 16);
         return a;
+    }
+
+    uint HashInstantNGPSpatial(uint3 a)
+    {
+        return a.x ^ (a.y * 2654435761u) ^ (a.z * 805459861u);
     }
 
     uint Hash32(HashKey hashKey)
@@ -139,6 +146,9 @@ struct FeatureHashGridData
         weights[7] = (1.0 - weightsAxis.x) * weightsAxis.y * weightsAxis.z;
         for (uint i = 0; i < 8; i++)
         {
+#if USE_NRC && USE_HASH_INSTANT_NGP
+            hashKeys[i] = HashInstantNGPSpatial(gridPositionCorners[i]);
+#else
             // | normal bits | level | pos.z | pos.y | pos.x | dir.z | dir.y | dir.x |
             hashKeys[i] = (sampleNormal.x >= 0 ? 1 : 0) + (sampleNormal.y >= 0 ? 2 : 0) + (sampleNormal.z >= 0 ? 4 : 0);
             hashKeys[i] <<= kHashGridLevelBitNum;
@@ -155,6 +165,7 @@ struct FeatureHashGridData
             hashKeys[i] |= ((HashKey)quantizedDir.y & directionBitMask);
             hashKeys[i] <<= directionBitNum;
             hashKeys[i] |= ((HashKey)quantizedDir.x & directionBitMask);
+#endif
         }
     }
 
@@ -164,7 +175,11 @@ struct FeatureHashGridData
         ComputeSpatialHash(samplePosition, sampleDirection, sampleNormal, level, multiLevelDir, hashKeys, weights);
         for (uint i = 0; i < 8; i++)
         {
+#if USE_NRC && USE_HASH_INSTANT_NGP
+            uint hash = hashKeys[i];
+#else
             uint hash = Hash32(hashKeys[i]);
+#endif
             uint slot = (hash % kFeatureHashGridCapacity);
 #if FEATURE_HASH_GRID_PROBING_SIZE > 0
             HashKey prevHashKey = kHashGridInvalidHashKey;
@@ -190,7 +205,11 @@ struct FeatureHashGridData
         ComputeSpatialHash(samplePosition, sampleDirection, sampleNormal, level, multiLevelDir, hashKeys, weights);
         for (uint i = 0; i < 8; i++)
         {
+#if USE_NRC && USE_HASH_INSTANT_NGP
+            uint hash = hashKeys[i];
+#else
             uint hash = Hash32(hashKeys[i]);
+#endif
             uint slot = (hash % kFeatureHashGridCapacity);
 #if FEATURE_HASH_GRID_PROBING_SIZE > 0
             HashKey prevHashKey = kHashGridInvalidHashKey;
